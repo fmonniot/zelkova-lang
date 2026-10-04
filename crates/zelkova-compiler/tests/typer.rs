@@ -1175,10 +1175,11 @@ fn a_module_with_a_type_error_still_answers_for_every_declaration() {
     let canonical = canonicalize_with_interfaces(source, &interfaces)
         .unwrap_or_else(|errors| panic!("expected the module to canonicalize, got {:?}", errors));
 
-    let typer::TypeCheck { solved, errors } = typer::type_check_recovering(&canonical, &interfaces);
+    let typer::TypeCheck { solved, errors, .. } =
+        typer::type_check_recovering(&canonical, &interfaces);
 
     match solved.get(&Name::new("ok")) {
-        Some(Solved::Typed(term)) => assert_eq!(format!("{}", term.tpe), "Int"),
+        Some(Solved::Typed { term, .. }) => assert_eq!(format!("{}", term.tpe), "Int"),
         other => panic!("expected `ok` to be typed, got {:?}", other),
     }
     assert!(
@@ -2851,7 +2852,10 @@ fn a_field_of_an_unresolved_name_is_not_reported_again() {
     let check = typer::type_check_recovering(&canonical.module, &interfaces);
     for name in ["f", "h", "chained", "accessed"] {
         assert!(
-            matches!(check.solved.get(&Name::new(name)), Some(Solved::Typed(_))),
+            matches!(
+                check.solved.get(&Name::new(name)),
+                Some(Solved::Typed { .. })
+            ),
             "for {}, got {:?}",
             name,
             check.solved.get(&Name::new(name))
@@ -3480,7 +3484,10 @@ fn a_record_pattern_an_unresolved_name_explains_is_not_reported_again() {
     let check = typer::type_check_recovering(&canonical.module, &interfaces);
     for name in ["f", "g"] {
         assert!(
-            matches!(check.solved.get(&Name::new(name)), Some(Solved::Typed(_))),
+            matches!(
+                check.solved.get(&Name::new(name)),
+                Some(Solved::Typed { .. })
+            ),
             "for {}, got {:?}",
             name,
             check.solved.get(&Name::new(name))
@@ -3657,4 +3664,800 @@ fn a_literal_mismatch_names_no_type_variable() {
     .message();
 
     assert_eq!(message, "cannot match `Char` with `Int`");
+}
+
+// ── Class obligations ─────────────────────────────────────────────────────────
+//
+// A use of a name whose type has a context asks an instance of each of the context's
+// classes at the type the use gave it, and the answer is read once the declaration's
+// equations are solved (`typer::classes`). Each source below declares the classes and
+// instances it needs, because nothing in `std/core` does yet.
+
+/// `Eq`, a union to use it at, and a second union with no instance, which every source
+/// below that wants them starts from. It exposes nothing, so a declaration appended to it
+/// may go without an annotation.
+const EQ: &str = indoc::indoc! {r#"
+    module Test exposing ()
+
+    type Colour
+      = Red
+      | Blue
+
+    type Plain
+      = Plain
+
+    type Box a
+      = Box a
+
+    class Eq a where
+      eq : a -> a -> Bool
+
+    instance Eq Colour where
+      eq a b =
+        True
+
+    instance Eq a => Eq (Box a) where
+      eq (Box left) (Box right) =
+        eq left right
+
+    instance Eq Int where
+      eq a b =
+        True
+"#};
+
+/// `EQ`, followed by `declarations`.
+fn with_eq(declarations: &str) -> String {
+    format!("{}\n{}", EQ, declarations)
+}
+
+/// The class and the type a [`typer::ErrorKind::NoInstance`] names, written the way the
+/// message does, or a panic for any other kind.
+fn no_instance_of(error: &typer::Error) -> (String, String) {
+    match &error.kind {
+        typer::ErrorKind::NoInstance { class, tpe, .. } => {
+            (class.unqualified_name().to_string(), format!("{}", tpe))
+        }
+        other => panic!("expected `NoInstance`, got {:?}", other),
+    }
+}
+
+/// A use whose obligation an instance discharges checks, and so does a use through an
+/// instance with a context when the context's own obligation is discharged in turn.
+///
+/// Mutation-checked by making the instance lookup in `entail` find nothing: every use is
+/// then a `NoInstance` and `run(..).is_ok()` goes red.
+#[test]
+fn a_use_an_instance_discharges_checks() {
+    let source = with_eq(indoc::indoc! {r#"
+        same : Colour -> Colour -> Bool
+        same x y =
+          eq x y
+
+        boxed : Bool
+        boxed =
+          eq (Box Red) (Box Blue)
+
+        nested : Bool
+        nested =
+          eq (Box (Box 1)) (Box (Box 2))
+    "#});
+
+    assert!(
+        run(&source).is_ok(),
+        "every use is at a type with an instance"
+    );
+}
+
+/// An instance's context is asked of the type's arguments: `Eq (Box Plain)` needs `Eq
+/// Plain`, which has no instance, and the error names the inner class and type, with the
+/// caret under the use.
+///
+/// Mutation-checked by skipping the context loop in `entail`: the use is then answered by
+/// `Eq (Box a)` alone, the module checks and `one_type_error` goes red.
+#[test]
+fn an_instance_context_is_asked_of_the_arguments() {
+    let source = with_eq(indoc::indoc! {r#"
+        boxed : Bool
+        boxed =
+          eq (Box Plain) (Box Plain)
+    "#});
+
+    let error = one_type_error(&source);
+    assert_eq!(
+        no_instance_of(&error),
+        ("Eq".to_string(), "Plain".to_string())
+    );
+    assert_eq!(error.message(), "there is no instance of `Eq` for `Plain`");
+
+    // What asked for it is named: the use needed `Eq (Box Plain)`.
+    let typer::ErrorKind::NoInstance { needed_by, .. } = &error.kind else {
+        panic!("expected `NoInstance`");
+    };
+    let needed_by = needed_by
+        .as_ref()
+        .expect("it was asked through an instance");
+    assert_eq!(format!("{}", needed_by.tpe), "Box Plain");
+
+    let at = range_within(&source, "eq (Box Plain) (Box Plain)", "eq");
+    assert_eq!(ranges(&error.labels()), vec![at]);
+}
+
+/// A use at a type with no instance is an error naming the class and the type, with the
+/// caret under the use and not under the declaration.
+///
+/// Mutation-checked by having `entail` answer `Ok(())` where the lookup finds no instance:
+/// the declaration checks and `one_type_error` goes red.
+#[test]
+fn a_use_at_a_type_with_no_instance_is_an_error_at_the_use() {
+    let source = with_eq(indoc::indoc! {r#"
+        same : Plain -> Plain -> Bool
+        same x y =
+          eq x y
+    "#});
+
+    let error = one_type_error(&source);
+    assert_eq!(
+        no_instance_of(&error),
+        ("Eq".to_string(), "Plain".to_string())
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_within(&source, "eq x y", "eq")],
+        "the caret is under the use, not across the declaration"
+    );
+}
+
+/// A use at a function type is the same error: no instance can be declared for one.
+///
+/// Mutation-checked by having the `Type::Fun` arm of `entail` answer `Ok(())`: the
+/// declaration checks and `one_type_error` goes red.
+#[test]
+fn a_use_at_a_function_type_has_no_instance() {
+    let source = with_eq(indoc::indoc! {r#"
+        flip : Colour -> Colour
+        flip c =
+          c
+
+        funs : Bool
+        funs =
+          eq flip flip
+    "#});
+
+    let error = one_type_error(&source);
+    assert_eq!(
+        no_instance_of(&error),
+        ("Eq".to_string(), "Colour -> Colour".to_string())
+    );
+    assert!(
+        error
+            .notes()
+            .iter()
+            .any(|note| note.contains("a function type has no instances")),
+        "got {:?}",
+        error.notes()
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_within(&source, "eq flip flip", "eq")]
+    );
+}
+
+/// A constrained declaration's body may use a member of its context's class, and a member
+/// of that class's superclass, transitively.
+///
+/// Mutation-checked twice: with `provide` not following `superclasses`, the second and
+/// third declarations fail with `MissingConstraint`; with it following one level only, the
+/// third does.
+#[test]
+fn a_context_provides_its_class_and_every_superclass() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Eq a => Comparable a where
+          lt : a -> a -> Bool
+
+        class Comparable a => Ordered a where
+          gt : a -> a -> Bool
+
+        own : Eq a => a -> a -> Bool
+        own x y =
+          eq x y
+
+        superclass : Comparable a => a -> a -> Bool
+        superclass x y =
+          eq x y
+
+        grandparent : Ordered a => a -> a -> Bool
+        grandparent x y =
+          eq x y
+    "#};
+
+    assert!(run(source).is_ok(), "{:?}", run(source).err());
+}
+
+/// A class the context does not provide is the missing-constraint error, naming the
+/// constraint to add, with the caret under the use.
+///
+/// Mutation-checked by making `entail` treat any given of a *different* class as
+/// providing the obligation: the declaration checks and `one_type_error` goes red.
+#[test]
+fn a_class_the_context_does_not_provide_is_a_missing_constraint() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Eq a => Comparable a where
+          lt : a -> a -> Bool
+
+        notProvided : Eq a => a -> a -> Bool
+        notProvided x y =
+          lt x y
+    "#};
+
+    let error = one_type_error(source);
+    match &error.kind {
+        typer::ErrorKind::MissingConstraint {
+            class,
+            variable,
+            written,
+            ..
+        } => {
+            assert_eq!(class.unqualified_name().as_str(), "Comparable");
+            assert_eq!(variable, "a");
+            assert_eq!(*written, typer::Written::Annotation);
+        }
+        other => panic!("expected `MissingConstraint`, got {:?}", other),
+    }
+    assert_eq!(
+        error.message(),
+        "`Comparable a` is required here, and the annotation does not provide it"
+    );
+    assert!(error.notes().contains(
+        &"add `Comparable a` to the constraints of the annotation on `notProvided`".to_string()
+    ));
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_within(source, "lt x y", "lt")]
+    );
+}
+
+/// A given is on its own variable: `Eq a` does not provide `Eq b`, and the error names the
+/// variable that is missing it.
+///
+/// Mutation-checked by having `entail` answer a variable of any given's class whatever the
+/// variable: the declaration checks and `one_type_error` goes red.
+#[test]
+fn a_given_provides_its_own_variable_and_no_other() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        other : Eq a => a -> b -> Bool
+        other x y =
+          eq y y
+    "#};
+
+    let error = one_type_error(source);
+    match &error.kind {
+        typer::ErrorKind::MissingConstraint {
+            class, variable, ..
+        } => {
+            assert_eq!(class.unqualified_name().as_str(), "Eq");
+            assert_eq!(variable, "b");
+        }
+        other => panic!("expected `MissingConstraint`, got {:?}", other),
+    }
+}
+
+/// A declaration with no annotation whose body needs a class of an undetermined type is
+/// the needs-annotation error, which says what the declaration has to state; one whose
+/// body pins the type down checks.
+///
+/// Mutation-checked by making `discharge` answer `MissingConstraint` whether or not the
+/// declaration is annotated: the first assertion goes red.
+#[test]
+fn an_unannotated_declaration_needing_a_class_needs_an_annotation() {
+    let source = with_eq(indoc::indoc! {r#"
+        same x y =
+          eq x y
+    "#});
+
+    let error = one_type_error(&source);
+    match &error.kind {
+        typer::ErrorKind::ConstraintNeedsAnnotation { class, stated, .. } => {
+            assert_eq!(class.unqualified_name().as_str(), "Eq");
+            assert_eq!(stated, "Eq a => a -> a -> Bool");
+        }
+        other => panic!("expected `ConstraintNeedsAnnotation`, got {:?}", other),
+    }
+    assert!(error.notes().contains(
+        &"`same` is what the declaration has to state: `same : Eq a => a -> a -> Bool`".to_string()
+    ));
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_within(&source, "eq x y", "eq")]
+    );
+
+    // The type is determined, and `Eq Int` is discharged where it stands.
+    assert!(run(&with_eq(indoc::indoc! {r#"
+        isZero n =
+          eq n 0
+    "#}))
+    .is_ok());
+}
+
+/// A declaration with no annotation states every constraint it needs, each once and over
+/// the variables its type holds.
+///
+/// Mutation-checked by listing only the first residual: the `stated` text loses `Eq b`.
+#[test]
+fn what_an_unannotated_declaration_has_to_state_is_every_constraint() {
+    let source = with_eq(indoc::indoc! {r#"
+        both x y u v =
+          (eq x y, eq u v)
+    "#});
+
+    match one_type_error(&source).kind {
+        typer::ErrorKind::ConstraintNeedsAnnotation { stated, .. } => {
+            assert_eq!(stated, "(Eq a, Eq b) => a -> a -> b -> b -> ( Bool, Bool )")
+        }
+        other => panic!("expected `ConstraintNeedsAnnotation`, got {:?}", other),
+    }
+}
+
+/// A class needed at a type nothing determines — one that is not part of the
+/// declaration's type, so that no annotation on it could name it — is the third error.
+///
+/// Mutation-checked by classifying a variable outside the declaration's type as
+/// `MissingConstraint`: the kind assertion goes red.
+#[test]
+fn a_class_needed_at_a_type_nothing_determines_is_undetermined() {
+    let source = with_eq(indoc::indoc! {r#"
+        read : Int -> a
+        read n =
+          read n
+
+        undetermined : Int -> Bool
+        undetermined n =
+          eq (read n) (read n)
+    "#});
+
+    let error = one_type_error(&source);
+    match &error.kind {
+        typer::ErrorKind::UndeterminedConstraint { class, .. } => {
+            assert_eq!(class.unqualified_name().as_str(), "Eq")
+        }
+        other => panic!("expected `UndeterminedConstraint`, got {:?}", other),
+    }
+    assert_eq!(
+        error.message(),
+        "`Eq` is required of a type nothing in this declaration determines"
+    );
+}
+
+/// When several obligations fail, the one whose use comes first is named, on every run.
+///
+/// Mutation-checked by discharging the obligations in reverse order, which names
+/// `Comparable`.
+#[test]
+fn the_first_failing_obligation_in_order_is_the_one_reported() {
+    let source = with_eq(indoc::indoc! {r#"
+        class Comparable a where
+          lt : a -> a -> Bool
+
+        twice : ( Bool, Bool )
+        twice =
+          ( eq Plain Plain, lt Plain Plain )
+    "#});
+
+    for _ in 0..8 {
+        let error = one_type_error(&source);
+        assert_eq!(no_instance_of(&error).0, "Eq");
+    }
+}
+
+/// An instance's binding is checked against the member's signature at the instance's
+/// type: a binding of the wrong type is an error, blamed on the binding, with the head
+/// line as the second label where an annotation would be.
+///
+/// Mutation-checked by skipping `InstanceCheck::binding` for every binding: the module
+/// checks, and `type_errors` panics.
+#[test]
+fn an_instance_binding_of_the_wrong_type_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        type Colour
+          = Red
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        instance Eq Colour where
+          eq a b =
+            1
+    "#};
+
+    let error = one_type_error(source);
+    assert!(
+        matches!(error.kind, typer::ErrorKind::UnificationFailed { .. }),
+        "got {:?}",
+        error.kind
+    );
+    assert_eq!(error.message(), "cannot match `Bool` with `Int`");
+    assert!(error
+        .notes()
+        .iter()
+        .any(|note| note.contains("in the binding of `eq` in the instance `Eq Colour`")));
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_within(source, "eq a b =\n    1", "1"),
+            range_of(source, "instance Eq Colour where"),
+        ]
+    );
+}
+
+/// An instance binding can use the instance's own context, as a function can use its
+/// annotation's: `EQ`'s `Eq (Box a)` compares its contents through the `Eq a` it was given.
+///
+/// Mutation-checked by passing the instance's givens to its bindings as an empty list:
+/// the `Box` instance of `EQ` then fails with `MissingConstraint` and `run(..).is_ok()`
+/// goes red.
+#[test]
+fn an_instance_binding_is_given_the_instance_context() {
+    assert!(run(&with_eq("")).is_ok(), "{:?}", run(&with_eq("")).err());
+}
+
+/// An instance of a class with a superclass needs the superclass's instance at the same
+/// head, and for a type with parameters the superclass's context has to be provided:
+/// `instance Comparable (Box a)` beside `instance Eq a => Eq (Box a)` is an error naming
+/// `Eq a`, and it checks with `Eq a` in its own context.
+///
+/// Mutation-checked by discharging the superclass obligations with no givens: the second
+/// source fails too.
+#[test]
+fn an_instance_has_to_provide_its_superclass_context() {
+    let declarations = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        type Box a
+          = Box a
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Eq a => Comparable a where
+          lt : a -> a -> Bool
+
+        instance Eq a => Eq (Box a) where
+          eq (Box left) (Box right) =
+            eq left right
+
+    "#};
+
+    let without = format!(
+        "{}{}",
+        declarations,
+        indoc::indoc! {r#"
+            instance Comparable (Box a) where
+              lt (Box left) (Box right) =
+                False
+        "#}
+    );
+    let error = one_type_error(&without);
+    match &error.kind {
+        typer::ErrorKind::MissingConstraint {
+            class,
+            variable,
+            written,
+            ..
+        } => {
+            assert_eq!(class.unqualified_name().as_str(), "Eq");
+            assert_eq!(variable, "a");
+            assert_eq!(*written, typer::Written::InstanceContext);
+        }
+        other => panic!("expected `MissingConstraint`, got {:?}", other),
+    }
+    assert_eq!(
+        error.message(),
+        "`Eq a` is required here, and the instance's context does not provide it"
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_of(&without, "instance Comparable (Box a) where")]
+    );
+
+    let with = format!(
+        "{}{}",
+        declarations,
+        indoc::indoc! {r#"
+            instance Eq a => Comparable (Box a) where
+              lt (Box left) (Box right) =
+                False
+        "#}
+    );
+    assert!(run(&with).is_ok(), "{:?}", run(&with).err());
+}
+
+/// A derived instance is an instance that exists: a use at its type is answered by it,
+/// whatever it derives, and nothing checks its superclasses against a context that is
+/// not known yet.
+///
+/// Mutation-checked by leaving a `derived` instance out of `ClassTable::of`: the use then
+/// has no instance and `run(..).is_ok()` goes red.
+#[test]
+fn a_derived_instance_is_an_instance_that_exists() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        type Colour
+          = Red
+          | Blue
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              case x of
+                True ->
+                  y
+
+                False ->
+                  False
+
+        instance Eq Colour where
+          derived
+
+        same : Bool
+        same =
+          eq Red Blue
+    "#};
+
+    assert!(run(source).is_ok(), "{:?}", run(source).err());
+}
+
+/// A use through an operator whose `infix` declaration names a member raises the
+/// obligation the member does, at the operator.
+///
+/// Mutation-checked by not registering a class's members in the environment: the operator
+/// then names a value the typer does not know and the declaration is `UnboundName`, so
+/// `one_type_error` panics.
+#[test]
+fn an_operator_naming_a_member_raises_its_obligation() {
+    let source = with_eq(indoc::indoc! {r#"
+        infix left 4 (==) = eq
+
+        same : Plain -> Plain -> Bool
+        same x y =
+          x == y
+    "#});
+
+    let error = one_type_error(&source);
+    assert_eq!(
+        no_instance_of(&error),
+        ("Eq".to_string(), "Plain".to_string())
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_within(&source, "x == y", "==")]
+    );
+
+    assert!(run(&with_eq(indoc::indoc! {r#"
+        infix left 4 (==) = eq
+
+        same : Colour -> Colour -> Bool
+        same x y =
+          x == y
+    "#}))
+    .is_ok());
+}
+
+/// An annotation's variable that the body forces to a concrete type takes its given with
+/// it: `min : Comparable a => a -> a -> a` whose body makes `a` an `Int` proves
+/// `Comparable Int` and publishes `Comparable a`, and **checks**.
+///
+/// This pins a hole on purpose. It is the width of the hole every annotation has while its
+/// variables are flexible: `LANG-12` makes them rigid, and rejects this declaration with
+/// its own error. That ticket has to turn this test round; nothing in this one narrows the
+/// hole (no partial rigidity check), so the day `LANG-12` lands it goes red and says where.
+///
+/// The second half is what shows the given went with the variable: with no `Comparable
+/// Int`, the declaration is a `NoInstance` at `Int` and not a missing constraint.
+///
+/// Mutation-checked by letting a given answer an obligation on any type of its class: the
+/// second half goes red.
+#[test]
+fn an_annotation_variable_forced_to_int_checks_until_lang_12() {
+    let declarations = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Eq a => Comparable a where
+          lt : a -> a -> Bool
+
+        min : Comparable a => a -> a -> a
+        min x y =
+          if lt x 0 then
+            x
+
+          else
+            y
+    "#};
+
+    let with_instances = format!(
+        "{}\n{}",
+        declarations,
+        indoc::indoc! {r#"
+            instance Eq Int where
+              eq a b =
+                True
+
+            instance Comparable Int where
+              lt a b =
+                True
+        "#}
+    );
+    assert!(
+        run(&with_instances).is_ok(),
+        "{:?}",
+        run(&with_instances).err()
+    );
+
+    // Without an instance at `Int` the obligation is on `Int`, where a given does not
+    // reach: the error is the instance's absence, not the annotation's.
+    let error = one_type_error(declarations);
+    assert_eq!(
+        no_instance_of(&error),
+        ("Comparable".to_string(), "Int".to_string())
+    );
+}
+
+// ── Class obligations across modules ──────────────────────────────────────────
+
+const EQS: &str = indoc::indoc! {r#"
+    module Eqs exposing (Eq, same)
+
+    class Eq a where
+      eq : a -> a -> Bool
+
+    same : Eq a => a -> a -> Bool
+    same x y =
+      eq x y
+"#};
+
+const COLOURS: &str = indoc::indoc! {r#"
+    module Colours exposing (Colour(..))
+
+    import Eqs exposing (Eq)
+
+    type Colour
+      = Red
+      | Blue
+
+    instance Eq Colour where
+      eq a b =
+        True
+"#};
+
+/// A member and a constrained function imported from another module are checked against
+/// the context in that module's `Interface`, and an instance declared in a third module
+/// discharges the obligation.
+///
+/// Mutation-checked two ways: reading an interface's value with an empty context makes
+/// `same 1 2` check, so the second assertion goes red; and leaving `imported_instances`
+/// out of `ClassTable::of` makes the first use fail with `NoInstance`. The member half is
+/// `an_imported_member_is_checked_against_its_class`'s.
+#[test]
+fn an_imported_constrained_name_is_checked_against_its_interface() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Colours exposing (Colour(..))
+        import Eqs exposing (Eq, same)
+
+        good : Bool
+        good =
+          same Red Blue
+
+        member : Bool
+        member =
+          eq Red Blue
+    "#};
+
+    let checked = check_package_module(&[EQS, COLOURS, main], "Main");
+    assert!(checked.is_ok(), "{:?}", checked.err());
+
+    let bad = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Eqs exposing (Eq, same)
+
+        bad : Bool
+        bad =
+          same 1 2
+    "#};
+
+    let errors = check_package_module(&[EQS, COLOURS, bad], "Main").expect_err("no `Eq Int`");
+    match errors.as_slice() {
+        [CompilationError::Type(type_errors, _)] => {
+            let [error] = type_errors.as_slice() else {
+                panic!("expected one type error, got {:?}", type_errors);
+            };
+            assert_eq!(no_instance_of(error), ("Eq".to_string(), "Int".to_string()));
+            assert_eq!(
+                ranges(&error.labels()),
+                vec![range_within(bad, "same 1 2", "same")]
+            );
+        }
+        other => panic!("expected one type error, got {:?}", other),
+    }
+}
+
+/// A member imported from another module is checked against its class: used at a type no
+/// instance is declared for, it is an error at the use. A member nothing declares a type
+/// for would be left unchecked, and this is what tells the two apart.
+///
+/// Mutation-checked by leaving imported interfaces' classes out of the environment: `eq`
+/// is then a name the typer does not know, the declaration is left unchecked, and
+/// `expect_err` panics.
+#[test]
+fn an_imported_member_is_checked_against_its_class() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Eqs exposing (Eq)
+
+        bad : Bool
+        bad =
+          eq 1 2
+    "#};
+
+    let errors = check_package_module(&[EQS, COLOURS, main], "Main").expect_err("no `Eq Int`");
+    match errors.as_slice() {
+        [CompilationError::Type(type_errors, _)] => {
+            let [error] = type_errors.as_slice() else {
+                panic!("expected one type error, got {:?}", type_errors);
+            };
+            assert_eq!(no_instance_of(error), ("Eq".to_string(), "Int".to_string()));
+            assert_eq!(
+                ranges(&error.labels()),
+                vec![range_within(main, "eq 1 2", "eq")]
+            );
+        }
+        other => panic!("expected one type error, got {:?}", other),
+    }
+}
+
+/// The instance declared in `Colours` reaches `Main` although `Main` names nothing in it
+/// but the type: an instance is in scope wherever its class and its type are.
+///
+/// Mutation-checked with the one above.
+#[test]
+fn an_instance_of_a_third_module_is_in_scope_through_imports() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Colours exposing (Colour(..))
+        import Eqs exposing (same)
+
+        good : Bool
+        good =
+          same Red Blue
+    "#};
+
+    let checked = check_package_module(&[EQS, COLOURS, main], "Main");
+    assert!(checked.is_ok(), "{:?}", checked.err());
 }

@@ -159,7 +159,7 @@ obligation to discharge, it could land at any point, and did.
 **Decision 11 was overtaken, both halves of it.** `TEST-2` turned out not to gate the chapter:
 nothing about a class parses, so all eleven of the chapter's class-and-constraint blocks are
 `expect=unimplemented`, which the harness checks perfectly well. It becomes load-bearing when
-[`LANG-40`](../tickets/lang-40.md) lands and those blocks start wanting `expect=type-error`.
+[`LANG-40`](../tickets/README.md) lands and those blocks start wanting `expect=type-error`.
 And when it landed it *did* tighten `expect=ok` to mean "and type checks", against what this
 decision assumed. What the narrower half was protecting against — a wave of retagging — came
 to four blocks out of 330, and every one of the four was worth knowing about: an unreported

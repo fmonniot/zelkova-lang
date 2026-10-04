@@ -100,7 +100,7 @@ fn head_of(term: &TypedTerm) -> &TypedTerm {
 /// The reference a term is, or a panic.
 fn reference(term: &TypedTerm) -> &Reference {
     match &term.kind {
-        TypedTermKind::Identifier(reference) => reference,
+        TypedTermKind::Identifier { reference, .. } => reference,
         other => panic!("expected a name, got {:?}", other),
     }
 }
@@ -1364,4 +1364,247 @@ fn a_refutable_entry_is_a_test_below_its_field() {
             default: Box::new(leaf(vec![], bodies[1])),
         }
     );
+}
+
+// ── Classes: what a constrained name asks, and the instances a module declares ─────────
+
+/// A class, an instance of it at `Int` and at a box of anything, a constrained function,
+/// and a use of that function: the module the three tests below read different parts of.
+const CLASSES: &str = indoc! {r#"
+    module Test exposing (..)
+
+    type Box a
+      = Box a
+
+    class Eq a where
+      eq : a -> a -> Bool
+
+    instance Eq Int where
+      eq a b =
+        True
+
+    instance Eq a => Eq (Box a) where
+      eq (Box left) (Box right) =
+        eq left right
+
+    same : Eq a => a -> a -> Bool
+    same x y =
+      eq x y
+
+    plain : Int -> Int
+    plain n =
+      n
+
+    use : Bool
+    use =
+      same (plain 1) 2
+"#};
+
+/// The `(class, type)` pairs of a context, with the class as its bare name and the type as
+/// the typer writes it.
+fn context_of(context: &[ir::Predicate]) -> Vec<(String, String)> {
+    context
+        .iter()
+        .map(|predicate| {
+            (
+                predicate.class.unqualified_name().to_string(),
+                format!("{}", predicate.tpe),
+            )
+        })
+        .collect()
+}
+
+/// The context a name carries at the one use of it in `term`'s spine head, or a panic.
+fn use_context(term: &TypedTerm) -> &[ir::Predicate] {
+    match &head_of(term).kind {
+        TypedTermKind::Identifier { context, .. } => context,
+        other => panic!("expected the head to be a name, got {:?}", other),
+    }
+}
+
+/// A reference to a constrained function carries its context as instantiated at the use,
+/// with the final substitution applied: `same` used at `Int` carries `Eq Int`. A reference
+/// to a function with no constraint carries none.
+///
+/// Mutation-checked by leaving the context of an `Identifier` unzonked in
+/// `Substitution::apply_term`: the first assertion sees a `Eq t..` variable and goes red.
+#[test]
+fn a_reference_to_a_constrained_function_carries_its_instantiated_context() {
+    let module = ir_of(CLASSES);
+    let use_ = declaration(&module, "use");
+
+    // `same (plain 1) 2`: the outer application's head is `same`.
+    assert_eq!(
+        context_of(use_context(body(use_, "use"))),
+        vec![("Eq".to_string(), "Int".to_string())]
+    );
+
+    // `plain 1` has no constraint to carry.
+    let TypedTermKind::Apply { fun, .. } = &body(use_, "use").kind else {
+        panic!("expected an application");
+    };
+    let TypedTermKind::Apply { arg, .. } = &fun.kind else {
+        panic!("expected `same (plain 1)` to be an application");
+    };
+    assert_eq!(use_context(arg), &[]);
+}
+
+/// A declaration carries its own context, as the variables of its solved type, and the
+/// reference to a member inside it carries the very same variable.
+///
+/// Mutation-checked by having `infer_annotated` answer an empty context: the first
+/// assertion goes red.
+#[test]
+fn a_declaration_carries_its_own_context() {
+    let module = ir_of(CLASSES);
+    let same = declaration(&module, "same");
+
+    let [predicate] = same.context.as_slice() else {
+        panic!("expected one constraint, got {:?}", same.context);
+    };
+    assert_eq!(predicate.class.unqualified_name().as_str(), "Eq");
+
+    // It is the variable the declaration's type is built from.
+    let Type::Variable(_) = &predicate.tpe else {
+        panic!("expected a variable, got {:?}", predicate.tpe);
+    };
+    let Type::Fun { param_tpe, .. } = &same.tpe else {
+        panic!("expected a function type, got {:?}", same.tpe);
+    };
+    assert_eq!(**param_tpe, predicate.tpe);
+
+    // `eq x y` inside it asks the same of the same variable.
+    assert_eq!(use_context(body(same, "same")), same.context.as_slice());
+
+    // A declaration with no constraint has an empty context.
+    assert_eq!(declaration(&module, "plain").context, vec![]);
+}
+
+/// A module carries its instances, each with its class, head, context and one checked body
+/// per member.
+///
+/// Mutation-checked by building `Module::instances` empty in `ir::build`: the first
+/// assertion goes red; and by leaving an instance's `context` empty in
+/// `InstanceCheck::of`: the `Box` instance's context assertion does.
+#[test]
+fn a_module_carries_its_instances_with_their_bodies() {
+    let module = ir_of(CLASSES);
+
+    assert_eq!(module.instances.len(), 2);
+    let [int, boxed] = module.instances.as_slice() else {
+        unreachable!()
+    };
+
+    assert_eq!(int.class, test_qual("Test.Eq"));
+    assert_eq!(int.head, Type::Literal(TypeLiteral::Int));
+    assert_eq!(int.context, vec![]);
+    assert!(!int.rejected);
+
+    assert_eq!(boxed.class, test_qual("Test.Eq"));
+    let Type::Adt(name, args) = &boxed.head else {
+        panic!("expected a declared type, got {:?}", boxed.head);
+    };
+    assert_eq!(name, &test_qual("Test.Box"));
+    let [Type::Variable(variable)] = args.as_slice() else {
+        panic!("expected one variable argument, got {:?}", args);
+    };
+
+    // The context is over the head's own variable.
+    assert_eq!(
+        boxed.context,
+        vec![ir::Predicate {
+            class: test_qual("Test.Eq"),
+            tpe: Type::Variable(variable.clone()),
+        }]
+    );
+
+    // One checked body for the one member, with its context carried the way a
+    // declaration's is, and no binding left unchecked.
+    let ir::InstanceBody::Bindings { members, unchecked } = &boxed.body else {
+        panic!("expected written-out bindings");
+    };
+    assert!(unchecked.is_empty());
+    let [member] = members.as_slice() else {
+        panic!("expected one member, got {:?}", members);
+    };
+    assert_eq!(member.name, Name::new("eq"));
+    assert_eq!(member.arity, 2);
+    assert_eq!(member.context.len(), 1);
+    assert_eq!(member.context[0].class, test_qual("Test.Eq"));
+    assert!(member.body.is_some());
+}
+
+/// An instance whose body is the word `derived` is in the IR as one, with no members.
+///
+/// Mutation-checked by building every instance's body as `Bindings`: the match fails.
+#[test]
+fn a_derived_instance_is_in_the_ir_without_members() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (..)
+
+        type Colour
+          = Red
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              case x of
+                True ->
+                  y
+
+                False ->
+                  False
+
+        instance Eq Colour where
+          derived
+    "#});
+
+    let [instance] = module.instances.as_slice() else {
+        panic!("expected one instance, got {:?}", module.instances);
+    };
+    assert!(matches!(instance.body, ir::InstanceBody::Derived));
+}
+
+/// A binding of an instance that did not check is accounted for the way a value is: it is
+/// unchecked, with an error standing behind it, and is not among the members.
+///
+/// Mutation-checked by clearing the unchecked entries `build_instance` collects: the
+/// binding is accounted for nowhere and `unchecked.len()` is 0.
+#[test]
+fn an_instance_binding_that_did_not_check_is_unchecked() {
+    let source = indoc! {r#"
+        module Test exposing (..)
+
+        type Colour
+          = Red
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        instance Eq Colour where
+          eq a b =
+            1
+    "#};
+    let interfaces = HashMap::from([basics_interface(), char_interface()]);
+    let zelkova_compiler::dependencies::Outcome::Module(module, errors) =
+        check_module_recovering(&test_package(), &interfaces, &parse_source(source))
+    else {
+        panic!("the module should come back");
+    };
+    assert_eq!(errors.len(), 1, "{:?}", errors);
+
+    let [instance] = module.ir.instances.as_slice() else {
+        panic!("expected one instance");
+    };
+    let ir::InstanceBody::Bindings { members, unchecked } = &instance.body else {
+        panic!("expected written-out bindings");
+    };
+    assert!(members.is_empty(), "got {:?}", members);
+    assert_eq!(unchecked.len(), 1);
+    assert_eq!(unchecked[0].name, Name::new("eq"));
+    assert!(unchecked[0].reported);
 }

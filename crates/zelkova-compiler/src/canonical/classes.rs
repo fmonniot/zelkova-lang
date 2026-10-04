@@ -7,9 +7,11 @@
 //! whole, so an instance is in scope everywhere its declaring module is reachable through
 //! imports, whatever any `exposing` list says.
 //!
-//! Nothing here is type checked. A member's signature is canonicalized as a type; an
-//! instance's bindings and a derivation's are canonicalized as ordinary values and are
-//! not read by the typer. Whether a derivation is well formed is not checked either.
+//! Nothing here type checks anything. A member's signature is canonicalized as a type; an
+//! instance's bindings and a derivation's are canonicalized as ordinary values. The typer
+//! reads an instance's bindings against the member signatures this module keeps
+//! (`typer::classes`) and does not read a derivation's. Whether a derivation is well
+//! formed is not checked.
 
 use super::environment::{Environment, RootEnvironment};
 use super::{

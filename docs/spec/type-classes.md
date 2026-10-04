@@ -21,13 +21,13 @@ class Comparable a where
   compare : a -> a -> Order
 ```
 
-**Not implemented:** the compiler resolves classes and instances and type checks none of it.
-It holds an instance to its class's members, to its superclasses and to [the orphan
-rule](#where-an-instance-may-be-declared), and a member is a value of its module. A declaration
-that uses a member is not type checked, a derivation and a `derived` instance are read and not
-checked, nothing yet produces the members a derived instance stands for, and a module holding a
-class or an instance does not compile to JavaScript. A constraint in an annotation is resolved
-and asks nothing of a caller: see [Constraining an annotation](#constraining-an-annotation). The type-class ticket program in
+**Not implemented:** a use of a class member or of a constrained function is checked against
+the instances in scope, and an instance's bindings against its class's member signatures. A
+derivation and a `derived` instance are read and not checked, nothing yet produces the members
+a derived instance stands for, and a module holding a class, an instance or a constrained
+declaration does not compile to JavaScript. An annotation's type variables are not rigid
+([`LANG-12`](../tickets/lang-12.md)), so a body that forces a constrained variable to a concrete
+type is accepted whatever the annotation says. The type-class ticket program in
 [`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
 land.
 
@@ -595,6 +595,30 @@ Read it as a precondition on the caller: *`min` works for any type `a`, provided
 `Comparable`*. A caller supplying a type with no `Comparable` instance is an error at the call
 site, pointing at the call.
 
+```zel expect=type-error:NoInstance
+module Example exposing (Order, Comparable, Colour, min, smaller)
+
+type Order
+  = LT
+  | EQ
+  | GT
+
+type Colour
+  = Red
+  | Blue
+
+class Comparable a where
+  compare : a -> a -> Order
+
+min : Comparable a => a -> a -> a
+min x y =
+  x
+
+smaller : Colour
+smaller =
+  min Red Blue
+```
+
 Several constraints are parenthesised and comma-separated:
 
 ```zel expect=ok
@@ -631,16 +655,12 @@ four a b c d =
   Zero
 ```
 
-**Not implemented:** a constrained annotation is type checked exactly as it would be without its
-constraints, so none of the blocks above asks anything of a caller
-([`LANG-40`](../tickets/lang-40.md)).
-
 ### A constraint is never inferred
 
 A constraint is part of a declaration's type only where its annotation wrote it. A declaration
 with no annotation, whose body needs a class of a type nothing determines, is an error:
 
-```zel expect=ok
+```zel expect=type-error:ConstraintNeedsAnnotation
 module Example exposing (Eq)
 
 class Eq a where
@@ -654,8 +674,19 @@ same x y =
 pins the type down needs no annotation — the class is required of a known type, and that is
 settled where it stands.
 
-**Not implemented:** the block above is accepted. A declaration that uses a member is not type
-checked, so nothing asks what `same` requires ([`LANG-40`](../tickets/lang-40.md)).
+```zel expect=ok
+module Example exposing (Eq)
+
+class Eq a where
+  eq : a -> a -> Bool
+
+instance Eq Int where
+  eq a b =
+    True
+
+isZero n =
+  eq n 0
+```
 
 ### A constraint belongs to a signature, not to a type
 
@@ -721,6 +752,25 @@ first, and the declaration is where that is enforced.
 **A signature loses one.** A function constrained by `Comparable a` may use `eq` as well as
 `compare`, without naming `Eq`. The superclass is implied by the subclass, so
 `Comparable a => …` is the whole precondition and `(Eq a, Comparable a) => …` says nothing more.
+
+```zel expect=ok
+module Example exposing (Order, Eq, Comparable, same)
+
+type Order
+  = LT
+  | EQ
+  | GT
+
+class Eq a where
+  eq : a -> a -> Bool
+
+class Eq a => Comparable a where
+  compare : a -> a -> Order
+
+same : Comparable a => a -> a -> Bool
+same x y =
+  eq x y
+```
 
 ## Where an instance may be declared
 

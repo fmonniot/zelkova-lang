@@ -263,6 +263,10 @@ fn error_kind_names(errors: &[typer::Error]) -> Vec<&'static str> {
             typer::ErrorKind::RecordTypeUnknown { .. } => "RecordTypeUnknown",
             typer::ErrorKind::MissingField { .. } => "MissingField",
             typer::ErrorKind::NotARecord { .. } => "NotARecord",
+            typer::ErrorKind::NoInstance { .. } => "NoInstance",
+            typer::ErrorKind::MissingConstraint { .. } => "MissingConstraint",
+            typer::ErrorKind::ConstraintNeedsAnnotation { .. } => "ConstraintNeedsAnnotation",
+            typer::ErrorKind::UndeterminedConstraint { .. } => "UndeterminedConstraint",
         })
         .collect()
 }

@@ -1,7 +1,7 @@
 # LANG-12 · An annotation more general than its body is accepted and silently specialised
 
 **Sizing:** medium. The change is small in `infer_annotated`; deciding what a type variable in
-an annotation *is* is the part that takes thought, and since [LANG-40](lang-40.md) it is also
+an annotation *is* is the part that takes thought, and since [LANG-40](README.md) it is also
 what a given constraint is a constraint *on*.
 
 **Location:** `crates/zelkova-compiler/src/typer/mod.rs` — `infer_annotated`, which turns the
@@ -9,7 +9,7 @@ annotation into one ordinary `Constraint` against the body's inferred type;
 `value_to_term_and_annotation`, which runs the annotation through
 `canonical_type_to_typer_type` with a fresh `var_map`, so each type variable written in the
 source becomes a fresh **unification** variable; and the discharge of a class obligation
-[LANG-40](lang-40.md) added, whose *given* constraints are on those same variables.
+[LANG-40](README.md) added, whose *given* constraints are on those same variables.
 
 **Depends on:** [LANG-42](lang-42.md). **This ticket closes [the type-class
 order](README.md#active-work-type-classes)**, where it used to open it

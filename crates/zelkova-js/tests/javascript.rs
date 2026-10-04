@@ -2735,3 +2735,162 @@ fn a_module_holding_a_class_is_refused() {
         other => panic!("expected a class and an instance refused, got {:?}", other),
     }
 }
+
+// ── What is refused: constraints ──────────────────────────────────────────────────────
+
+/// A module declaring a class, an instance of it at `Int` and a constrained function,
+/// which the modules below import. It is never emitted itself: holding a class, it is
+/// refused whole.
+const EQS: &str = indoc! {r#"
+    module Eqs exposing (Eq, same)
+
+    class Eq a where
+      eq : a -> a -> Bool
+
+    instance Eq Int where
+      eq a b =
+        True
+
+    same : Eq a => a -> a -> Bool
+    same x y =
+      eq x y
+"#};
+
+/// The module named `Main` of a package of `EQS` and `main`, insisting that it checks.
+/// It holds neither a class nor an instance, so what refuses it is not that.
+fn main_importing_eqs(main: &str) -> CheckedModule {
+    check_package_module(&[EQS, main], "Main")
+        .unwrap_or_else(|errors| panic!("expected `Main` to check, got {:?}", errors))
+}
+
+fn refused_module(module: &CheckedModule) -> Vec<Error> {
+    match zelkova_js::emit(module, true, &unions_of(module)) {
+        Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
+        Err(errors) => errors,
+    }
+}
+
+/// A declaration whose annotation has a constraint is refused, in a module that holds no
+/// class and no instance of its own, with the caret on the declaration.
+///
+/// Mutation-checked by deleting the `Constrained` push in `emit`: the module is emitted.
+#[test]
+fn a_constrained_declaration_is_refused() {
+    let source = indoc! {r#"
+        module Main exposing (always)
+
+        import Eqs exposing (Eq)
+
+        always : Eq a => a -> a -> Bool
+        always x y =
+          True
+    "#};
+    let module = main_importing_eqs(source);
+    assert!(module.canonical.classes.is_empty() && module.canonical.instances.is_empty());
+
+    match refused_module(&module).as_slice() {
+        [Error::Constrained { name, span }] => {
+            assert_eq!(name, &Name::new("always"));
+            let start = position(source, "always : Eq a");
+            let end = position(source, "True") + "True".len();
+            assert_eq!(span.to_range(), Some(start..end));
+        }
+        other => panic!("expected one refused declaration, got {:?}", other),
+    }
+}
+
+/// A call to a constrained function of another module carries an obligation, and is refused
+/// with the caret under the name.
+///
+/// Mutation-checked by deleting the `refuse_obligations` call in `Emitter::application`'s
+/// saturated-name arm: the call is emitted as a plain call of the imported function.
+#[test]
+fn a_call_carrying_an_obligation_is_refused() {
+    let source = indoc! {r#"
+        module Main exposing (equal)
+
+        import Eqs exposing (same)
+
+        equal : Bool
+        equal =
+          same 1 2
+    "#};
+    let module = main_importing_eqs(source);
+
+    match refused_module(&module).as_slice() {
+        [Error::Obligation {
+            declaration,
+            class,
+            span,
+        }] => {
+            assert_eq!(declaration, &Name::new("equal"));
+            assert_eq!(class, &Name::new("Eq"));
+            let start = position(source, "same 1 2");
+            assert_eq!(span.to_range(), Some(start..start + "same".len()));
+        }
+        other => panic!("expected one refused reference, got {:?}", other),
+    }
+}
+
+/// A call to a constrained function the module declares itself is refused twice over: the
+/// declaration, and the call that carries what it asks.
+///
+/// Mutation-checked with the one above: the call's error is the one that goes missing.
+#[test]
+fn a_call_of_a_constrained_declaration_of_the_module_is_refused() {
+    let source = indoc! {r#"
+        module Main exposing (always, equal)
+
+        import Eqs exposing (Eq)
+
+        always : Eq a => a -> a -> Bool
+        always x y =
+          True
+
+        equal : Bool
+        equal =
+          always 1 2
+    "#};
+    let module = main_importing_eqs(source);
+
+    let errors = refused_module(&module);
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [
+                Error::Constrained { .. },
+                Error::Obligation { declaration, .. }
+            ] if declaration == &Name::new("equal")
+        ),
+        "got {:?}",
+        errors
+    );
+}
+
+/// A member used as a value rather than called carries an obligation too.
+///
+/// Mutation-checked by deleting the `refuse_obligations` call in `Emitter::expression`'s
+/// `Identifier` arm: the reference is emitted.
+#[test]
+fn a_reference_carrying_an_obligation_is_refused() {
+    let source = indoc! {r#"
+        module Main exposing (equal)
+
+        import Eqs exposing (Eq)
+
+        equal : Int -> Int -> Bool
+        equal =
+          eq
+    "#};
+    let module = main_importing_eqs(source);
+
+    match refused_module(&module).as_slice() {
+        [Error::Obligation {
+            declaration, class, ..
+        }] => {
+            assert_eq!(declaration, &Name::new("equal"));
+            assert_eq!(class, &Name::new("Eq"));
+        }
+        other => panic!("expected one refused reference, got {:?}", other),
+    }
+}

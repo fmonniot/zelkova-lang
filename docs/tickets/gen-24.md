@@ -10,7 +10,7 @@ a table of the whole build handed to `emit`; `crates/zelkova/src/lib.rs` — `co
 `emit_build`, which are where the build's checked modules are all in hand, and `BuildError`;
 `tests/fixtures/` and `tests/js/`.
 
-**Depends on:** [LANG-40](lang-40.md), which puts a context on a declaration, an instantiated
+**Depends on:** [LANG-40](README.md), which puts a context on a declaration, an instantiated
 context on each reference to one, and the instances with their checked bodies in the IR; and
 [LANG-83](lang-83.md), after which a derived instance has bodies like a written one and needs
 nothing special here.

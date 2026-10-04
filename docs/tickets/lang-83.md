@@ -8,12 +8,12 @@ could make it bigger is a recursive type, which makes the second a fixed point.
 [LANG-39](README.md) introduced, `canonicalize_recovering`, `Module::to_interface`, `Error`;
 `crates/zelkova-compiler/src/lib.rs` — `Interface`'s class table;
 `crates/zelkova-compiler/src/scalars.rs` — where a type the compiler knows by qualified name is
-written down; `crates/zelkova-compiler/src/typer/mod.rs` — where [LANG-40](lang-40.md) checks an
+written down; `crates/zelkova-compiler/src/typer/mod.rs` — where [LANG-40](README.md) checks an
 instance's bindings; `crates/zelkova-compiler/tests/support/mod.rs` — `basics_interface()`, the
 stand-in `Basics` every spec block compiles against, which declares no `Position`.
 
 **Depends on:** [LANG-39](README.md), which carries a derivation and a `derived` body into the
-canonical module without reading either, and [LANG-40](lang-40.md), whose solver is what checks
+canonical module without reading either, and [LANG-40](README.md), whose solver is what checks
 the definitions this ticket produces.
 
 **Decided (`SPEC-14`, `SPEC-25` and `SPEC-27`, by the language owner):** every rule here is in

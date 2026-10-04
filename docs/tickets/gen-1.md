@@ -79,7 +79,7 @@ same time.
 **A class dictionary is erased by specialisation and never passed**
 ([`DEC-2` decision 7](../decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed)),
 which is why decision 1's types are not optional — specialisation eats them, and a backend that
-started by passing dictionaries would have to be unpicked when [`LANG-40`](lang-40.md) lands.
+started by passing dictionaries would have to be unpicked when [`LANG-40`](README.md) lands.
 
 **Rules that constrain the output rather than the design**, from
 [`evaluation-semantics.md`](../spec/evaluation-semantics.md): subexpressions evaluate left to

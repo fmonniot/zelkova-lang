@@ -14,7 +14,7 @@ extension) so CI stays green until this closes.
 
 **Depends on:** [`LANG-42`](lang-42.md), which gives `Basics` a `Number` class whose `Float`
 instance can forward to `addFloat` while the `Int` instance forwards to `addInt`. That in turn
-needs [`LANG-40`](lang-40.md); see
+needs [`LANG-40`](README.md); see
 [Active work: type classes](README.md#active-work-type-classes).
 
 **Problem:** a facade signature may not name a type variable ([`LANG-43`](README.md)), so

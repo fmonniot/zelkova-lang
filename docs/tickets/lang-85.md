@@ -4,13 +4,13 @@
 bigger is where the walk's definition lives: a record type is declared in no module, so there is
 no instance to put it in.
 
-**Location:** `crates/zelkova-compiler/src/typer/` — the solver [`LANG-40`](lang-40.md) adds,
+**Location:** `crates/zelkova-compiler/src/typer/` — the solver [`LANG-40`](README.md) adds,
 at the step that reads an obligation with the final substitution applied;
 `crates/zelkova-compiler/src/canonical/mod.rs` — the context inference
 [`LANG-83`](lang-83.md) adds for a `derived` instance; `crates/zelkova-compiler/src/ir/` — the
 specialisation pass [`GEN-24`](gen-24.md) adds. None of the three exists yet.
 
-**Depends on:** `LANG-51` (closed) for the record type; [`LANG-40`](lang-40.md) and
+**Depends on:** `LANG-51` (closed) for the record type; [`LANG-40`](README.md) and
 [`LANG-83`](lang-83.md) for obligations and for what a derivation is; [`GEN-24`](gen-24.md) and
 `GEN-25` (closed) before a program using it runs. It is the one ticket that needs both
 *Active work* orders in [the index](README.md) finished.

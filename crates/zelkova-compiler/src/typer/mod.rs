@@ -39,9 +39,9 @@ use super::canonical;
 use super::canonical::Module;
 use super::scalars;
 use crate::ir::{
-    pattern_parameter, CaseForm, Constructor, Field, LiteralValue, Reference, ReferenceKind,
-    Saturation, Solved, SubPattern, Term, TermKind, TermPattern, TermPatternKind, TypeBinder,
-    TypedTerm, TypedTermKind,
+    pattern_parameter, CaseForm, Constructor, Field, LiteralValue, Predicate, Reference,
+    ReferenceKind, Saturation, Solved, SolvedInstance, SubPattern, Term, TermKind, TermPattern,
+    TermPatternKind, TypeBinder, TypedTerm, TypedTermKind,
 };
 use crate::name::{Name, QualName};
 use crate::{Interface, ModuleName, PhaseError, SpanLabel};
@@ -122,6 +122,23 @@ pub enum Reason {
     /// or a use of a name it binds can be what disagrees with the field, and nothing here
     /// tells which, so the note names both.
     RecordPatternEntryWithBindings,
+    /// A use of a name whose type has a context. The context's constraints are
+    /// instantiated at the types the use gave its variables, and each requires an
+    /// instance of its class at that type. Carried by an `Obligation` and never by an
+    /// equation, at the span of the use.
+    InstanceRequired,
+    /// An instance a use requires has a context of its own, and each of its constraints
+    /// requires an instance in turn, at the type the instance was used at. Carried by an
+    /// `Obligation` at the span of the use that started the chain.
+    InstanceContext,
+    /// A class with a superclass requires an instance of the superclass at every type it
+    /// has an instance for. Carried by an `Obligation` at the span of the instance
+    /// declaration.
+    SuperclassInstance,
+    /// A binding of an instance has the type its class gave the member, at the type the
+    /// instance is for. It is the reason of the equation the member's signature stands in
+    /// for, at the span of the instance's head line, where an annotation would be.
+    InstanceMember,
 }
 
 impl Reason {
@@ -161,6 +178,10 @@ impl Reason {
             Reason::RecordPatternEntry
             | Reason::RecordPatternBinding
             | Reason::RecordPatternEntryWithBindings => "this field's pattern",
+            Reason::InstanceRequired => "this use requires an instance",
+            Reason::InstanceContext => "this use requires an instance, through another's context",
+            Reason::SuperclassInstance => "this instance requires an instance of its superclass",
+            Reason::InstanceMember => "this instance",
         }
     }
 
@@ -195,6 +216,10 @@ impl Reason {
             Reason::RecordPatternEntry
             | Reason::RecordPatternBinding
             | Reason::RecordPatternEntryWithBindings => "expected because of this field's pattern",
+            Reason::InstanceRequired => "an instance is required because of this use",
+            Reason::InstanceContext => "an instance is required through another's context here",
+            Reason::SuperclassInstance => "an instance is required because of this superclass",
+            Reason::InstanceMember => "expected because this instance gives the member this type",
         }
     }
 
@@ -228,6 +253,14 @@ impl Reason {
             Reason::RecordPatternEntryWithBindings => Some(
                 "either this entry does not match the type of the field it names, or the body uses a name it binds at another type than that field gives the name",
             ),
+            Reason::InstanceMember => Some(
+                "an instance's binding must have the type its class gives the member, at the type the instance is for",
+            ),
+            // The error that carries one of these says what is required and why, so a rule
+            // note beside it would say it twice.
+            Reason::InstanceRequired | Reason::InstanceContext | Reason::SuperclassInstance => {
+                None
+            }
             _ => None,
         }
     }
@@ -442,6 +475,59 @@ pub enum ErrorKind {
         span: NodeSpan,
         because: Option<Cause>,
     },
+    /// A class is required of a type, and the type has no instance of it: a declared type,
+    /// a tuple or `()` that no instance in reach is declared for, or a function or record
+    /// type, which no instance can be.
+    ///
+    /// The type is the one the obligation had once unification was done, so it can be
+    /// the argument of an instance's context rather than the type the use was at:
+    /// [`needed_by`](Self::NoInstance::needed_by) is then the obligation the use raised,
+    /// which asked for this one through an instance of its own.
+    NoInstance {
+        class: QualName,
+        /// Boxed for the reason `UnificationFailed`'s types are.
+        tpe: Box<Type>,
+        needed_by: Option<Box<Predicate>>,
+        origin: Box<Origin>,
+    },
+    /// A class is required of a type variable the declaration's type holds, and the
+    /// constraints its annotation (or an instance's context) wrote do not provide it: the
+    /// constraint to add is the fix.
+    MissingConstraint {
+        class: QualName,
+        /// The variable as the source wrote it, `a`.
+        variable: String,
+        /// What is missing the constraint.
+        written: Written,
+        origin: Box<Origin>,
+    },
+    /// A class is required of a type variable the type of a declaration with no
+    /// annotation holds. A constraint is never inferred
+    /// ([`DEC-24` decision 5](../../docs/decisions/dec-24.md#5--a-constraint-is-never-inferred)),
+    /// so the declaration has to state it.
+    ConstraintNeedsAnnotation {
+        class: QualName,
+        /// What the declaration has to state, constraints and type: `Eq a => a -> a ->
+        /// Bool`.
+        stated: String,
+        origin: Box<Origin>,
+    },
+    /// A class is required of a type variable that is not part of the declaration's type.
+    /// Nothing determines the type the class is needed at, and no annotation on this
+    /// declaration can.
+    UndeterminedConstraint {
+        class: QualName,
+        origin: Box<Origin>,
+    },
+}
+
+/// What a constraint would have to be written in, for [`ErrorKind::MissingConstraint`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Written {
+    /// A declaration's annotation.
+    Annotation,
+    /// An instance's context.
+    InstanceContext,
 }
 
 impl ErrorKind {
@@ -450,7 +536,11 @@ impl ErrorKind {
     fn origin(&self) -> Option<&Origin> {
         match self {
             ErrorKind::UnificationFailed { origin, .. }
-            | ErrorKind::CircularType { origin, .. } => Some(origin.as_ref()),
+            | ErrorKind::CircularType { origin, .. }
+            | ErrorKind::NoInstance { origin, .. }
+            | ErrorKind::MissingConstraint { origin, .. }
+            | ErrorKind::ConstraintNeedsAnnotation { origin, .. }
+            | ErrorKind::UndeterminedConstraint { origin, .. } => Some(origin.as_ref()),
             ErrorKind::UnboundVariable { .. }
             | ErrorKind::RecordTypeUnknown { .. }
             | ErrorKind::MissingField { .. }
@@ -529,6 +619,33 @@ impl ErrorKind {
                 Spelled(tpe, spellings),
                 label.as_str()
             ),
+            ErrorKind::NoInstance { class, tpe, .. } => format!(
+                "there is no instance of `{}` for `{}`",
+                class.unqualified_name(),
+                Spelled(tpe, spellings)
+            ),
+            ErrorKind::MissingConstraint {
+                class,
+                variable,
+                written,
+                ..
+            } => format!(
+                "`{} {}` is required here, and {} does not provide it",
+                class.unqualified_name(),
+                variable,
+                match written {
+                    Written::Annotation => "the annotation",
+                    Written::InstanceContext => "the instance's context",
+                }
+            ),
+            ErrorKind::ConstraintNeedsAnnotation { class, .. } => format!(
+                "a type annotation is needed: `{}` is required of a type this declaration leaves open",
+                class.unqualified_name()
+            ),
+            ErrorKind::UndeterminedConstraint { class, .. } => format!(
+                "`{}` is required of a type nothing in this declaration determines",
+                class.unqualified_name()
+            ),
         }
     }
 
@@ -585,9 +702,9 @@ struct Spelled<'a>(&'a Type, &'a Spellings);
 impl std::fmt::Display for Spelled<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if AdtNames::collide([self.0]) {
-            self.0.write(f, AdtNames::Qualified(self.1))
+            self.0.write(f, AdtNames::Qualified(self.1), None)
         } else {
-            self.0.write(f, AdtNames::Unqualified)
+            self.0.write(f, AdtNames::Unqualified, None)
         }
     }
 }
@@ -616,9 +733,24 @@ pub struct Error {
     /// hundred declarations, a caret is not much use without it when the diagnostic
     /// is rendered without a file (see `compile_package`).
     pub declaration: Name,
+    /// What `declaration` is: a value, a binding of an instance, or an instance.
+    within: Within,
     /// How the checked package spells each module in reach, which is what a union is
     /// written by in [`message`](PhaseError::message) when it has to be qualified.
     spellings: Spellings,
+}
+
+/// What an [`Error`]'s `declaration` names, which is what its first note says.
+#[derive(Debug, Clone, PartialEq)]
+enum Within {
+    /// A value of the module: `declaration` is its name.
+    Value,
+    /// A binding of an instance: `declaration` is the member it defines, and this is the
+    /// instance, written as its head line is.
+    Binding(String),
+    /// An instance, checked as a whole: `declaration` is the instance, written as its head
+    /// line is.
+    Instance,
 }
 
 /// Type errors are about types, and [`Type`]'s `Display` writes them the way the
@@ -630,7 +762,14 @@ impl PhaseError for Error {
     }
 
     fn notes(&self) -> Vec<String> {
-        let mut notes = vec![format!("in the declaration of `{}`", self.declaration)];
+        let mut notes = vec![match &self.within {
+            Within::Value => format!("in the declaration of `{}`", self.declaration),
+            Within::Binding(instance) => format!(
+                "in the binding of `{}` in the instance `{}`",
+                self.declaration, instance
+            ),
+            Within::Instance => format!("in the instance `{}`", self.declaration),
+        }];
 
         // The rule that was broken, taken from the failing constraint and, if that
         // one has nothing to add, from what explains it. `if`'s "every branch must
@@ -688,6 +827,69 @@ impl PhaseError for Error {
                 "a record pattern names some of the fields of the record it matches, and each label it names must be one of them"
                     .to_string(),
             ),
+            ErrorKind::NoInstance {
+                class,
+                tpe,
+                needed_by,
+                ..
+            } => {
+                let class = class.unqualified_name();
+
+                notes.push(match tpe.as_ref() {
+                    Type::Fun { .. } => {
+                        "a function type has no instances: no instance can be declared for one"
+                            .to_string()
+                    }
+                    Type::Record(_) => {
+                        "a record type has no instances: no instance can be declared for one"
+                            .to_string()
+                    }
+                    _ => format!(
+                        "an instance of `{}` for this type is declared in the module that declares `{}` or in the module that declares the type, and none is in scope here",
+                        class, class
+                    ),
+                });
+
+                if let Some(required) = needed_by {
+                    notes.push(format!(
+                        "it is needed because `{}` is required here, and the instance of `{}` that answers that asks the same of this type",
+                        predicate_text(required, &self.spellings),
+                        required.class.unqualified_name()
+                    ));
+                }
+            }
+            ErrorKind::MissingConstraint {
+                class,
+                variable,
+                written,
+                ..
+            } => notes.push(match written {
+                Written::Annotation => format!(
+                    "add `{} {}` to the constraints of the annotation on `{}`",
+                    class.unqualified_name(),
+                    variable,
+                    self.declaration
+                ),
+                Written::InstanceContext => format!(
+                    "add `{} {}` to the context of the instance",
+                    class.unqualified_name(),
+                    variable
+                ),
+            }),
+            ErrorKind::ConstraintNeedsAnnotation { stated, .. } => {
+                notes.push(
+                    "a constraint is never inferred: it is part of a type only where an annotation writes it"
+                        .to_string(),
+                );
+                notes.push(format!(
+                    "`{}` is what the declaration has to state: `{} : {}`",
+                    self.declaration, self.declaration, stated
+                ));
+            }
+            ErrorKind::UndeterminedConstraint { .. } => notes.push(format!(
+                "the type is not part of `{}`'s type, so no annotation on `{}` could say which it is",
+                self.declaration, self.declaration
+            )),
             _ => (),
         }
 
@@ -849,8 +1051,12 @@ pub struct TypeCheck {
     /// inference reported an error for is here as [`Solved::Rejected`], and its error is
     /// in [`errors`](Self::errors).
     pub solved: HashMap<Name, Solved>,
-    /// Every error inference reported, one per rejected declaration. Empty means the
-    /// module type checked.
+    /// One entry per instance the module declares, in the order
+    /// [`canonical::Module::instances`] holds them: what each is for and an answer for
+    /// every binding of its body.
+    pub instances: Vec<SolvedInstance>,
+    /// Every error inference reported, one per rejected declaration, binding or instance.
+    /// Empty means the module type checked.
     pub errors: Vec<Error>,
 }
 
@@ -860,7 +1066,7 @@ pub fn type_check(
     module: &Module,
     interfaces: &HashMap<Name, Interface>,
 ) -> Result<HashMap<Name, Solved>, Vec<Error>> {
-    let TypeCheck { solved, errors } = type_check_recovering(module, interfaces);
+    let TypeCheck { solved, errors, .. } = type_check_recovering(module, interfaces);
 
     if errors.is_empty() {
         Ok(solved)
@@ -890,6 +1096,10 @@ pub fn type_check(
 /// That interior is the point — a backend needs the type of each sub-expression, not
 /// just of the declaration containing it.
 ///
+/// Every instance the module declares is answered for the same way, one
+/// [`SolvedInstance`] each, with a [`Solved`] for each binding of its body: a binding is a
+/// declaration whose annotation is the member's signature at the instance's type.
+///
 /// # Where an [`Error`] is built
 ///
 /// Here, and only here: this is the last frame that holds the `canonical::Value`, so
@@ -905,6 +1115,12 @@ pub fn type_check(
 /// matches on one is checked like any other. Each use of one of those names gets a
 /// fresh instance of its declared type, so one declaration can use `Just` or
 /// `Maybe.withDefault` at two types — see `Types`.
+///
+/// A name's entry is a context and a type (`Scheme`). A class member's is its
+/// signature with its class's constraint in front, from the module's own classes and from
+/// every imported interface's; a function's is its annotation's context and type. Each
+/// use of one raises the obligations its context asks, which are answered once the
+/// declaration's equations are solved — see the `classes` module.
 pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interface>) -> TypeCheck {
     // A `module foreign` facade uses synthetic placeholder bodies, so there is nothing
     // to infer — but every declaration still has to be accounted for, so each is
@@ -916,6 +1132,7 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
                 .keys()
                 .map(|name| (name.clone(), Solved::NoBody))
                 .collect(),
+            instances: Vec::new(),
             errors: Vec::new(),
         };
     }
@@ -927,7 +1144,7 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
     // First pass: build global env from every declared type in reach — the values
     // each imported interface exposes, then this module's own annotated values, broken
     // ones included.
-    let mut global: HashMap<String, Type> = HashMap::new();
+    let mut global: HashMap<String, Scheme> = HashMap::new();
 
     // An imported value is keyed the way a `VarForeign` reference spells it: its name
     // qualified by the package and module that declared it ([`environment_key`]). That
@@ -937,14 +1154,34 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
     // operator resolves to a `VarForeign` naming it all the same.
     for interface in interfaces.values() {
         for (name, signature) in interface.values.iter().chain(&interface.infix_functions) {
-            let mut var_map = HashMap::new();
-            if let Some(typer_tpe) =
-                canonical_type_to_typer_type(&signature.tpe, &mut var_map, &mut counter)
-            {
+            if let Some(scheme) = scheme_of(&signature.tpe, &signature.context, &mut counter) {
                 let qname = interface.module_name.qualify_name(name);
-                global.insert(environment_key(&qname), typer_tpe);
+                global.insert(environment_key(&qname), scheme);
             }
         }
+
+        // A member is in no interface's `values`: it travels with its class, and is
+        // declared here the way a value is, under the name a `VarForeign` spells.
+        for (class_name, signature) in &interface.classes {
+            insert_members(
+                &mut global,
+                &interface.module_name,
+                class_name,
+                signature,
+                &mut counter,
+            );
+        }
+    }
+
+    // This module's own classes' members, under the name a `VarTopLevel` spells.
+    for (class_name, class) in &module.classes {
+        insert_members(
+            &mut global,
+            &module.name,
+            class_name,
+            &class.signature,
+            &mut counter,
+        );
     }
 
     // A declaration canonicalization recorded as broken is declared by its annotation,
@@ -954,22 +1191,21 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
         .values
         .iter()
         .filter_map(|(name, value)| match value {
-            canonical::Value::TypedValue { tpe, .. } => Some((name, tpe)),
+            canonical::Value::TypedValue { tpe, context, .. } => Some((name, tpe, context)),
             canonical::Value::Value { .. } => None,
         });
     let broken = module
         .broken
         .iter()
-        .filter_map(|broken| Some((&broken.name, broken.tpe.as_ref()?)));
+        .filter_map(|broken| Some((&broken.name, broken.tpe.as_ref()?, &broken.context)));
 
-    for (name, tpe) in annotated.chain(broken) {
-        let mut var_map = HashMap::new();
-        if let Some(typer_tpe) = canonical_type_to_typer_type(tpe, &mut var_map, &mut counter) {
+    for (name, tpe, context) in annotated.chain(broken) {
+        if let Some(scheme) = scheme_of(tpe, context, &mut counter) {
             // Add both qualified (e.g. "test-project:Test.not") and unqualified (e.g.
             // "not") names
             let qname = environment_key(&module.name.qualify_name(name));
-            global.insert(qname, typer_tpe.clone());
-            global.insert(name.as_str().to_string(), typer_tpe);
+            global.insert(qname, scheme.clone());
+            global.insert(name.as_str().to_string(), scheme);
         }
     }
 
@@ -1028,15 +1264,19 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
             // module's own: its `QualName` differs in the package.
             let qname = type_name.sibling(&ctor.name);
             if module.name.qualify_name(&type_name.unqualified_name()) == *type_name {
-                global.insert(ctor.name.as_str().to_string(), ctor_type.clone());
+                global.insert(
+                    ctor.name.as_str().to_string(),
+                    Scheme::unconstrained(ctor_type.clone()),
+                );
             }
-            global.insert(environment_key(&qname), ctor_type);
+            global.insert(environment_key(&qname), Scheme::unconstrained(ctor_type));
         }
     }
 
     // Third pass: check each value. A value that fails is recorded and the pass
     // moves on, so one broken declaration cannot hide the others.
     let spellings = Spellings::of(module, interfaces);
+    let table = classes::ClassTable::of(module, interfaces);
     let mut errors: Vec<Error> = vec![];
     let mut solved: HashMap<Name, Solved> = HashMap::new();
     for (name, value) in &module.values {
@@ -1054,21 +1294,8 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
         // that the type it failed against came from the annotation. Checking the two
         // whole types at the end could only ever say "this declaration is `Int` and
         // its body is something else", with the caret across the lot.
-        match infer_annotated(term, global.clone(), annotation) {
-            // An unbound variable here is a hole in the typer's environment, not a
-            // mistake in the source — see [`Solved::UnboundName`].
-            Err(ErrorKind::UnboundVariable {
-                name: unbound,
-                span,
-            }) => {
-                solved.insert(
-                    name.clone(),
-                    Solved::UnboundName {
-                        name: unbound,
-                        span,
-                    },
-                );
-            }
+        let answer = match solve(term, annotation, &global, &table) {
+            Ok(answer) => answer,
             // The declaration is answered for as well as reported, so the rest of the
             // module keeps the terms it solved.
             Err(kind) => {
@@ -1076,17 +1303,335 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
                     kind,
                     span: value.span(),
                     declaration: name.clone(),
+                    within: Within::Value,
                     spellings: spellings.clone(),
                 });
-                solved.insert(name.clone(), Solved::Rejected);
+                Solved::Rejected
             }
-            Ok(term) => {
-                solved.insert(name.clone(), Solved::Typed(Box::new(term)));
+        };
+        solved.insert(name.clone(), answer);
+    }
+
+    // Fourth pass: every instance, which is checked as a declaration is — its bindings
+    // are values whose annotation is the member's signature at the instance's type — and
+    // as a whole, for the superclasses its class asks of it.
+    let instances = module
+        .instances
+        .iter()
+        .map(|instance| {
+            let check = InstanceCheck {
+                global: &global,
+                table: &table,
+                translation: &translation,
+                spellings: &spellings,
+            };
+            check.of(instance, &mut counter, &mut errors)
+        })
+        .collect();
+
+    TypeCheck {
+        solved,
+        instances,
+        errors,
+    }
+}
+
+/// Infer one declaration, or one binding of an instance, to the [`Solved`] it ends up as:
+/// its typed term, or the entry saying a name was out of the typer's reach. An error to
+/// report is the `Err`.
+fn solve(
+    term: Term,
+    annotation: Option<Annotation>,
+    global: &HashMap<String, Scheme>,
+    table: &classes::ClassTable,
+) -> Result<Solved, ErrorKind> {
+    match infer_annotated(term, global.clone(), annotation, table) {
+        // An unbound variable here is a hole in the typer's environment, not a
+        // mistake in the source — see [`Solved::UnboundName`].
+        Err(ErrorKind::UnboundVariable { name, span }) => Ok(Solved::UnboundName { name, span }),
+        Err(kind) => Err(kind),
+        Ok((term, context)) => Ok(Solved::Typed {
+            term: Box::new(term),
+            context,
+        }),
+    }
+}
+
+/// What an instance's bindings are checked under: the type the instance is for, where its
+/// head line was written, and what its context gives of the head's variables.
+struct InstanceScope<'a> {
+    head: &'a Type,
+    span: NodeSpan,
+    given: &'a [(QualName, TypeVariable)],
+    names: &'a [(TypeVariable, Name)],
+}
+
+/// What checking an instance reads besides the instance itself.
+struct InstanceCheck<'a> {
+    global: &'a HashMap<String, Scheme>,
+    table: &'a classes::ClassTable<'a>,
+    translation: &'a Translation<'a>,
+    spellings: &'a Spellings,
+}
+
+impl InstanceCheck<'_> {
+    /// Check `instance`: each binding of its body against its member's signature at the
+    /// instance's type, and — for a body written out — the instance as a whole against
+    /// the superclasses its class has. Errors are pushed onto `errors`.
+    ///
+    /// The instance's context is *given* in both, as an annotation's is inside a
+    /// declaration: the variables the head binds are variables of the unification, a
+    /// constraint of the context is on one of them, and an obligation on that same
+    /// variable is answered by it.
+    ///
+    /// A `derived` instance is an instance that exists, and nothing more. Its members are
+    /// the derivation's ([`LANG-83`](../../docs/tickets/lang-83.md)), and so is the
+    /// context it needs, which is none recorded until that ticket infers one; checking its
+    /// superclasses against a context that is not known yet would reject an instance whose
+    /// context the derivation will provide.
+    fn of(
+        &self,
+        instance: &canonical::Instance,
+        counter: &mut u32,
+        errors: &mut Vec<Error>,
+    ) -> SolvedInstance {
+        let signature = &instance.signature;
+
+        let mut variables: HashMap<String, TypeVariable> = HashMap::new();
+        let head = instance_head_type(&signature.head, &mut variables, counter);
+        let given: Vec<(QualName, TypeVariable)> = signature
+            .context
+            .iter()
+            .filter_map(|constraint| {
+                Some((
+                    constraint.class.clone(),
+                    variables.get(constraint.variable.as_str())?.clone(),
+                ))
+            })
+            .collect();
+        let context = given
+            .iter()
+            .map(|(class, variable)| Predicate {
+                class: class.clone(),
+                tpe: Type::Variable(variable.clone()),
+            })
+            .collect();
+        let mut names: Vec<(TypeVariable, Name)> = variables
+            .iter()
+            .map(|(name, variable)| (variable.clone(), Name::new(name.clone())))
+            .collect();
+        names.sort_by(|left, right| left.1.cmp(&right.1));
+
+        let text = instance_text(signature, &head, &names);
+        let class = self.table.class(&signature.class);
+
+        let mut rejected = false;
+        let mut bindings = Vec::new();
+
+        if let canonical::InstanceBody::Bindings(values) = &instance.body {
+            if let Some(class) = class {
+                let obligations = class
+                    .superclasses
+                    .iter()
+                    .map(|superclass| classes::Obligation {
+                        class: superclass.class.clone(),
+                        tpe: head.clone(),
+                        origin: Origin::new(Reason::SuperclassInstance, signature.span),
+                    })
+                    .collect();
+
+                let declared = classes::Declared {
+                    tpe: &head,
+                    annotated: true,
+                    given: &given,
+                    names: &names,
+                    written: Written::InstanceContext,
+                };
+
+                if let Err(kind) =
+                    classes::discharge(self.table, obligations, &Substitution::empty(), &declared)
+                {
+                    rejected = true;
+                    errors.push(Error {
+                        kind,
+                        span: signature.span,
+                        declaration: Name::new(text.clone()),
+                        within: Within::Instance,
+                        spellings: self.spellings.clone(),
+                    });
+                }
             }
+
+            for value in values {
+                let canonical::Value::Value { name, .. } = value else {
+                    continue;
+                };
+
+                let scope = InstanceScope {
+                    head: &head,
+                    span: signature.span,
+                    given: &given,
+                    names: &names,
+                };
+
+                let answer = match self.binding(value, class, &scope, counter) {
+                    Some(Ok(answer)) => answer,
+                    Some(Err(kind)) => {
+                        errors.push(Error {
+                            kind,
+                            span: value.span(),
+                            declaration: name.clone(),
+                            within: Within::Binding(text.clone()),
+                            spellings: self.spellings.clone(),
+                        });
+                        Solved::Rejected
+                    }
+                    None => Solved::Untranslatable { span: value.span() },
+                };
+                bindings.push((name.clone(), answer));
+            }
+        }
+
+        SolvedInstance {
+            head,
+            context,
+            bindings,
+            rejected,
         }
     }
 
-    TypeCheck { solved, errors }
+    /// One binding of an instance's body, inferred against the signature of the member it
+    /// defines, with the class variable replaced by the instance's head. `None` when it
+    /// cannot be read: the binding does not translate, or its class has no member of that
+    /// name in reach — which canonicalization has reported.
+    fn binding(
+        &self,
+        value: &canonical::Value,
+        class: Option<&canonical::ClassSignature>,
+        scope: &InstanceScope,
+        counter: &mut u32,
+    ) -> Option<Result<Solved, ErrorKind>> {
+        let canonical::Value::Value { name, .. } = value else {
+            return None;
+        };
+        let class = class?;
+        let member = class.members.iter().find(|member| &member.name == name)?;
+
+        let (term, _) = value_to_term_and_annotation(value, self.translation, counter)?;
+
+        // The member's signature has the class variable free in it. It is translated like
+        // any annotation, and the variable it came out as is replaced by the head: every
+        // other variable of the signature stays one of its own.
+        let mut variables: HashMap<String, TypeVariable> = HashMap::new();
+        let signature = canonical_type_to_typer_type(&member.tpe, &mut variables, counter)?;
+        let class_variable = variables.get(class.variable.as_str())?;
+        let tpe = Substitution::substitute(signature, class_variable, scope.head);
+
+        // The head line stands where an annotation would: the span a mismatch with the
+        // member's signature draws its second label under.
+        let annotation = Annotation {
+            tpe,
+            span: scope.span,
+            reason: Reason::InstanceMember,
+            context: scope.given.to_vec(),
+            names: scope.names.to_vec(),
+            written: Written::InstanceContext,
+        };
+
+        Some(solve(term, Some(annotation), self.global, self.table))
+    }
+}
+
+/// `instance Eq a => Eq (Box a)`, minus the keyword: how a message names an instance.
+fn instance_text(
+    signature: &canonical::InstanceSignature,
+    head: &Type,
+    names: &[(TypeVariable, Name)],
+) -> String {
+    let names: VariableNames = names
+        .iter()
+        .map(|(variable, name)| (variable.clone(), name.to_string()))
+        .collect();
+    let text = WithNames(head, &names).to_string();
+    let head = match head {
+        Type::Adt(_, args) if !args.is_empty() => format!("({})", text),
+        _ => text,
+    };
+    let constraints: Vec<String> = signature
+        .context
+        .iter()
+        .map(|constraint| {
+            format!(
+                "{} {}",
+                constraint.class.unqualified_name(),
+                constraint.variable
+            )
+        })
+        .collect();
+    let context = match constraints.as_slice() {
+        [] => String::new(),
+        [one] => format!("{} => ", one),
+        many => format!("({}) => ", many.join(", ")),
+    };
+
+    format!("{}{} {}", context, signature.class.unqualified_name(), head)
+}
+
+/// The scheme a declared type and the context written in front of it make: the type as
+/// the typer reads it, and each constraint on the variable it was translated to.
+fn scheme_of(
+    tpe: &canonical::Type,
+    context: &[canonical::Constraint],
+    counter: &mut u32,
+) -> Option<Scheme> {
+    let mut variables = HashMap::new();
+    let tpe = canonical_type_to_typer_type(tpe, &mut variables, counter)?;
+    let context = context
+        .iter()
+        .filter_map(|constraint| {
+            Some(Predicate {
+                class: constraint.class.clone(),
+                tpe: Type::Variable(variables.get(constraint.variable.as_str())?.clone()),
+            })
+        })
+        .collect();
+
+    Some(Scheme { context, tpe })
+}
+
+/// Declare the members of a class `module_name` declares, each under the name a
+/// reference to it spells ([`environment_key`]): its signature, with the class's own
+/// constraint in front.
+fn insert_members(
+    global: &mut HashMap<String, Scheme>,
+    module_name: &ModuleName,
+    class_name: &Name,
+    class: &canonical::ClassSignature,
+    counter: &mut u32,
+) {
+    let declared = module_name.qualify_name(class_name);
+
+    for member in &class.members {
+        let mut variables = HashMap::new();
+        let Some(tpe) = canonical_type_to_typer_type(&member.tpe, &mut variables, counter) else {
+            continue;
+        };
+
+        // Every member's signature mentions the class variable, so it is always found;
+        // canonicalization rejects a class with a member that does not.
+        let Some(variable) = variables.get(class.variable.as_str()) else {
+            continue;
+        };
+        let context = vec![Predicate {
+            class: declared.clone(),
+            tpe: Type::Variable(variable.clone()),
+        }];
+
+        global.insert(
+            environment_key(&module_name.qualify_name(&member.name)),
+            Scheme { context, tpe },
+        );
+    }
 }
 
 // ── Translation helpers ───────────────────────────────────────────────────────
@@ -1796,9 +2341,23 @@ fn translate_sub_pattern(
 /// heads — because it is drawn as the secondary label of a mismatch in the body, and
 /// a span covering the body too would underline the thing it is meant to contrast
 /// with.
+///
+/// An instance's binding has no annotation of its own: the member's signature at the
+/// instance's type stands in for one, and the head line of the instance for its span.
 struct Annotation {
     tpe: Type,
     span: NodeSpan,
+    /// The reason of the equation the annotation's type is one side of.
+    reason: Reason,
+    /// What the annotation requires of its variables — the `=>` in front of it, or the
+    /// context of the instance — each a class and the variable of `tpe` it is on. These
+    /// are *given* inside the declaration.
+    context: Vec<(QualName, TypeVariable)>,
+    /// The name the source wrote for each variable of `tpe`, sorted by name: what a
+    /// message about a constraint writes the variable by.
+    names: Vec<(TypeVariable, Name)>,
+    /// What a constraint missing from `context` would have to be written in.
+    written: Written,
 }
 
 /// Convert a canonical Value into a (Term, optional annotation) pair.
@@ -1825,6 +2384,7 @@ fn value_to_term_and_annotation(
             patterns,
             body,
             tpe,
+            context,
             annotation_span,
             ..
         } => {
@@ -1832,9 +2392,29 @@ fn value_to_term_and_annotation(
             let pattern_iter = patterns.iter().map(|(p, _)| p);
             let term = wrap_with_patterns(pattern_iter, body_term, translation, counter)?;
             let mut var_map = HashMap::new();
+            let tpe = canonical_type_to_typer_type(tpe, &mut var_map, counter)?;
+            let given = context
+                .iter()
+                .filter_map(|constraint| {
+                    Some((
+                        constraint.class.clone(),
+                        var_map.get(constraint.variable.as_str())?.clone(),
+                    ))
+                })
+                .collect();
+            let mut names: Vec<(TypeVariable, Name)> = var_map
+                .iter()
+                .map(|(name, variable)| (variable.clone(), Name::new(name.clone())))
+                .collect();
+            names.sort_by(|left, right| left.1.cmp(&right.1));
+
             let annotation = Annotation {
-                tpe: canonical_type_to_typer_type(tpe, &mut var_map, counter)?,
+                tpe,
                 span: *annotation_span,
+                reason: Reason::Annotation,
+                context: given,
+                names,
+                written: Written::Annotation,
             };
             Some((term, Some(annotation)))
         }
@@ -1932,8 +2512,11 @@ fn wrap_with_patterns<'a>(
 // them.
 
 mod annotate;
+mod classes;
 mod constraint;
 mod unifier;
+
+pub(crate) use classes::instance_head_type;
 
 // TODO Copy ?
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -2119,7 +2702,7 @@ struct Qualified<'a>(&'a Type, &'a Spellings);
 
 impl std::fmt::Display for Qualified<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.write(f, AdtNames::Qualified(self.1))
+        self.0.write(f, AdtNames::Qualified(self.1), None)
     }
 }
 
@@ -2156,7 +2739,7 @@ impl std::fmt::Debug for Type {
 /// at all, so they are written `t3` — Elm's convention for an unsolved variable.
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.write(f, AdtNames::Unqualified)
+        self.write(f, AdtNames::Unqualified, None)
     }
 }
 
@@ -2200,18 +2783,27 @@ impl Type {
         }
     }
 
-    /// The body of both renderings: the same text either way, except for how a union
-    /// is named. See [`AdtNames`], and [`Display`](std::fmt::Display) for why unions
-    /// are normally written bare.
-    fn write(&self, f: &mut std::fmt::Formatter<'_>, names: AdtNames) -> std::fmt::Result {
+    /// The body of every rendering: the same text each time, except for how a union is
+    /// named and how a variable is. See [`AdtNames`], and [`Display`](std::fmt::Display)
+    /// for why unions are normally written bare.
+    ///
+    /// A variable is `t3` unless `variables` has a name for it, which is how a message
+    /// writes the variables of an annotation the way the source did.
+    fn write(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        names: AdtNames,
+        variables: Option<&VariableNames>,
+    ) -> std::fmt::Result {
         /// The same, wrapped in parentheses.
         fn parenthesised(
             tpe: &Type,
             f: &mut std::fmt::Formatter<'_>,
             names: AdtNames,
+            variables: Option<&VariableNames>,
         ) -> std::fmt::Result {
             write!(f, "(")?;
-            tpe.write(f, names)?;
+            tpe.write(f, names, variables)?;
             write!(f, ")")
         }
 
@@ -2220,7 +2812,10 @@ impl Type {
             Type::Literal(TypeLiteral::Char) => write!(f, "Char"),
             Type::Literal(TypeLiteral::Float) => write!(f, "Float"),
             Type::Literal(TypeLiteral::String) => write!(f, "String"),
-            Type::Variable(TypeVariable { id }) => write!(f, "t{}", id),
+            Type::Variable(variable) => match variables.and_then(|names| names.get(variable)) {
+                Some(name) => write!(f, "{}", name),
+                None => write!(f, "t{}", variable.id),
+            },
             // The parameter of a function type is parenthesised when it is itself a
             // function, because `->` is right-associative: `(a -> b) -> c` and
             // `a -> b -> c` are different types.
@@ -2229,26 +2824,26 @@ impl Type {
                 return_tpe,
             } => {
                 match **param_tpe {
-                    Type::Fun { .. } => parenthesised(param_tpe, f, names)?,
-                    _ => param_tpe.write(f, names)?,
+                    Type::Fun { .. } => parenthesised(param_tpe, f, names, variables)?,
+                    _ => param_tpe.write(f, names, variables)?,
                 }
                 write!(f, " -> ")?;
-                return_tpe.write(f, names)
+                return_tpe.write(f, names, variables)
             }
             Type::Tuple(Tuple::Two(a, b)) => {
                 write!(f, "( ")?;
-                a.write(f, names)?;
+                a.write(f, names, variables)?;
                 write!(f, ", ")?;
-                b.write(f, names)?;
+                b.write(f, names, variables)?;
                 write!(f, " )")
             }
             Type::Tuple(Tuple::Three(a, b, c)) => {
                 write!(f, "( ")?;
-                a.write(f, names)?;
+                a.write(f, names, variables)?;
                 write!(f, ", ")?;
-                b.write(f, names)?;
+                b.write(f, names, variables)?;
                 write!(f, ", ")?;
-                c.write(f, names)?;
+                c.write(f, names, variables)?;
                 write!(f, " )")
             }
             Type::Unit => write!(f, "()"),
@@ -2262,9 +2857,11 @@ impl Type {
                     // function needs parentheses to stay the same type when re-read.
                     write!(f, " ")?;
                     match arg {
-                        Type::Adt(_, inner) if !inner.is_empty() => parenthesised(arg, f, names)?,
-                        Type::Fun { .. } => parenthesised(arg, f, names)?,
-                        _ => arg.write(f, names)?,
+                        Type::Adt(_, inner) if !inner.is_empty() => {
+                            parenthesised(arg, f, names, variables)?
+                        }
+                        Type::Fun { .. } => parenthesised(arg, f, names, variables)?,
+                        _ => arg.write(f, names, variables)?,
                     }
                 }
                 Ok(())
@@ -2279,7 +2876,7 @@ impl Type {
                         write!(f, ", ")?;
                     }
                     write!(f, "{} : ", label.as_str())?;
-                    tpe.write(f, names)?;
+                    tpe.write(f, names, variables)?;
                 }
                 write!(f, " }}")
             }
@@ -2500,12 +3097,13 @@ pub enum Supplier {
 ///
 /// # What else is read late
 ///
-/// A class constraint ([`LANG-40`](../../docs/tickets/lang-40.md)) is the other kind of
-/// constraint the solver can only answer once unification has run. It would be a second
-/// list beside this one in `constraint::Constraints`, and a second step after
-/// `unifier::read_fields` in `infer_annotated` — after, because reading a field can
-/// solve the variable an instance is looked up by. Whether reading an instance's context
-/// can in turn decide a field constraint is that ticket's to settle.
+/// A class obligation is the other kind of constraint the solver can only answer once
+/// unification has run: a third list beside this one in `constraint::Constraints`, read
+/// by `classes::discharge` after `unifier::read_fields` in `infer_annotated` — after,
+/// because reading a field can solve the variable an instance is looked up by. Reading an
+/// obligation adds nothing to the substitution: an instance's context is more obligations
+/// and never an equation, so no obligation can decide a field constraint, and the order of
+/// the two reads has one direction only.
 #[derive(Debug, Clone)]
 struct FieldConstraint {
     /// The type said to be a record. Usually still a variable when collected.
@@ -2696,8 +3294,11 @@ impl Substitution {
             | TypedTermKind::String(_)
             | TypedTermKind::Float(_)
             | TypedTermKind::Unit
-            | TypedTermKind::Identifier(_)
             | TypedTermKind::Hole) => kind,
+            TypedTermKind::Identifier { reference, context } => TypedTermKind::Identifier {
+                reference,
+                context: self.apply_predicates(context),
+            },
             TypedTermKind::Fun { param, body } => TypedTermKind::Fun {
                 param: self.apply_binder(param),
                 body: Box::new(self.apply_term(*body)),
@@ -2776,6 +3377,18 @@ impl Substitution {
             tpe: self.apply_type(&term.tpe),
             kind,
         }
+    }
+
+    /// Rewrite the type of each predicate: the context of a use, or a declaration's own,
+    /// as it stands once everything is solved.
+    fn apply_predicates(&self, predicates: Vec<Predicate>) -> Vec<Predicate> {
+        predicates
+            .into_iter()
+            .map(|predicate| Predicate {
+                class: predicate.class,
+                tpe: self.apply_type(&predicate.tpe),
+            })
+            .collect()
     }
 
     fn apply_fields(&self, fields: Vec<Field<TypedTerm>>) -> Vec<Field<TypedTerm>> {
@@ -2933,6 +3546,61 @@ fn occurs(tvar: &TypeVariable, tpe: &Type) -> bool {
     }
 }
 
+/// Every variable of `tpe`, each once, in the order it first appears.
+fn free_variables_in_order(tpe: &Type) -> Vec<TypeVariable> {
+    fn walk(tpe: &Type, into: &mut Vec<TypeVariable>) {
+        match tpe {
+            Type::Literal(_) | Type::Unit => (),
+            Type::Variable(tvar) => {
+                if !into.contains(tvar) {
+                    into.push(tvar.clone());
+                }
+            }
+            Type::Fun {
+                param_tpe,
+                return_tpe,
+            } => {
+                walk(param_tpe, into);
+                walk(return_tpe, into);
+            }
+            Type::Tuple(tuple) => tuple.iter().for_each(|t| walk(t, into)),
+            Type::Adt(_, args) => args.iter().for_each(|t| walk(t, into)),
+            Type::Record(fields) => fields.values().for_each(|t| walk(t, into)),
+        }
+    }
+
+    let mut variables = Vec::new();
+    walk(tpe, &mut variables);
+    variables
+}
+
+/// A [`Type`] written with its variables named, the way an annotation wrote them, and
+/// every union bare.
+struct WithNames<'a>(&'a Type, &'a VariableNames);
+
+impl std::fmt::Display for WithNames<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.write(f, AdtNames::Unqualified, Some(self.1))
+    }
+}
+
+/// A predicate written as the source writes a constraint's use: the class, then the type,
+/// in parentheses when it is itself applied.
+fn predicate_text(predicate: &Predicate, spellings: &Spellings) -> String {
+    let applied = match &predicate.tpe {
+        Type::Fun { .. } => true,
+        Type::Adt(_, args) => !args.is_empty(),
+        _ => false,
+    };
+    let tpe = Spelled(&predicate.tpe, spellings);
+
+    if applied {
+        format!("{} ({})", predicate.class.unqualified_name(), tpe)
+    } else {
+        format!("{} {}", predicate.class.unqualified_name(), tpe)
+    }
+}
+
 /// The names in scope while one declaration is annotated, and the counter its fresh
 /// type variables come from.
 ///
@@ -2954,8 +3622,39 @@ fn occurs(tvar: &TypeVariable, tpe: &Type) -> bool {
 struct Types {
     counter: u32,
     env: HashMap<String, Type>,
-    globals: HashMap<String, Type>,
+    globals: HashMap<String, Scheme>,
 }
+
+/// What the typer's environment holds for a global: a type, and the context its
+/// constraints wrote in front of it.
+///
+/// Both are read as quantified over every variable in the type, and
+/// [`Types::by_name`] instantiates them together — the same variable by the same fresh
+/// one in the context as in the type — so that a use of `min : Comparable a => a -> a ->
+/// a` at `Int` is one use of `a`. Each constraint of the context is on one of the type's
+/// variables, since an annotation's constraint has to be: `canonical::Error::
+/// ConstraintVariableNotInType`.
+#[derive(Debug, Clone)]
+struct Scheme {
+    /// The constraints, in the order written, each a class and the variable of `tpe`
+    /// it is required of.
+    context: Vec<Predicate>,
+    tpe: Type,
+}
+
+impl Scheme {
+    /// A scheme with no constraint.
+    fn unconstrained(tpe: Type) -> Scheme {
+        Scheme {
+            context: Vec::new(),
+            tpe,
+        }
+    }
+}
+
+/// Names for type variables, for the messages that write a type the way an annotation
+/// did.
+type VariableNames = HashMap<TypeVariable, String>;
 
 impl Types {
     fn new() -> Types {
@@ -2971,7 +3670,7 @@ impl Types {
     }
 
     /// Put the declarations of an outer scope in reach, as globals.
-    fn extends_with(&mut self, global: HashMap<String, Type>) {
+    fn extends_with(&mut self, global: HashMap<String, Scheme>) {
         self.globals.extend(global)
     }
 
@@ -2989,16 +3688,30 @@ impl Types {
         self.env.remove(name);
     }
 
-    /// The type of one use of `name`: a binder's own type, or a fresh instance of a
-    /// global's.
-    fn by_name(&mut self, name: &String) -> Option<Type> {
+    /// The type of one use of `name` — a binder's own type, or a fresh instance of a
+    /// global's — and the constraints of that use: the global's context, instantiated
+    /// with the same fresh variables as its type. A binder has none.
+    ///
+    /// Each constraint is an obligation of the use, which `constraint::collect` turns
+    /// into one and `discharge` answers once unification is done.
+    fn by_name(&mut self, name: &String) -> Option<(Type, Vec<Predicate>)> {
         if let Some(tpe) = self.env.get(name) {
-            return Some(tpe.clone());
+            return Some((tpe.clone(), Vec::new()));
         }
 
         let scheme = self.globals.get(name)?.clone();
         let mut fresh = HashMap::new();
-        Some(self.instantiate(scheme, &mut fresh))
+        let tpe = self.instantiate(scheme.tpe, &mut fresh);
+        let context = scheme
+            .context
+            .into_iter()
+            .map(|predicate| Predicate {
+                class: predicate.class,
+                tpe: self.instantiate(predicate.tpe, &mut fresh),
+            })
+            .collect();
+
+        Some((tpe, context))
     }
 
     /// `tpe` with each of its variables replaced by a fresh one, the same variable by
@@ -3050,7 +3763,12 @@ impl Types {
 /// This is a translation of the algorithm demonstrated by
 /// [Ionut Gan at I T.A.K.E Unconference 2015](https://www.youtube.com/watch?v=oPVTNxiMcSU)
 pub fn infer(term: Term, global: HashMap<String, Type>) -> Result<Type, ErrorKind> {
-    infer_annotated(term, global, None).map(|term| term.tpe)
+    let global = global
+        .into_iter()
+        .map(|(name, tpe)| (name, Scheme::unconstrained(tpe)))
+        .collect();
+
+    infer_annotated(term, global, None, &classes::ClassTable::empty()).map(|(term, _)| term.tpe)
 }
 
 /// [`infer`], with the declaration's type annotation as a constraint of its own, and
@@ -3065,11 +3783,22 @@ pub fn infer(term: Term, global: HashMap<String, Type>) -> Result<Type, ErrorKin
 ///
 /// The term handed back is zonked — see [`Substitution::apply_term`] — so every node
 /// carries the type inference solved for it and not the variable `annotate` gave it.
+/// Beside it comes the context the annotation required of its variables, zonked the same
+/// way.
+///
+/// # The order of the steps
+///
+/// Equations first, then field constraints, then obligations. A field constraint can
+/// solve the variable an instance is looked up by, so an obligation is read only once
+/// both have run. Whether reading an instance's context can in turn decide a field
+/// constraint does not arise: an obligation only reads the solution and adds nothing to
+/// it.
 fn infer_annotated(
     term: Term,
-    global: HashMap<String, Type>,
+    global: HashMap<String, Scheme>,
     annotation: Option<Annotation>,
-) -> Result<TypedTerm, ErrorKind> {
+    table: &classes::ClassTable,
+) -> Result<(TypedTerm, Vec<Predicate>), ErrorKind> {
     let mut env = Types::new();
     env.extends_with(global);
 
@@ -3078,14 +3807,21 @@ fn infer_annotated(
 
     let mut constraints = Vec::new();
     let annotated = annotation.is_some();
+    let mut given = Vec::new();
+    let mut names = Vec::new();
+    let mut written = Written::Annotation;
 
     if let Some(annotation) = annotation {
+        given = annotation.context;
+        names = annotation.names;
+        written = annotation.written;
+
         // Left is the annotation's type, because left is the type of the text the
         // span points at — see `Constraint`.
         constraints.push(Constraint::new(
             annotation.tpe,
             typed_term.tpe.clone(),
-            Reason::Annotation,
+            annotation.reason,
             annotation.span,
         ));
     }
@@ -3094,6 +3830,7 @@ fn infer_annotated(
         equations,
         fields,
         holes,
+        obligations,
     } = constraint::collect(&typed_term);
     constraints.extend(equations);
     debug!("Constraints: {:#?}", constraints);
@@ -3108,7 +3845,29 @@ fn infer_annotated(
     };
     let substitution = unifier::read_fields(substitution, fields, &declaration)?;
 
-    Ok(substitution.apply_term(typed_term))
+    // Read last, against the final substitution: see the `classes` module.
+    classes::discharge(
+        table,
+        obligations,
+        &substitution,
+        &classes::Declared {
+            tpe: &typed_term.tpe,
+            annotated,
+            given: &given,
+            names: &names,
+            written,
+        },
+    )?;
+
+    let context = given
+        .iter()
+        .map(|(class, variable)| Predicate {
+            class: class.clone(),
+            tpe: substitution.apply_type(&Type::Variable(variable.clone())),
+        })
+        .collect();
+
+    Ok((substitution.apply_term(typed_term), context))
 }
 
 // TODO Once we have changed the Term to the zelkova primitives, rewrite the tests

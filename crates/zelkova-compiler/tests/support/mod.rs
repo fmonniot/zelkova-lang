@@ -11,9 +11,11 @@
 use codespan_reporting::files::SimpleFile;
 use std::collections::HashMap;
 use zelkova_compiler::canonical;
-use zelkova_compiler::dependencies::Outcome;
+use zelkova_compiler::dependencies::{ModuleWalker, Outcome};
 use zelkova_compiler::name::{Name, QualName};
-use zelkova_compiler::{Interface, ModuleName, PackageName};
+use zelkova_compiler::{
+    check_module_recovering, CheckedModule, CompilationError, Interface, ModuleName, PackageName,
+};
 use zelkova_syntax::parser;
 use zelkova_syntax::position::NodeSpan;
 
@@ -418,4 +420,40 @@ pub fn task_interface() -> (Name, Interface) {
     };
 
     ("Task".into(), interface)
+}
+
+/// Check a package of `sources`, each one module, in dependency order with the real
+/// checker, and return what came back for the module named `name`: its errors, or the
+/// checked module.
+pub fn check_package_module(
+    sources: &[&str],
+    name: &str,
+) -> Result<CheckedModule, Vec<CompilationError>> {
+    let modules: Vec<_> = sources.iter().map(|source| parse_source(source)).collect();
+    let package = test_package();
+    let module_files = HashMap::new();
+    let walker = ModuleWalker::new(&modules, &module_files, &package).expect("no import cycle");
+    let mut interfaces = HashMap::from([basics_interface(), char_interface()]);
+
+    let mut result = None;
+    for outcome in walker.check_in_order(
+        &package,
+        &mut interfaces,
+        &module_files,
+        check_module_recovering,
+    ) {
+        match outcome {
+            Outcome::Module(module, errors) if module.canonical.name.name().as_str() == name => {
+                result = Some(if errors.is_empty() {
+                    Ok(module)
+                } else {
+                    Err(errors)
+                });
+            }
+            Outcome::Failed(error) => panic!("a module failed outright: {:?}", error),
+            Outcome::Module(..) => (),
+        }
+    }
+
+    result.unwrap_or_else(|| panic!("no module named `{}` came back", name))
 }

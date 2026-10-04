@@ -73,12 +73,12 @@ double x =
 ```
 
 **Not implemented:** `std/core` declares no `Number` class ([`LANG-42`](../tickets/lang-42.md)),
-so neither `Number` nor `mul` resolves to anything in the block above. A constrained annotation
-is type checked as if it had no constraint, so nothing holds `a` to `Number`
-([`LANG-40`](../tickets/lang-40.md), [`LANG-12`](../tickets/lang-12.md)). Once something does,
-that declaration is an error: `2` is an `Int`, so `mul x 2` forces `a` to be `Int` and the
-annotation promises more than the body supports. `double x = add x x` is the way to write it,
-and a class that wants numeric constants declares them as members.
+so neither `Number` nor `mul` resolves to anything in the block above. An annotation's type
+variables are not rigid, so nothing holds `a` to `Number` against a body that forces it to
+another type ([`LANG-12`](../tickets/lang-12.md)). Once both hold, that declaration is an error:
+`2` is an `Int`, so `mul x 2` forces `a` to be `Int` and the annotation promises more than the
+body supports. `double x = add x x` is the way to write it, and a class that wants numeric
+constants declares them as members.
 
 ### There is no boolean literal
 

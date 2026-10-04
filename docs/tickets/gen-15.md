@@ -39,7 +39,7 @@ constructor, carrying its arguments as a payload.
   already what the language requires for
   [erasing class dictionaries](../decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed),
   so it is one pass serving two purposes rather than a cost this backend invents.
-  [`LANG-40`](lang-40.md) is where the class half first needs it.
+  [`LANG-40`](README.md) is where the class half first needs it.
 - **A constructor's index in its declaration**, not only its name, because a `variant` case is
   positional where the JavaScript `$` field is nominal.
 - **Explicit arity and saturation**, which the plain parameter list needs on this target for the

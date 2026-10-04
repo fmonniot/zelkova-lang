@@ -138,7 +138,7 @@ LANG-39  resolution: what a class and an instance are, members in the   ← clos
 LANG-70  a constraint in an annotation is resolved; its context is   ← closed
   │      kept, on the value and in the `Interface`
   │
-LANG-40  the solver: obligations are collected, deferred and discharged
+LANG-40  the solver: obligations are collected, deferred and discharged   ← closed
   │      ← on today's flexible annotation variables. A constrained
   │        declaration can under-prove its signature until LANG-12,
   │        and a test here pins that it does
@@ -317,7 +317,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-37 | task | — | closed 2026-09-27 | A type annotation may carry a constraint context, written `Class a =>` |
 | LANG-38 | task | — | closed 2026-10-03 | `class` and `instance` declarations parse, with a `where` block of members |
 | LANG-39 | task | — | closed 2026-10-03 | Resolve classes and instances, and enforce the orphan rule |
-| [LANG-40](lang-40.md) | task | — | open | Discharge class constraints in the type checker |
+| LANG-40 | task | — | closed 2026-10-04 | Discharge class constraints in the type checker |
 | LANG-41 | task | — | closed 2026-10-03 | Retire `Type::Number`: an integer literal is an `Int` |
 | [LANG-42](lang-42.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
 | LANG-43 | task | — | closed 2026-09-27 | A facade signature may name any type at all, including ones no runtime predicate can decide |
