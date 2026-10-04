@@ -6195,3 +6195,33 @@ fn a_class_and_an_instance_are_rejected_one_error_each() {
     );
     assert!(module.incomplete);
 }
+
+/// An instance is rejected, and does not mark its module incomplete: only a class can
+/// leave a name undefined, so a name the module never defined is still reported on its own.
+///
+/// Verified to fail by setting `incomplete` for an instance in `canonicalize_recovering`.
+#[test]
+fn an_instance_does_not_mark_its_module_incomplete() {
+    let source = indoc::indoc! {r#"
+        module A exposing (use)
+
+        instance Comparable Int where
+          compare a b =
+            0
+
+        use : Int
+        use = missing
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    assert!(
+        errors
+            .iter()
+            .any(|e| matches!(e, canonical::Error::InstanceUnsupported(_))),
+        "{:?}",
+        errors
+    );
+    assert!(!module.incomplete);
+}
