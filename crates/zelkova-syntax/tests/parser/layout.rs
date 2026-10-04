@@ -647,30 +647,80 @@ fn a_where_outside_a_head_opens_no_block() {
     assert_eq!(layout_stream("f where = where\n"), "{ f where = where }");
 }
 
-/// A member line rejected by the grammar is not read as a top-level declaration that was
-/// indented by mistake: it starts the way one does, and sits inside a body.
+/// A member left of the first member's column, and still indented, is reported as a member
+/// off its column. It is not a top-level declaration that was indented by mistake.
 ///
-/// Verified to fail by letting `Layout::handle_next_token` record a continuation line while
-/// the stack holds more than the top-level declaration: `g` is then reported as an
-/// `IndentedDeclaration`.
+/// Verified to fail by dropping the `MisalignedMember` check in `Layout::members_step`: the
+/// line is then reported as `IndentedDeclaration`, once the list is popped and the
+/// declaration is the innermost context.
 #[test]
-fn a_member_line_is_not_an_indented_declaration() {
-    let source = indoc::indoc! {"
-        module Example exposing ()
+fn a_member_left_of_its_siblings_is_a_misaligned_member() {
+    for (source, line_of_member) in [
+        ("module Example exposing ()\n\nclass C a where\n    m : a -> Int\n  n : a -> Int\n", "n"),
+        ("module Example exposing ()\n\ninstance C A where\n    m a =\n      1\n  n a =\n      2\n", "n"),
+    ] {
+        let (error, range) = layout_error(source);
 
-        instance C A where
-          f x =
-            1
-            g y =
-            2
-    "};
-    let file = SimpleFile::new("test".to_owned(), source.to_owned());
-
-    match parser::parse(&file) {
-        Err(Error::UnexpectedToken { token, .. }) => assert_eq!(token.value, Token::Equal),
-        other => panic!(
-            "expected the grammar's own error, got {:?}",
-            other.map(|_| "Ok(_)")
-        ),
+        let LayoutError::MisalignedMember {
+            token,
+            member_column,
+        } = error
+        else {
+            panic!("{}: expected a misaligned member, got {:?}", source, error);
+        };
+        assert_eq!(member_column, 5, "{}", source);
+        assert_eq!(token.start().column, 3, "{}", source);
+        let start = source.rfind(&format!("\n  {}", line_of_member)).unwrap() + 3;
+        assert_eq!(range, start..start + 1, "{}", source);
     }
+}
+
+/// The first member starts a line of its own, indented past the declaration.
+///
+/// Verified to fail by dropping the `MemberOnOpeningLine` check in `Layout::members_step`.
+#[test]
+fn the_first_member_is_not_on_the_where_line() {
+    for source in [
+        "module Example exposing ()\n\nclass C a where m : a -> Int\n",
+        "module Example exposing ()\n\ninstance C A where m a = 1\n",
+    ] {
+        let (error, _) = layout_error(source);
+
+        assert!(
+            matches!(error, LayoutError::MemberOnOpeningLine { .. }),
+            "{}: {:?}",
+            source,
+            error
+        );
+    }
+}
+
+/// A `where` that begins its line is refused, whatever the members under it do.
+///
+/// Verified to fail by dropping the `WhereOnItsOwnLine` check in `Layout::handle_next_token`.
+#[test]
+fn where_does_not_begin_a_line() {
+    for source in [
+        "module Example exposing ()\n\nclass C a\n  where\n  m : a -> Int\n",
+        "module Example exposing ()\n\nclass C a\n  where\n    m : a -> Int\n",
+        "module Example exposing ()\n\ninstance C A\n  where\n    m a = 1\n",
+    ] {
+        let (error, _) = layout_error(source);
+
+        assert!(
+            matches!(error, LayoutError::WhereOnItsOwnLine { .. }),
+            "{}: {:?}",
+            source,
+            error
+        );
+    }
+}
+
+/// A body whose members are on their own lines, and a declaration after it, is untouched.
+#[test]
+fn a_body_ends_at_column_one() {
+    assert_eq!(
+        layout_stream("class C a where\n  m : a -> Int\nf = g\n"),
+        "{ class C a where { m : a -> Int } } { f = g }"
+    );
 }

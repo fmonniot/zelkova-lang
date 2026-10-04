@@ -1,6 +1,6 @@
 use super::layout::LayoutError;
 use super::tokenizer::{Token, TokenizerError, TokenizerErrorType};
-use crate::position::{BytePos, Span, Spanned};
+use crate::position::{BytePos, Position, Span, Spanned};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use lalrpop_util::ParseError;
 use std::ops::Range;
@@ -213,6 +213,36 @@ impl Error {
                     ])
             }
 
+            Error::Layout(LayoutError::MemberOnOpeningLine { token }) => Diagnostic::error()
+                .with_message("the first member of this body is on the line that opens it")
+                .with_labels(vec![Label::primary(name, non_empty(token_range(token)))
+                    .with_message("this member starts on the same line as `where`")])
+                .with_notes(vec![
+                    "the members of a `class` or `instance` start on the next line, indented past the declaration".to_owned()
+                ]),
+
+            Error::Layout(LayoutError::WhereOnItsOwnLine { token }) => Diagnostic::error()
+                .with_message("`where` is alone at the start of its line")
+                .with_labels(vec![Label::primary(name, non_empty(token_range(token)))
+                    .with_message("this `where` begins a line")])
+                .with_notes(vec![
+                    "put `where` at the end of the line holding the head of the `class` or `instance`".to_owned()
+                ]),
+
+            Error::Layout(LayoutError::MisalignedMember {
+                token,
+                member_column,
+            }) => Diagnostic::error()
+                .with_message("this line is not on the column of the members above it")
+                .with_labels(vec![Label::primary(name, non_empty(token_range(token)))
+                    .with_message(format!(
+                        "this token starts at column {}, but the members start at column {}",
+                        token.span.start.column, member_column
+                    ))])
+                .with_notes(vec![
+                    "every member of a `class` or `instance` starts on the column of the first one".to_owned()
+                ]),
+
             Error::InvalidToken(position) => Diagnostic::error()
                 .with_message("the parser could not read this token")
                 .with_labels(vec![Label::primary(name, one_byte_at(*position))
@@ -340,6 +370,11 @@ impl From<TokenizerError> for Error {
         Error::Tokenizer(e)
     }
 }
+/// The byte range of a layout-processed token, whose span carries `Position`s.
+fn token_range(token: &Spanned<Position, Token>) -> std::ops::Range<usize> {
+    token.span.start.absolute.0 as usize..token.span.end.absolute.0 as usize
+}
+
 impl From<LayoutError> for Error {
     fn from(e: LayoutError) -> Self {
         Error::Layout(e)

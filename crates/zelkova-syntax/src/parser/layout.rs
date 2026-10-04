@@ -31,6 +31,20 @@ pub enum LayoutError {
         token: Spanned<Position, Token>,
         declaration_line: usize,
     },
+    /// The first member of a class or instance body, or the first binding of a
+    /// derivation, sits on the line that opened the body instead of on a line of its
+    /// own (`class C a where m : a -> Int`). `docs/spec/type-classes.md` has the rule:
+    /// the first member starts a line indented past the declaration.
+    MemberOnOpeningLine { token: Spanned<Position, Token> },
+    /// The `where` of a class or instance head is the first token of its line.
+    WhereOnItsOwnLine { token: Spanned<Position, Token> },
+    /// A line indented past its declaration that sits left of the column the members of
+    /// the body above it start on, so it is neither one of them nor the end of the body.
+    /// `member_column` is the column the members start on.
+    MisalignedMember {
+        token: Spanned<Position, Token>,
+        member_column: usize,
+    },
 }
 
 /// Apply the offside rule to a token stream, injecting `OpenBlock`/`CloseBlock`
@@ -403,30 +417,56 @@ where
     fn members_step(
         &mut self,
         token: Spanned<Position, Token>,
-    ) -> Result<Spanned<Position, Token>, Spanned<Position, Token>> {
+    ) -> Result<Result<Spanned<Position, Token>, Spanned<Position, Token>>, Error> {
         let start = token.span.start;
 
         loop {
             let Some(top) = self.contexts.last().copied() else {
-                return Err(token);
+                return Ok(Err(token));
             };
 
             match top.context {
                 Context::FirstMember | Context::Members => {
                     if start.column < top.indent {
                         self.contexts.pop();
+
+                        // A body ends at the first line in column 1, or at the first
+                        // line left of the declaration's own indentation. A line that
+                        // is still indented past the declaration but left of the
+                        // members is a member off its column, and has to be said so:
+                        // with the declaration innermost again, the rest of the pass
+                        // would take it for an indented top-level declaration.
+                        if let Some(Offside {
+                            context: Context::TopLevelDeclaration,
+                            indent,
+                            ..
+                        }) = self.contexts.last()
+                        {
+                            if start.column > *indent {
+                                return Err(LayoutError::MisalignedMember {
+                                    token,
+                                    member_column: top.indent,
+                                }
+                                .into());
+                            }
+                        }
                         continue;
                     }
 
                     // The first token after the `where` sets the column the members
-                    // start at, and every later one has to sit on it.
+                    // start at, and every later one has to sit on it. It starts a line
+                    // of its own.
                     if top.context == Context::FirstMember {
+                        if start.line == top.line {
+                            return Err(LayoutError::MemberOnOpeningLine { token }.into());
+                        }
+
                         if let Some(open) = self.contexts.stack.last_mut() {
                             open.context = Context::Members;
                             open.indent = start.column;
                         }
                     } else if start.column != top.indent {
-                        return Err(token);
+                        return Ok(Err(token));
                     }
 
                     self.contexts.push(Offside {
@@ -437,7 +477,7 @@ where
                     self.after_derived = false;
                     self.reprocess_tokens.push(token);
 
-                    return Ok(spanned(start, start, Token::OpenBlock));
+                    return Ok(Ok(spanned(start, start, Token::OpenBlock)));
                 }
                 Context::Member => {
                     // A token on the member's column that is not the member's own first
@@ -446,16 +486,16 @@ where
                         || (start.column == top.indent && start.line > top.line);
 
                     if !left {
-                        return Err(token);
+                        return Ok(Err(token));
                     }
 
                     self.contexts.pop();
                     self.after_derived = false;
                     self.reprocess_tokens.push(token);
 
-                    return Ok(spanned(start, start, Token::CloseBlock));
+                    return Ok(Ok(spanned(start, start, Token::CloseBlock)));
                 }
-                _ => return Err(token),
+                _ => return Ok(Err(token)),
             }
         }
     }
@@ -524,7 +564,7 @@ where
 
         // The members of a class or instance are handled before anything else, since
         // what they do with a token depends only on its column.
-        let token = match self.members_step(token) {
+        let token = match self.members_step(token)? {
             Ok(emitted) => return Ok(emitted),
             Err(token) => token,
         };
@@ -749,8 +789,10 @@ where
         // declaration open, continues that declaration. Record it, so that
         // `explain` can name the indentation if the grammar finds the
         // declaration was already complete. A `TopLevelDeclaration` is only
-        // ever pushed onto an empty stack, so being the innermost context
-        // makes it the only one. Only a declaration which itself began in
+        // ever pushed onto an empty stack, but a list of members can be popped
+        // away beneath it, so being the innermost context does not make it the
+        // only one: `members_step` refuses a line that left such a list and is
+        // still indented, before it gets here. Only a declaration which itself began in
         // column 1 counts: one that did not is a file whose top level is
         // indented as a whole, and its first line is where that goes wrong.
         let start = token.span.start;
@@ -796,6 +838,9 @@ where
 
         match (&token.value, &offside.context) {
             (Token::Where, Context::TopLevelDeclaration) if self.awaiting_where => {
+                if self.line_start.map(|first| first.absolute) == Some(token.start().absolute) {
+                    return Err(LayoutError::WhereOnItsOwnLine { token }.into());
+                }
                 self.awaiting_where = false;
                 self.contexts.push(Offside {
                     context: Context::FirstMember,

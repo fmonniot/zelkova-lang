@@ -814,7 +814,7 @@ ClassMember: ClassMember = {
     <FunType> => ClassMember::Signature(<>),
 
     <l:@L> "derived" <member:VarIdent> <r:@R>
-        <bindings:("open block" <FunBinding> "close block")+> =>
+        <bindings:("open block" <FunBinding> "close block")*> =>
         ClassMember::Derivation(Derivation { member, bindings, span: NodeSpan::new(l, r) }),
 };
 

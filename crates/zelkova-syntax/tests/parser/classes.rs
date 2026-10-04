@@ -316,8 +316,12 @@ fn a_binding_named_derived_is_not_the_request() {
     assert_eq!(bindings[0].name, Name::new("derived"));
 }
 
+/// A derivation with no binding parses, as an empty body does. Naming the missing
+/// binding is `LANG-39`'s to do.
+///
+/// Verified to fail by turning the derivation's `*` in `ClassMember` back into `+`.
 #[test]
-fn a_derivation_with_no_binding_does_not_parse() {
+fn a_derivation_with_no_binding_parses_as_empty() {
     let source = indoc::indoc! {"
         module Example exposing ()
 
@@ -325,10 +329,14 @@ fn a_derivation_with_no_binding_does_not_parse() {
           derived compare
           other : a -> Int
     "};
+    let module = parse_ok(source);
 
-    assert!(
-        matches!(parse(source), Err(Error::UnexpectedToken { .. })),
-        "{:?}",
-        parse(source)
-    );
+    let members = &module.classes[0].members;
+    assert_eq!(members.len(), 2);
+    let ClassMember::Derivation(derivation) = &members[0] else {
+        panic!("a derivation, got {:?}", members[0]);
+    };
+    assert_eq!(derivation.member, Name::new("compare"));
+    assert!(derivation.bindings.is_empty());
+    assert!(matches!(&members[1], ClassMember::Signature(_)));
 }

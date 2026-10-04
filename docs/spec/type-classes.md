@@ -23,9 +23,9 @@ class Comparable a where
 
 **Not implemented:** of all of this, the compiler checks a constraint and nothing else. A class
 and an instance parse, and canonicalization rejects each one, so every block here showing one is
-tagged `expect=unimplemented`, and each goes red the day the construct it shows starts working. A constraint parses and is
-checked to be shaped like one, and is then ignored: see [Constraining an
-annotation](#constraining-an-annotation). The type-class ticket program in
+tagged `expect=unimplemented`, and each goes red the day the construct it shows starts working.
+A constraint parses and is checked to be shaped like one, and is then ignored: see [Constraining
+an annotation](#constraining-an-annotation). The type-class ticket program in
 [`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
 land.
 
@@ -44,6 +44,25 @@ type Order
 
 class Comparable a where
   compare : a -> a -> Order
+  lt : a -> a -> Bool
+```
+
+The first member starts a line of its own, indented past the `class`, and sets the column every
+later member starts on. A member on the `where` line, a `where` that begins its line, and a
+member whose column is not the first one's are all rejected. The same holds for the bindings of
+an [instance](#declaring-an-instance), and for the bindings under a derivation.
+
+```zel expect=parse-error:LayoutError
+module Example exposing (Comparable)
+
+class Comparable a where compare : a -> a -> Bool
+```
+
+```zel expect=parse-error:LayoutError
+module Example exposing (Comparable)
+
+class Comparable a where
+    compare : a -> a -> Bool
   lt : a -> a -> Bool
 ```
 
@@ -700,9 +719,9 @@ class Functor f where
   map : (a -> b) -> f a -> f b
 ```
 
-That block is rejected because `f a` is not a type — it applies a variable. Allowing it would need variables
-ranging over type constructors as well as types, which is what a kind system is for, and Zelkova
-does not have one.
+That block is rejected because `f a` is not a type — it applies a variable. Allowing it would
+need variables ranging over type constructors as well as types, which is what a kind system is
+for, and Zelkova does not have one.
 
 ## Numeric literals
 
@@ -824,7 +843,8 @@ after it: `derived` alone is [the request](#an-instance-may-be-derived), `derive
 [a derivation](#a-class-says-how-it-is-derived) for the member `eq`, and `derived : …` or
 `derived = …` declares a member called `derived`. One token of lookahead settles it.
 
-`class` or `instance` as the name of a value, and `where` as a type variable, are syntax errors. First `class` and `instance` as value names:
+`class` and `instance` cannot name a value, and `where` cannot be a type variable. Each is a
+syntax error. `class` and `instance` as value names:
 
 ```zel expect=parse-error
 module Example exposing (Size)
@@ -841,7 +861,7 @@ instance =
   Small
 ```
 
-`where` as a type variable, the one `where` position the language excludes:
+`where` as a type variable:
 
 ```zel expect=parse-error
 module Example exposing (Box)
