@@ -6285,13 +6285,22 @@ fn with_instance(instance: &str) -> String {
     )
 }
 
-/// The one error `source` is rejected with, which has to be an instance-head error.
+/// The range of the one label `error` renders with, insisting that it is primary and
+/// alone.
+fn sole_label(error: &canonical::Error) -> std::ops::Range<usize> {
+    match label_ranges(error).as_slice() {
+        [(true, range)] => range.clone(),
+        other => panic!("expected one primary label, got {:?}", other),
+    }
+}
+
+/// The one error `source` is rejected with, which has to be an instance-head error, and
+/// the range of its label.
 fn head_problem(source: &str) -> (canonical::InstanceHeadProblem, std::ops::Range<usize>) {
     match class_errors(source).as_slice() {
-        [canonical::Error::InvalidInstanceHead(problem, span)] => (
-            problem.clone(),
-            span.to_range().expect("the head error has a position"),
-        ),
+        [error @ canonical::Error::InvalidInstanceHead(problem, _)] => {
+            (problem.clone(), sole_label(error))
+        }
         other => panic!("expected one InvalidInstanceHead, got {:?}", other),
     }
 }
@@ -6367,10 +6376,10 @@ fn an_instance_head_applying_its_class_to_two_types_is_an_error() {
 fn an_instance_context_on_a_variable_the_head_does_not_bind_is_an_error() {
     let source = with_instance("instance Eq c => Eq (Box a) where\n  eq x y =\n    True\n");
     match class_errors(&source).as_slice() {
-        [canonical::Error::ConstraintVariableUnbound(name, span)] => {
+        [error @ canonical::Error::ConstraintVariableUnbound(name, _)] => {
             assert_eq!(name.as_str(), "c");
             let at = source.find("Eq c").expect("the context") + "Eq ".len();
-            assert_eq!(span.to_range(), Some(at..at + 1));
+            assert_eq!(sole_label(error), at..at + 1);
         }
         other => panic!("expected one ConstraintVariableUnbound, got {:?}", other),
     }
@@ -6391,9 +6400,9 @@ fn a_member_signature_with_a_constraint_is_an_error() {
           same : Eq b => a -> b -> Bool
     "#};
     match class_errors(source).as_slice() {
-        [canonical::Error::MemberConstrained(name, span)] => {
+        [error @ canonical::Error::MemberConstrained(name, _)] => {
             assert_eq!(name.as_str(), "same");
-            assert_eq!(span.to_range(), Some(range_of(source, "Eq b")));
+            assert_eq!(sole_label(error), range_of(source, "Eq b"));
         }
         other => panic!("expected one MemberConstrained, got {:?}", other),
     }
@@ -6411,11 +6420,11 @@ fn a_member_signature_marked_unsafe_is_an_error() {
           unsafe same : a -> a -> Bool
     "#};
     match class_errors(source).as_slice() {
-        [canonical::Error::MemberUnsafe(name, span)] => {
+        [error @ canonical::Error::MemberUnsafe(name, _)] => {
             assert_eq!(name.as_str(), "same");
             assert_eq!(
-                span.to_range(),
-                Some(range_of(source, "unsafe same : a -> a -> Bool"))
+                sole_label(error),
+                range_of(source, "unsafe same : a -> a -> Bool")
             );
         }
         other => panic!("expected one MemberUnsafe, got {:?}", other),
@@ -6434,11 +6443,11 @@ fn a_member_signature_not_mentioning_the_class_variable_is_an_error() {
           size : Int
     "#};
     match class_errors(source).as_slice() {
-        [canonical::Error::MemberMissesClassVariable(name, class, variable, span)] => {
+        [error @ canonical::Error::MemberMissesClassVariable(name, class, variable, _)] => {
             assert_eq!(name.as_str(), "size");
             assert_eq!(class.as_str(), "Sized");
             assert_eq!(variable.as_str(), "a");
-            assert_eq!(span.to_range(), Some(range_of(source, "size : Int")));
+            assert_eq!(sole_label(error), range_of(source, "size : Int"));
         }
         other => panic!("expected one MemberMissesClassVariable, got {:?}", other),
     }
@@ -6472,15 +6481,15 @@ fn an_instance_missing_a_member_is_an_error_naming_it_and_the_class() {
 
     let source = with_eq_instance("  eq x y =\n    True\n");
     let errors = class_errors(&source);
-    let [error @ canonical::Error::InstanceMemberMissing(member, class, span)] = errors.as_slice()
+    let [error @ canonical::Error::InstanceMemberMissing(member, class, _)] = errors.as_slice()
     else {
         panic!("expected one InstanceMemberMissing, got {:?}", errors);
     };
     assert_eq!(member.as_str(), "neq");
     assert_eq!(class.as_str(), "Eq");
     assert_eq!(
-        span.to_range(),
-        Some(range_of(&source, "instance Eq Colour where"))
+        sole_label(error),
+        range_of(&source, "instance Eq Colour where")
     );
     let message = error.message();
     assert!(
@@ -6498,11 +6507,11 @@ fn an_instance_binding_naming_no_member_is_an_error() {
     let source =
         with_eq_instance("  eq x y =\n    True\n  neq x y =\n    False\n  other x =\n    True\n");
     match class_errors(&source).as_slice() {
-        [canonical::Error::InstanceBindingNotMember(name, class, span)] => {
+        [error @ canonical::Error::InstanceBindingNotMember(name, class, _)] => {
             assert_eq!(name.as_str(), "other");
             assert_eq!(class.as_str(), "Eq");
             let start = source.find("other x").expect("the binding");
-            assert_eq!(span.to_range().map(|r| r.start), Some(start));
+            assert_eq!(sole_label(error).start, start);
         }
         other => panic!("expected one InstanceBindingNotMember, got {:?}", other),
     }
@@ -6559,6 +6568,134 @@ fn a_class_and_a_type_of_one_name_are_an_error() {
     );
 }
 
+/// Two classes of one name are an error, under the second with the first labelled.
+///
+/// Mutation-checked by never recording a class in `declare_classes`' `first`.
+#[test]
+fn two_classes_of_one_name_are_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Eq a where
+          same : a -> a -> Bool
+    "#};
+    let errors = class_errors(source);
+    let [error @ canonical::Error::ClassNameTaken(name, canonical::NameTakenBy::Class, _, _)] =
+        errors.as_slice()
+    else {
+        panic!("expected one ClassNameTaken, got {:?}", errors);
+    };
+    assert_eq!(name.as_str(), "Eq");
+    assert_eq!(
+        label_ranges(error),
+        vec![
+            (true, nth_range(source, "class Eq a where", 1)),
+            (false, nth_range(source, "class Eq a where", 0)),
+        ]
+    );
+}
+
+/// A class head that is not a name applied to one variable is an error under the head.
+///
+/// Mutation-checked by dropping the `InvalidClassHead` push in `declare_classes`: the
+/// class is then dropped with no error at all.
+#[test]
+fn a_class_head_over_two_variables_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Same a b where
+          same : a -> b -> Bool
+    "#};
+    match class_errors(source).as_slice() {
+        [error @ canonical::Error::InvalidClassHead(_)] => {
+            assert_eq!(sole_label(error), range_of(source, "Same a b"));
+        }
+        other => panic!("expected one InvalidClassHead, got {:?}", other),
+    }
+}
+
+/// A constraint on something other than one type variable is an error under the
+/// constraint.
+///
+/// Mutation-checked by dropping the `ConstraintNotOnVariable` push in `constraints`.
+#[test]
+fn a_constraint_on_a_concrete_type_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Eq Int => Same a where
+          same : a -> a -> Bool
+    "#};
+    match class_errors(source).as_slice() {
+        [error @ canonical::Error::ConstraintNotOnVariable(_)] => {
+            assert_eq!(sole_label(error), range_of(source, "Eq Int"));
+        }
+        other => panic!("expected one ConstraintNotOnVariable, got {:?}", other),
+    }
+}
+
+/// Two members of one name are an error, under the second with the first labelled.
+///
+/// Mutation-checked by never recording a member in `class_signature`'s `first`.
+#[test]
+fn a_member_declared_twice_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Eq a where
+          eq : a -> a -> Bool
+          eq : a -> Bool
+    "#};
+    let errors = class_errors(source);
+    let [error @ canonical::Error::MemberDeclaredTwice(name, _, _)] = errors.as_slice() else {
+        panic!("expected one MemberDeclaredTwice, got {:?}", errors);
+    };
+    assert_eq!(name.as_str(), "eq");
+    assert_eq!(
+        label_ranges(error),
+        vec![
+            (true, range_of(source, "eq : a -> Bool")),
+            (false, range_of(source, "eq : a -> a -> Bool")),
+        ]
+    );
+}
+
+/// `Class(..)` in an import list is an error under the entry: a class has no
+/// constructors to bring in.
+///
+/// Mutation-checked by dropping the class lookup in `process_import`'s `Public` arm: the
+/// entry is then `UnionNotFound`.
+#[test]
+fn an_import_of_a_class_with_constructors_is_an_error() {
+    use zelkova_compiler::PhaseError;
+
+    let mut interfaces = scalar_interfaces();
+    publish(EQ, &mut interfaces);
+
+    let source = indoc::indoc! {r#"
+        module K exposing ()
+
+        import E exposing (Eq(..))
+    "#};
+    let errors =
+        canonicalize_with_interfaces(source, &interfaces).expect_err("the import is rejected");
+    let [error @ canonical::Error::EnvironmentErrors(..)] = errors.as_slice() else {
+        panic!("expected one EnvironmentErrors, got {:?}", errors);
+    };
+    assert_eq!(
+        error.message(),
+        "`Eq` is a class, and a class has no constructors to import"
+    );
+    assert_eq!(sole_label(error), range_of(source, "Eq(..)"));
+}
+
 /// A superclass that names no class is an error under the constraint.
 ///
 /// Mutation-checked by dropping the `ClassNotFound` push in `constraints`.
@@ -6571,9 +6708,9 @@ fn a_superclass_naming_no_class_is_an_error() {
           same : a -> a -> Bool
     "#};
     match class_errors(source).as_slice() {
-        [canonical::Error::ClassNotFound(name, span)] => {
+        [error @ canonical::Error::ClassNotFound(name, _)] => {
             assert_eq!(name.as_str(), "Missing");
-            assert_eq!(span.to_range(), Some(range_of(source, "Missing a")));
+            assert_eq!(sole_label(error), range_of(source, "Missing a"));
         }
         other => panic!("expected one ClassNotFound, got {:?}", other),
     }
@@ -6596,9 +6733,9 @@ fn an_instance_of_no_class_is_an_error() {
             True
     "#};
     match class_errors(source).as_slice() {
-        [canonical::Error::ClassNotFound(name, span)] => {
+        [error @ canonical::Error::ClassNotFound(name, _)] => {
             assert_eq!(name.as_str(), "Missing");
-            assert_eq!(span.to_range(), Some(range_of(source, "Missing Colour")));
+            assert_eq!(sole_label(error), range_of(source, "Missing Colour"));
         }
         other => panic!("expected one ClassNotFound, got {:?}", other),
     }
@@ -6740,13 +6877,13 @@ fn a_tuple_instance_away_from_its_class_is_an_orphan() {
     "#};
     let errors = canonicalize_with_interfaces(source, &interfaces)
         .expect_err("a tuple instance away from its class is rejected");
-    let [error @ canonical::Error::OrphanInstance(instance, span)] = errors.as_slice() else {
+    let [error @ canonical::Error::OrphanInstance(instance, _)] = errors.as_slice() else {
         panic!("expected one OrphanInstance, got {:?}", errors);
     };
     assert_eq!(instance.head, canonical::HeadName::TwoTuple);
     assert_eq!(
-        span.to_range(),
-        Some(range_of(source, "instance Comparable (a, b) where"))
+        sole_label(error),
+        range_of(source, "instance Comparable (a, b) where")
     );
     assert_eq!(
         error.labels()[0].message,
@@ -6865,7 +7002,7 @@ fn an_instance_without_its_superclass_instance_is_an_error() {
             EQ
     "#};
     match class_errors(source).as_slice() {
-        [canonical::Error::MissingSuperclassInstance(instance, superclass, span)] => {
+        [error @ canonical::Error::MissingSuperclassInstance(instance, superclass, _)] => {
             assert_eq!(instance.class, test_qual("Test.Comparable"));
             assert_eq!(*superclass, test_qual("Test.Eq"));
             assert_eq!(
@@ -6873,8 +7010,8 @@ fn an_instance_without_its_superclass_instance_is_an_error() {
                 canonical::HeadName::Type(test_qual("Test.Colour"))
             );
             assert_eq!(
-                span.to_range(),
-                Some(range_of(source, "instance Comparable Colour where"))
+                sole_label(error),
+                range_of(source, "instance Comparable Colour where")
             );
         }
         other => panic!("expected one MissingSuperclassInstance, got {:?}", other),
@@ -7022,10 +7159,10 @@ fn a_header_listing_a_member_alone_is_an_error() {
           same : a -> a -> Bool
     "#};
     match class_errors(source).as_slice() {
-        [canonical::Error::MemberExposedAlone(member, class, span)] => {
+        [error @ canonical::Error::MemberExposedAlone(member, class, _)] => {
             assert_eq!(member.as_str(), "same");
             assert_eq!(class.as_str(), "Same");
-            assert_eq!(span.to_range(), Some(nth_range(source, "same", 0)));
+            assert_eq!(sole_label(error), nth_range(source, "same", 0));
         }
         other => panic!("expected one MemberExposedAlone, got {:?}", other),
     }
@@ -7043,9 +7180,9 @@ fn a_header_exposing_a_class_with_constructors_is_an_error() {
           same : a -> a -> Bool
     "#};
     match class_errors(source).as_slice() {
-        [canonical::Error::ClassExposedWithConstructors(name, span)] => {
+        [error @ canonical::Error::ClassExposedWithConstructors(name, _)] => {
             assert_eq!(name.as_str(), "Same");
-            assert_eq!(span.to_range(), Some(range_of(source, "Same(..)")));
+            assert_eq!(sole_label(error), range_of(source, "Same(..)"));
         }
         other => panic!("expected one ClassExposedWithConstructors, got {:?}", other),
     }
@@ -7132,14 +7269,12 @@ fn a_facade_declaring_a_class_or_an_instance_is_an_error() {
             True
     "#};
     match class_errors(source).as_slice() {
-        [canonical::Error::ClassDeclared(class), canonical::Error::InstanceDeclared(instance)] => {
+        [class @ canonical::Error::ClassDeclared(_), instance @ canonical::Error::InstanceDeclared(_)] =>
+        {
+            assert_eq!(sole_label(class), range_of(source, "class Same a where"));
             assert_eq!(
-                class.to_range(),
-                Some(range_of(source, "class Same a where"))
-            );
-            assert_eq!(
-                instance.to_range(),
-                Some(range_of(source, "instance Same Int where"))
+                sole_label(instance),
+                range_of(source, "instance Same Int where")
             );
         }
         other => panic!(
