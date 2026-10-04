@@ -2084,6 +2084,61 @@ fn a_tuple_is_walked_as_one_shape_with_only_the_fold() {
     );
 }
 
+/// A tuple walked over one value starts at its first element's answer: with no constructor
+/// there is no `atConstructor` to begin at and no position to hand it, so the fold is
+/// `combine (hash a1) (hash a2)` and nothing before it.
+///
+/// Mutation-checked by answering for a constructor whether or not the alternative has one
+/// (`if true` for `alternative.constructor.is_some()` in `Generated::walk_single`): the fold then
+/// starts at `atConstructor (Position 0)` and the exact text goes red.
+#[test]
+fn a_tuple_walked_over_one_value_starts_at_its_first_elements_answer() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (..)
+
+        class Hashable a where
+          hash : a -> Int
+
+          derived hash
+            atConstructor p =
+              seed p
+
+            combine x y =
+              mix x y
+
+        seed : Position -> Int
+        seed p =
+          7
+
+        mix : Int -> Int -> Int
+        mix a b =
+          a
+
+        instance Hashable Int where
+          hash n =
+            n
+
+        instance Hashable (a, b) where
+          derived
+    "#});
+    let instance = &module.instances[1];
+
+    let classes: Vec<_> = instance
+        .context
+        .iter()
+        .map(|predicate| predicate.class.unqualified_name().to_string())
+        .collect();
+    assert_eq!(classes, vec!["Hashable", "Hashable"]);
+
+    let member = derived_member(&module, 1);
+    let text = plain(body(member, "hash"));
+    assert_eq!(
+        text,
+        "case $value of { ($a1, $a2) -> case hash $a1 of { x -> mix x (hash $a2) } }"
+    );
+    assert!(!text.contains("Position"), "{}", text);
+}
+
 /// An instance derived in another module than its class names the class's member as it names
 /// any imported value, and carries the context it inferred, given to each member.
 ///

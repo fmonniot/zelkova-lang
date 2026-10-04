@@ -1798,6 +1798,8 @@ pub enum Error {
     DerivationBindingRepeated(Name, Name, NodeSpan, NodeSpan),
     /// A binding in a derivation written with more parameters than the walk supplies it:
     /// the binding, the member, how many parameters it may take, and the binding's span.
+    /// The compiler's limit rather than the language's: canonical code has no lambda to place
+    /// such a binding with, and `LANG-87` is the ticket.
     DerivationBindingTakesTooMany(Name, Name, usize, NodeSpan),
     /// A class that derives some of its members and not the rest: the class, the members
     /// left out, and the class's head line.
@@ -1811,6 +1813,9 @@ pub enum Error {
     /// A `derived` instance for a type holding an argument with no instance of the
     /// class: which argument, and the word `derived`.
     DerivedInstanceRequires(Box<DerivedRequirement>, NodeSpan),
+    /// A context written on a `derived` instance, whose context is inferred: the class,
+    /// the written context's span and the word `derived`.
+    DerivedInstanceWritesContext(Name, NodeSpan, NodeSpan),
     /// A type name applied to the wrong number of arguments: the name, its
     /// declaration's own arity, the number of arguments actually written, and
     /// `tpe.span` — the whole application, so the caret covers every argument
@@ -2351,6 +2356,10 @@ impl PhaseError for Error {
                     class
                 ),
             },
+            Error::DerivedInstanceWritesContext(class, _, _) => format!(
+                "the instance of `{}` is derived, and a derived instance's context is inferred rather than written",
+                class
+            ),
             Error::DerivedInstanceRequires(requirement, _) => {
                 let part = match &requirement.part {
                     DerivedPart::Variant(variant) => format!("`{}`", variant),
@@ -2810,6 +2819,14 @@ impl PhaseError for Error {
                 &format!("`{}` does not say how it is derived", class),
             ),
             Error::DerivedInstanceNoShape(_, span) => primary(span, "nothing to walk"),
+            Error::DerivedInstanceWritesContext(_, context, derived) => {
+                let mut labels = primary(context, "this context is written on a derived instance");
+                labels.extend(secondary(
+                    derived,
+                    "the context of this instance is inferred".to_owned(),
+                ));
+                labels
+            }
             Error::DerivedInstanceRequires(requirement, span) => {
                 let mut labels = primary(
                     span,
@@ -3748,17 +3765,16 @@ pub fn canonicalize_recovering(
         for (class, name, mut signature) in signatures {
             let (derivations, errors) =
                 derivation::class_derivations(&env, class, name, &signature, &mut unresolved);
+            signature.derivations_rejected = !errors.is_empty();
             derivation_errors.extend(errors);
             signature.derivations = derivations;
             // An instance of the class, in this module, is read against the derivations.
             env.insert_class_signature(name, signature.clone());
             canonical_classes.insert(name.clone(), Class { signature });
         }
-        // A class whose derivation failed is a class that failed, for what is written
-        // after it: the instances of it that ask to be derived are not restated.
-        if !derivation_errors.is_empty() {
-            env.set_incomplete();
-        }
+        // A failed derivation removes no name from the scope, so the scope stays as complete
+        // as it was. The class carries that its derivations were rejected, which is what
+        // keeps an instance asking to be derived from restating it.
         errors.extend(without_restated(derivation_errors, incomplete));
 
         let incomplete = env.is_incomplete();
@@ -3767,7 +3783,10 @@ pub fn canonicalize_recovering(
             instances,
             errors: instance_errors,
         } = classes::do_instances(&env, &source.instances, &mut unresolved);
-        if !instance_errors.is_empty() {
+        // An instance left out of the module is one an importer's scope will not have, and
+        // some are left out with no error here: one of a class whose derivations were
+        // rejected.
+        if !instance_errors.is_empty() || instances.len() < source.instances.len() {
             env.set_incomplete();
         }
         binding_errors.extend(instance_errors);
@@ -3886,8 +3905,8 @@ fn unparsed_values(source: &parser::Module) -> HashMap<Name, NodeSpan> {
 /// An incomplete scope is one where a name could be missing for a reason that has been
 /// reported ([`Module::incomplete`]), so a name that is not found in it says nothing new:
 /// `VariableNotFound`, `VariantNotFound`, `TypeNotFound`, `ClassNotFound`,
-/// `ExportNotFound`, `InfixReferenceInvalidValue`, `MissingSuperclassInstance` and
-/// `DerivedInstanceNotDerivable` are dropped, and every other error is kept. An
+/// `ExportNotFound`, `InfixReferenceInvalidValue` and `MissingSuperclassInstance` are
+/// dropped, and every other error is kept. An
 /// [`Error::Many`] is flattened into its members first, so a group holding one of each
 /// keeps the member that is not a restatement. With `incomplete` false, `errors` comes
 /// back untouched.
@@ -3901,10 +3920,6 @@ fn unparsed_values(source: &parser::Module) -> HashMap<Name, NodeSpan> {
 /// `MissingSuperclassInstance` is on it because an instance that failed is published by
 /// no interface, so a superclass instance its module wrote and could not keep is missing
 /// from every importer's scope, and the module that wrote it has already said why.
-///
-/// `DerivedInstanceNotDerivable` is on it because a class whose derivation failed is a
-/// class that derives nothing it did not get right, and the module that declares it has
-/// already said which derivation was wrong.
 ///
 /// Dropping an error does not make its declaration sound. A declaration the error broke
 /// has already been left out of the module by the caller, and stays left out; one whose
@@ -3937,7 +3952,6 @@ fn without_restated(errors: Vec<Error>, incomplete: bool) -> Vec<Error> {
                 | Error::ExportNotFound(..)
                 | Error::InfixReferenceInvalidValue(..)
                 | Error::MissingSuperclassInstance(..)
-                | Error::DerivedInstanceNotDerivable(..)
         )
     });
     flat

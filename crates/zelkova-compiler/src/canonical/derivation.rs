@@ -25,8 +25,11 @@
 //! A recursive type asks for its own instance, and a group of types may ask for each
 //! other's, so the instances being derived count as in scope with the contexts being
 //! inferred, and the contexts are computed together as a fixed point: each starts empty and
-//! grows by what the others' contexts ask, until nothing grows. The universe is finite —
-//! the derived class and the head's variables — so it stops. What the instance ends with
+//! grows by what the others' contexts ask, until nothing grows. A context holds pairs of a
+//! class and one of the head's variables, and the classes that can appear in one are not
+//! only the derived one: a written or imported instance's context names whatever its
+//! parameters need, and that is followed too. The set of such pairs is finite, the classes
+//! in scope times the head's variables, so it stops. What the instance ends with
 //! is read off once more from scratch, which is what makes its order the order the type's
 //! arguments are written in and not the order the iteration happened to find them.
 //!
@@ -53,8 +56,12 @@
 //!   The names the definition gives are `$left`, `$right`, `$value`, `$a1`, `$b1`, and so
 //!   on, and every name a placed body binds is replaced by one of its own, `$3$x`: a `$`, a
 //!   serial and the name the class wrote. No source file can write a `$`, so no binding of
-//!   a class can bind one of these, and no name is bound twice in the code that results,
-//!   however many copies of a body nest in each other. The JavaScript emitter leaves a name
+//!   a class can bind one of these. What that makes true is that no generated binder is ever
+//!   in the scope of another binding of the same name, however many copies of a body nest in
+//!   each other. A name is still bound in more than one place: each alternative of a walk
+//!   binds `$a1`, `$b1` and so on in its own branch, and the rest of the walk is copied at
+//!   every mention of `combine`'s second parameter, carrying the names it binds with it. Those
+//!   are sibling scopes, in which nothing is captured. The JavaScript emitter leaves a name
 //!   that is not a reserved word as it is, so each is an identifier there, and none is a name
 //!   the emitter makes for itself: those are a `$` and a word (`$curry`), a `$` and digits,
 //!   and names with a package, `companion` or `is` as their first segment, where the first
@@ -72,6 +79,15 @@
 //! value its home module does not expose is not checked where it is placed: the typer
 //! reads only what the module it checks imports, so such a binding is left unchecked, as
 //! one naming any other name the typer cannot read is.
+//!
+//! # What the code costs
+//!
+//! The rest of the walk is copied at every place `combine`'s body names its second
+//! parameter. A body that names it `k` times, in a constructor of `n` arguments, makes
+//! `k^n` copies of the rest, so the size of a derived member is exponential in a
+//! constructor's arity whenever `k` is more than one, and nothing here bounds it. At run
+//! time each path evaluates the rest at most once, which is what the rule asks; it is the
+//! generated code that is large. `LANG-88` tracks it.
 
 use super::classes::mentions;
 use super::environment::{Environment, RootEnvironment};
@@ -665,10 +681,13 @@ fn plan<'a>(
 
     let class = candidate.class.unqualified_name();
     if !signature.derivable() {
-        return Err(vec![Error::DerivedInstanceNotDerivable(
-            class,
-            candidate.span,
-        )]);
+        // A class whose derivations were rejected has said so where it is declared, and an
+        // instance asking to be derived does not say it again.
+        return Err(if signature.derivations_rejected {
+            Vec::new()
+        } else {
+            vec![Error::DerivedInstanceNotDerivable(class, candidate.span)]
+        });
     }
 
     let (shape, requirements) = match candidate.head {
@@ -1164,8 +1183,12 @@ impl<'a> Generated<'a> {
     ///
     /// A body is placed once for every part the walk meets, and a part's body is placed
     /// inside the one before it, so copies of one body would each bind the same spelling
-    /// inside the others' scope. Generated code binds a name once, and does not depend on
-    /// how a later phase scopes a name that is bound again.
+    /// inside the others' scope. No generated binder is ever in the scope of another binding
+    /// of the same name, so generated code does not depend on how a later phase scopes a name
+    /// that is bound again, which matters while the typer drops a shadowed outer binder when
+    /// an inner scope ends (`BUG-49`). The same name is bound in more than one place all the same, since
+    /// the rest of the walk is copied at each mention of `combine`'s second parameter; those
+    /// are sibling scopes.
     fn fresh(&self, original: &Name) -> Name {
         let serial = self.serial.get();
         self.serial.set(serial + 1);

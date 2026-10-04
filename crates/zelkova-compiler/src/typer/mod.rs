@@ -46,7 +46,7 @@ use crate::ir::{
 use crate::name::{Name, QualName};
 use crate::{Interface, ModuleName, PhaseError, SpanLabel};
 use log::debug;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use zelkova_syntax::position::NodeSpan;
 use zelkova_syntax::tuple::Tuple;
 
@@ -1093,6 +1093,9 @@ pub struct TypeCheck {
     /// [`canonical::Module::instances`] holds them: what each is for and an answer for
     /// every binding of its body.
     pub instances: Vec<SolvedInstance>,
+    /// The classes of this module with a derivation binding that was rejected, by name.
+    /// The error is in [`errors`](Self::errors), at the class.
+    pub rejected_derivations: Vec<Name>,
     /// Every error inference reported, one per rejected declaration, binding or instance.
     /// Empty means the module type checked.
     pub errors: Vec<Error>,
@@ -1171,6 +1174,7 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
                 .map(|name| (name.clone(), Solved::NoBody))
                 .collect(),
             instances: Vec::new(),
+            rejected_derivations: Vec::new(),
             errors: Vec::new(),
         };
     }
@@ -1363,7 +1367,24 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
         solved.insert(name.clone(), answer);
     }
 
-    // Fourth pass: every instance, which is checked as a declaration is — its bindings
+    // Fourth pass: the derivations of this module's own classes. A derived instance carries
+    // these bindings placed in its members, but a class that nothing derives has them
+    // checked all the same, and an error in one is at the class, where it was written. It
+    // runs before the instances so that an instance derived from a class whose derivation
+    // is wrong does not report the same mistake again in the members it was given.
+    let rejected_derivations = DerivationCheck {
+        global: &global,
+        table: &table,
+        translation: &translation,
+        spellings: &spellings,
+    }
+    .of(module, &mut counter, &mut errors);
+    let rejected: HashSet<QualName> = rejected_derivations
+        .iter()
+        .map(|class| module.name.qualify_name(class))
+        .collect();
+
+    // Fifth pass: every instance, which is checked as a declaration is — its bindings
     // are values whose annotation is the member's signature at the instance's type — and
     // as a whole, for the superclasses its class asks of it.
     let instances = module
@@ -1375,25 +1396,16 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
                 table: &table,
                 translation: &translation,
                 spellings: &spellings,
+                rejected: &rejected,
             };
             check.of(instance, &mut counter, &mut errors)
         })
         .collect();
 
-    // Fifth pass: the derivations of this module's own classes. A derived instance carries
-    // these bindings placed in its members, but a class that nothing derives has them
-    // checked all the same, and an error in one is at the class, where it was written.
-    DerivationCheck {
-        global: &global,
-        table: &table,
-        translation: &translation,
-        spellings: &spellings,
-    }
-    .of(module, &mut counter, &mut errors);
-
     TypeCheck {
         solved,
         instances,
+        rejected_derivations,
         errors,
     }
 }
@@ -1434,6 +1446,8 @@ struct InstanceCheck<'a> {
     table: &'a classes::ClassTable<'a>,
     translation: &'a Translation<'a>,
     spellings: &'a Spellings,
+    /// The classes of this module whose derivations this pass rejected.
+    rejected: &'a HashSet<QualName>,
 }
 
 impl InstanceCheck<'_> {
@@ -1449,7 +1463,10 @@ impl InstanceCheck<'_> {
     /// A derived instance is checked like any other. Canonicalization gave it the members
     /// its class's derivation stands for and the context its type's arguments need, so its
     /// superclasses are discharged against that context, and an error in a generated
-    /// binding is on the span of the word `derived`.
+    /// binding is on the span of the word `derived`. Where the class's derivations were
+    /// rejected, in this module or the one that declares it, the class has the error and a
+    /// derived instance's members, which are generated out of the derivation that failed,
+    /// report none of their own.
     fn of(
         &self,
         instance: &canonical::Instance,
@@ -1488,6 +1505,12 @@ impl InstanceCheck<'_> {
 
         let mut rejected = false;
         let mut bindings = Vec::new();
+
+        // The members of an instance derived from a class whose derivations were rejected
+        // restate the class's error, so an error in one is left to it.
+        let restated = instance.derived
+            && (self.rejected.contains(&signature.class)
+                || class.is_some_and(|class| class.derivations_rejected));
 
         if let Some(class) = class {
             let obligations = class
@@ -1538,13 +1561,15 @@ impl InstanceCheck<'_> {
             let answer = match self.binding(value, class, &scope, counter) {
                 Some(Ok(answer)) => answer,
                 Some(Err(kind)) => {
-                    errors.push(Error {
-                        kind,
-                        span: value.span(),
-                        declaration: name.clone(),
-                        within: Within::Binding(text.clone()),
-                        spellings: self.spellings.clone(),
-                    });
+                    if !restated {
+                        errors.push(Error {
+                            kind,
+                            span: value.span(),
+                            declaration: name.clone(),
+                            within: Within::Binding(text.clone()),
+                            spellings: self.spellings.clone(),
+                        });
+                    }
                     Solved::Rejected
                 }
                 None => Solved::Untranslatable { span: value.span() },
@@ -1650,23 +1675,30 @@ impl DerivationCheck<'_> {
     /// annotated with the type the chapter gives its role over the type the member
     /// answers with — `matched : R`, `differed : Position -> Position -> R`,
     /// `atConstructor : Position -> R` and `combine : R -> R -> R`. Errors are pushed onto
-    /// `errors`, classes in the order of their names.
+    /// `errors`, classes in the order of their names. The classes with a binding that did
+    /// not check come back by name, in that order.
     ///
     /// No context is given to a binding: none of them mentions the class variable, so each
     /// stands for every type that derives the class, and what one needs of a type is an
     /// instance in scope or an error. `Comparable`'s `differed i j = compare i j` needs
     /// `Comparable Position`.
-    fn of(&self, module: &Module, counter: &mut u32, errors: &mut Vec<Error>) {
+    fn of(&self, module: &Module, counter: &mut u32, errors: &mut Vec<Error>) -> Vec<Name> {
         let mut classes: Vec<_> = module.classes.iter().collect();
         classes.sort_by(|left, right| left.0.cmp(right.0));
 
-        for (_, class) in classes {
+        let mut rejected = Vec::new();
+        for (name, class) in classes {
+            let before = errors.len();
             for derivation in &class.signature.derivations {
                 for (role, value) in derivation.bindings.roles() {
                     self.binding(derivation, role, value, counter, errors);
                 }
             }
+            if errors.len() > before {
+                rejected.push(name.clone());
+            }
         }
+        rejected
     }
 
     fn binding(

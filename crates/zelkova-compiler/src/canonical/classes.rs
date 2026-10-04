@@ -75,6 +75,13 @@ pub struct ClassSignature {
     /// member. A derivation that did not is reported and is not here, so the member it
     /// was for is one this class does not [derive](Self::derivable).
     pub derivations: Vec<Derivation>,
+    /// Whether the module that declares the class rejected one of its derivations: one
+    /// did not pass the checks a derivation is held to, the class derives some of its
+    /// members and not the rest, or the type checker rejected one's binding. That module
+    /// has reported why, so an instance asking to be derived is not told again that the
+    /// class is not derivable, and a derived instance's members do not report the type
+    /// error a second time.
+    pub derivations_rejected: bool,
     /// Where the head line was written, `class` through `where`.
     pub span: NodeSpan,
 }
@@ -302,11 +309,16 @@ pub struct InstanceSignature {
 
 /// An `instance` declaration of the module under check.
 ///
-/// A derived instance is one with the bindings its class's derivation stands for, and is
-/// not told apart from a written one past this point.
+/// A derived instance is one with the bindings its class's derivation stands for. Past this
+/// point it is read like a written one, bar [`derived`](Self::derived), which says only that
+/// its bindings are generated.
 #[derive(Debug, PartialEq)]
 pub struct Instance {
     pub signature: InstanceSignature,
+    /// Whether the body is the word `derived`. The type checker reads it for one purpose:
+    /// an error in a binding generated out of a derivation the class's module rejected is
+    /// that derivation's error, reported where it was written.
+    pub derived: bool,
     /// One binding per member, each canonicalized as an ordinary value. For a written
     /// instance they are in the order written, and a binding that did not canonicalize
     /// is left out and its error reported. For a derived one they are the members of
@@ -519,6 +531,7 @@ pub(super) fn class_signature(
             superclasses,
             members,
             derivations: Vec::new(),
+            derivations_rejected: false,
             span: class.span,
         })
     } else {
@@ -758,7 +771,9 @@ fn distinct_variables<'a>(
 pub(super) struct Instances {
     /// Every instance that passed every check, in source order.
     pub instances: Vec<Instance>,
-    /// Why each of the others did not, and every name a binding could not resolve.
+    /// Why each of the others did not, and every name a binding could not resolve. An
+    /// instance of a class whose own declaration failed is among the others with nothing
+    /// said here, since that declaration's error says it.
     pub errors: Vec<Error>,
 }
 
@@ -829,10 +844,12 @@ pub(super) fn do_instances(
         .iter()
         .zip(&heads)
         .zip(&contexts)
-        .filter_map(|((_, head), context)| {
+        .filter_map(|((instance, head), context)| {
             let (class, head) = head.as_ref().ok()?;
-            let context = match context {
-                Some(Ok(context)) => context
+            // A derived instance's context is inferred and never written, so whatever was
+            // written on one is not what it needs; the written one is an error of its own.
+            let context = match (&instance.body, context) {
+                (parser::InstanceBody::Bindings(_), Some(Ok(context))) => context
                     .iter()
                     .map(|constraint| (constraint.class.clone(), constraint.variable.clone()))
                     .collect(),
@@ -893,6 +910,7 @@ pub(super) fn do_instances(
         let class = &class;
 
         let mut instance_errors = Vec::new();
+        let mut failed_silently = false;
         let signature = env.class_signature(class);
 
         let mut context = match contexts[index].take() {
@@ -905,26 +923,31 @@ pub(super) fn do_instances(
         };
 
         let bindings = match &instance.body {
-            parser::InstanceBody::Derived(_) => match derived.remove(&index) {
-                Some(Ok(derived)) => {
-                    // What the instance writes of its own is kept, and what its type's
-                    // arguments need is added to it.
-                    for constraint in derived.context {
-                        if !context.iter().any(|written| {
-                            written.class == constraint.class
-                                && written.variable == constraint.variable
-                        }) {
-                            context.push(constraint);
-                        }
+            parser::InstanceBody::Derived(derived_span) => {
+                // The context of a derived instance is what its type's arguments need and
+                // nothing the instance writes, so one that is written is an error.
+                if let Some(written) = &instance.context {
+                    instance_errors.push(Error::DerivedInstanceWritesContext(
+                        class.unqualified_name(),
+                        written.span,
+                        *derived_span,
+                    ));
+                }
+                match derived.remove(&index) {
+                    Some(Ok(derived)) => {
+                        context = derived.context;
+                        derived.bindings
                     }
-                    derived.bindings
+                    Some(Err(derive_errors)) => {
+                        // No error here is a failure reported elsewhere, in the class's
+                        // own declaration, and the instance has no members to keep.
+                        failed_silently |= derive_errors.is_empty();
+                        instance_errors.extend(derive_errors);
+                        Vec::new()
+                    }
+                    None => Vec::new(),
                 }
-                Some(Err(derive_errors)) => {
-                    instance_errors.extend(derive_errors);
-                    Vec::new()
-                }
-                None => Vec::new(),
-            },
+            }
             parser::InstanceBody::Bindings(bindings) => {
                 let (values, binding_errors) =
                     instance_bindings(env, class, signature, instance, bindings, unresolved);
@@ -990,7 +1013,7 @@ pub(super) fn do_instances(
             }
         }
 
-        if instance_errors.is_empty() {
+        if instance_errors.is_empty() && !failed_silently {
             kept.push(Instance {
                 signature: InstanceSignature {
                     class: class.clone(),
@@ -1000,6 +1023,7 @@ pub(super) fn do_instances(
                     span: instance.span,
                 },
                 bindings,
+                derived: matches!(instance.body, parser::InstanceBody::Derived(_)),
             });
         } else {
             errors.extend(instance_errors);
