@@ -9,7 +9,7 @@ A **type class** is how Zelkova writes that middle. A class names a set of opera
 joins the class by declaring an **instance** that implements them; and a signature says what it
 needs by naming the class in front of the type it constrains.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Order, Comparable)
 
 type Order
@@ -21,11 +21,14 @@ class Comparable a where
   compare : a -> a -> Order
 ```
 
-**Not implemented:** of all of this, the compiler checks a constraint and nothing else. A class
-and an instance parse, and canonicalization rejects each one, so every block here showing one is
-tagged `expect=unimplemented`, and each goes red the day the construct it shows starts working.
-A constraint parses and is checked to be shaped like one, and is then ignored: see [Constraining
-an annotation](#constraining-an-annotation). The type-class ticket program in
+**Not implemented:** the compiler resolves classes and instances and type checks none of it.
+It holds an instance to its class's members, to its superclasses and to [the orphan
+rule](#where-an-instance-may-be-declared), and a member is a value of its module. A declaration
+that uses a member is not type checked, a derivation and a `derived` instance are read and not
+checked, nothing yet produces the members a derived instance stands for, and a module holding a
+class or an instance does not compile to JavaScript. A constraint in an annotation parses and is
+checked to be shaped like one, and is then ignored: see [Constraining an
+annotation](#constraining-an-annotation). The type-class ticket program in
 [`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
 land.
 
@@ -34,7 +37,7 @@ land.
 A class declaration is the keyword `class`, the class's name, one type variable, `where`, and an
 indented block of **member signatures** — one per line, each an ordinary `name : Type`.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Order, Comparable)
 
 type Order
@@ -110,7 +113,7 @@ An instance declaration is the keyword `instance`, the class's name, the type jo
 `where`, and an indented block of **member bindings**: one ordinary function declaration per
 member, with no type annotations, because the class already gave each its type.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Colour)
 
 type Colour
@@ -121,6 +124,10 @@ type Order
   = LT
   | EQ
   | GT
+
+class Comparable a where
+  compare : a -> a -> Order
+  lt : a -> a -> Bool
 
 instance Comparable Colour where
   compare a b =
@@ -162,7 +169,7 @@ held to this rule as that type.
 An instance for a type with parameters may need something of them. It says so with a context,
 in the notation [a signature uses](#constraining-an-annotation):
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Box, Eq)
 
 type Box a
@@ -185,13 +192,27 @@ the context holds as it does inside a constrained function, and a use of the ins
 An instance may ask for the definition its type's shape already implies rather than write it.
 Its body is the single word `derived`:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Colour)
 
 type Colour
   = Red
   | Green
   | Blue
+
+class Eq a where
+  eq : a -> a -> Bool
+
+  derived eq
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True ->
+          y
+
+        False ->
+          False
 
 instance Eq Colour where
   derived
@@ -212,7 +233,7 @@ that may be derived is one whose own declaration supplies that half, in ordinary
 A member signature may be followed by a **derivation**: the word `derived`, the member it is for,
 and the bindings that member's signature calls for.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Eq)
 
 class Eq a where
@@ -293,7 +314,7 @@ arguments out to the answer, and `matched` makes a constructor with no arguments
 the positions they are declared at, so `Red` is less than `Green` in the `Colour` type above;
 two of the same constructor by their arguments, left to right, the first unequal pair deciding:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Comparable)
 
 type Order
@@ -468,11 +489,25 @@ does. In particular a class owes no `Position` instance for the positions `diffe
 Where an argument's type is a variable, the requirement becomes a **constraint on the derived
 instance**, inferred rather than written:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Box)
 
 type Box a
   = Box a
+
+class Eq a where
+  eq : a -> a -> Bool
+
+  derived eq
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True ->
+          y
+
+        False ->
+          False
 
 instance Eq (Box a) where
   derived
@@ -489,7 +524,7 @@ contents have one. A parameter no variant uses carries no constraint.
 Where the argument's type is concrete, the requirement is checked at the declaration, and an
 argument whose type has no instance is an error there, naming the variant and the type:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Key, Entry)
 
 type Key
@@ -498,6 +533,20 @@ type Key
 type Entry
   = Entry Key
 
+class Eq a where
+  eq : a -> a -> Bool
+
+  derived eq
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True ->
+          y
+
+        False ->
+          False
+
 instance Eq Entry where
   derived
 ```
@@ -505,6 +554,9 @@ instance Eq Entry where
 The instance is the claim that an `Entry` can be compared for equality, and the claim is false
 where it is written. A variant holding a **function** is the case no instance can rescue, since a
 function type [has no useful equality at all](evaluation-semantics.md#functions-are-not-comparable).
+
+**Not implemented:** the block above is accepted. Nothing checks what a derived instance
+requires of its type's arguments ([`LANG-83`](../tickets/lang-83.md)).
 
 A superclass obligation is unchanged: a derived `Comparable Colour` is rejected unless an
 `Eq Colour` instance exists, derived in its turn or written out.
@@ -578,7 +630,7 @@ constraint, so none of the blocks above asks anything of a caller
 A constraint is part of a declaration's type only where its annotation wrote it. A declaration
 with no annotation, whose body needs a class of a type nothing determines, is an error:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Eq)
 
 class Eq a where
@@ -591,6 +643,9 @@ same x y =
 `same : Eq a => a -> a -> Bool` is what that declaration has to say. A declaration whose body
 pins the type down needs no annotation — the class is required of a known type, and that is
 settled where it stands.
+
+**Not implemented:** the block above is accepted. A declaration that uses a member is not type
+checked, so nothing asks what `same` requires ([`LANG-40`](../tickets/lang-40.md)).
 
 ### A constraint belongs to a signature, not to a type
 
@@ -632,7 +687,7 @@ afterwards, and this is the error that check produces.
 A class may require another. `Comparable` needs equality, so it is declared with `Eq` in front
 of its own head, in the same `=>` notation a signature uses:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Order, Eq, Comparable)
 
 type Order
@@ -666,10 +721,35 @@ A tuple type and `()` are declared in no module, so for them only the first clau
 instance whose [head](#what-an-instance-is-declared-for) is a tuple or `()` is legal in the
 module that declares the class, and nowhere else.
 
-An instance in any third module is rejected:
+Given a class and a type, each declared in a module of its own:
 
-```zel expect=unimplemented
+```zel expect=ok package=orphan
+module Comparable exposing (Comparable, Order(..))
+
+type Order
+  = LT
+  | EQ
+  | GT
+
+class Comparable a where
+  compare : a -> a -> Order
+```
+
+```zel expect=ok package=orphan
+module Colour exposing (Colour(..))
+
+type Colour
+  = Red
+  | Blue
+```
+
+an instance of the one for the other in any third module is rejected:
+
+```zel expect=canonical-error:OrphanInstance package=orphan
 module App exposing (Main)
+
+import Colour exposing (Colour)
+import Comparable exposing (Comparable, Order(..))
 
 type Main
   = Main

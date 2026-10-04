@@ -1,6 +1,7 @@
 //! env module
 
 use super::{parser, Pattern, PatternKind};
+use super::{ClassSignature, PublishedInstance};
 use super::{Infix, Interface, ModuleName, Name, QualName, Type, TypeConstructor, UnionType};
 use crate::default_imports;
 use crate::scalars;
@@ -350,6 +351,9 @@ pub(crate) fn new_environment(
         types: HashMap::new(),
         constructors: HashMap::new(),
         variables: HashMap::new(),
+        classes: HashMap::new(),
+        class_signatures: HashMap::new(),
+        instances: Vec::new(),
         incomplete: false,
     };
     let mut errors = vec![];
@@ -454,8 +458,22 @@ fn process_import(
         env.incomplete = true;
     }
 
+    // Every instance the interface carries is in scope, whatever this import exposes:
+    // an instance has no name for an `exposing` list to carry, and coherence needs it
+    // wherever its class and its type are
+    // ([Type classes](../../../docs/spec/type-classes.md#declaring-an-instance)).
+    for published in &interface.instances {
+        env.insert_imported_instance(published);
+    }
+
     // First we insert all values/types from the module, prefixed with the module name or its alias
     let prefix = alias.as_ref().unwrap_or(imported_module_name);
+
+    // A class and its members are reachable qualified whatever the import exposes, as
+    // a value and a type are.
+    for (class_name, signature) in &interface.classes {
+        insert_foreign_class(env, Some(prefix), interface, class_name, signature, origin);
+    }
 
     for (value_name, (node_span, tpe)) in &interface.values {
         insert_foreign_value(
@@ -502,6 +520,10 @@ fn process_import(
                     .insert(op_name.clone(), imported_infix(interface, infix));
             }
 
+            for (class_name, signature) in &interface.classes {
+                insert_foreign_class(env, None, interface, class_name, signature, origin);
+            }
+
             // We need to insert the type without any qualifier, including variants
             for (union_name, union) in &interface.unions {
                 insert_foreign_union_type(
@@ -521,6 +543,25 @@ fn process_import(
                 match &exposed.kind {
                     parser::ExposedKind::Lower(value_name) => {
                         let Some((node_span, tpe)) = interface.values.get(value_name) else {
+                            // A class member may be named on its own, as any exposed
+                            // value may.
+                            if let Some(member) = interface
+                                .classes
+                                .values()
+                                .flat_map(|signature| signature.members.iter())
+                                .find(|member| &member.name == value_name)
+                            {
+                                insert_foreign_value(
+                                    env,
+                                    value_name.clone(),
+                                    member.tpe.clone(),
+                                    interface.source_span(member.span),
+                                    &interface.module_name,
+                                    origin,
+                                );
+                                return Ok(());
+                            }
+
                             // Missing from an interface that is missing names it
                             // could not publish: the entry restates that failure.
                             if interface.incomplete {
@@ -552,7 +593,16 @@ fn process_import(
                         // whether the module exposed the constructors: this one
                         // never reads `variants`, so a type exposed opaquely is
                         // exactly what it asks for.
+                        //
+                        // A bare uppercase name may also be a class, which brings its
+                        // members along unqualified.
                         let Some(union) = interface.unions.get(type_name) else {
+                            if let Some(signature) = interface.classes.get(type_name) {
+                                insert_foreign_class(
+                                    env, None, interface, type_name, signature, origin,
+                                );
+                                return Ok(());
+                            }
                             if interface.incomplete {
                                 return Ok(());
                             }
@@ -580,6 +630,13 @@ fn process_import(
                     }
                     parser::ExposedKind::Upper(type_name, parser::Privacy::Public) => {
                         let Some(union) = interface.unions.get(type_name) else {
+                            // A class has no constructors for `(..)` to bring in.
+                            if interface.classes.contains_key(type_name) {
+                                return Err(EnvError::ClassHasNoConstructors(
+                                    type_name.clone(),
+                                    exposed.span,
+                                ));
+                            }
                             if interface.incomplete {
                                 return Ok(());
                             }
@@ -667,12 +724,26 @@ fn imported_infix(interface: &Interface, infix: &Infix) -> InfixEntry {
         None => InfixDeclaration::Unknown,
     };
 
+    // A member of a class the module exposes may back an operator too, and its type is
+    // its member signature. The typer registers no type for a member, so a use of the
+    // operator is left unchecked, as a use of the member by name is.
+    let member = || {
+        interface
+            .classes
+            .values()
+            .flat_map(|signature| signature.members.iter())
+            .find(|member| member.name == infix.function_name)
+            .map(|member| &member.tpe)
+    };
+
     let function = match interface
         .values
         .get(&infix.function_name)
         .or_else(|| interface.infix_functions.get(&infix.function_name))
+        .map(|(_, tpe)| tpe)
+        .or_else(member)
     {
-        Some((_, tpe)) => InfixFunction::Imported(interface.module_name.clone(), tpe.clone()),
+        Some(tpe) => InfixFunction::Imported(interface.module_name.clone(), tpe.clone()),
         None => InfixFunction::ImportedUntyped(interface.module_name.clone()),
     };
 
@@ -718,6 +789,44 @@ fn insert_foreign_union_type<'a, I: Iterator<Item = &'a TypeConstructor>>(
         // Variant are not qualified, which means we have to alias/qualify them as needed
         env.constructors
             .insert(qualify(&variant.name), variant.clone());
+    }
+}
+
+/// Register a class `interface` exposes under one spelling, as
+/// [`insert_foreign_union_type`] registers a union: `qualifier` is the prefix the
+/// importing module reaches it by, or `None` for the unqualified spelling an `exposing`
+/// list adds. Every member of the class arrives with it under the same spelling, as a
+/// value whose type is its member signature.
+///
+/// The members are not in [`Interface::values`], so the typer, which declares a foreign
+/// value from there, registers no type for one, and a declaration that uses a member is
+/// left unchecked.
+fn insert_foreign_class(
+    env: &mut RootEnvironment,
+    qualifier: Option<&Name>,
+    interface: &Interface,
+    class_name: &Name,
+    signature: &ClassSignature,
+    origin: ImportOrigin,
+) {
+    let qualify = |n: &Name| match qualifier {
+        Some(q) => n.clone().qualify_with(q.to_string()),
+        None => n.clone(),
+    };
+
+    let declared = interface.module_name.qualify_name(class_name);
+    env.classes.insert(qualify(class_name), declared.clone());
+    env.class_signatures.insert(declared, signature.clone());
+
+    for member in &signature.members {
+        insert_foreign_value(
+            env,
+            qualify(&member.name),
+            member.tpe.clone(),
+            interface.source_span(member.span),
+            &interface.module_name,
+            origin,
+        );
     }
 }
 
@@ -776,6 +885,9 @@ pub enum EnvError {
     /// does not declare, where that name was written (`ERR-9`), and an optional
     /// "did you mean …?" suggestion (`ERR-7`).
     ValueNotFound(Name, NodeSpan, Option<Name>),
+    /// `Name(..)` in an `exposing` list naming a class the imported module exposes, and
+    /// where the entry was written. A class has no constructors for `(..)` to bring in.
+    ClassHasNoConstructors(Name, NodeSpan),
     Multiple(Vec<EnvError>),
 }
 
@@ -813,6 +925,10 @@ impl PhaseError for EnvError {
             ),
             EnvError::ValueNotFound(name, _, _) => format!(
                 "the imported module does not expose a value named `{}`",
+                name
+            ),
+            EnvError::ClassHasNoConstructors(name, _) => format!(
+                "`{}` is a class, and a class has no constructors to import",
                 name
             ),
             EnvError::Multiple(errors) => match errors.as_slice() {
@@ -872,6 +988,10 @@ impl PhaseError for EnvError {
                     suggestion_suffix(suggestion)
                 ),
             ),
+            EnvError::ClassHasNoConstructors(name, span) => primary(
+                span,
+                format!("`{}(..)` asks for constructors a class does not have", name),
+            ),
             EnvError::Multiple(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
         }
     }
@@ -884,6 +1004,10 @@ impl PhaseError for EnvError {
             },
             EnvError::ConstructorsNotExposed(name, _, _) => vec![format!(
                 "write `{}` without `(..)` to import the type alone",
+                name
+            )],
+            EnvError::ClassHasNoConstructors(name, _) => vec![format!(
+                "write `{}` without `(..)`: naming a class imports it with every member",
                 name
             )],
             _ => Vec::new(),
@@ -903,6 +1027,16 @@ pub(crate) struct RootEnvironment {
     types: HashMap<Name, TypeArity>,
     constructors: HashMap<Name, TypeConstructor>,
     variables: HashMap<Name, ValueType>,
+    /// Every class name in scope, under each spelling that reaches it, to the class's
+    /// declaration. A class shares the types namespace and is kept apart from `types`,
+    /// because a class name is not a type.
+    classes: HashMap<Name, QualName>,
+    /// What each class in scope declares, by its declaration's name. A class of this
+    /// module is here once its signature canonicalized, and not before.
+    class_signatures: HashMap<QualName, ClassSignature>,
+    /// Every instance an import brought into scope, each once however many routes
+    /// reached it.
+    instances: Vec<PublishedInstance>,
     /// Whether a name could be missing from this scope for a reason already reported.
     /// See [`is_incomplete`](Self::is_incomplete).
     incomplete: bool,
@@ -967,6 +1101,47 @@ impl RootEnvironment {
                 variables,
             },
         );
+    }
+
+    /// Register the name of a `class` declaration of the module under check, before
+    /// anything has canonicalized it, so that a superclass or an instance can name a
+    /// class written further down the file.
+    pub(crate) fn insert_declared_class(&mut self, name: &Name) {
+        let qualified = self.module_name.qualify_name(name);
+        self.classes.insert(name.clone(), qualified);
+    }
+
+    /// Record the signature of a `class` declaration of the module under check.
+    pub(crate) fn insert_class_signature(&mut self, name: &Name, signature: ClassSignature) {
+        let qualified = self.module_name.qualify_name(name);
+        self.class_signatures.insert(qualified, signature);
+    }
+
+    /// The declaration a class name written in this module resolves to.
+    pub(crate) fn find_class(&self, name: &Name) -> Option<&QualName> {
+        self.classes.get(name)
+    }
+
+    /// What the class `name` declares, when it is in scope and its declaration
+    /// canonicalized.
+    pub(crate) fn class_signature(&self, name: &QualName) -> Option<&ClassSignature> {
+        self.class_signatures.get(name)
+    }
+
+    /// Every instance the imports brought into scope.
+    pub(crate) fn imported_instances(&self) -> &[PublishedInstance] {
+        &self.instances
+    }
+
+    /// Bring an imported instance into scope, unless another route already did.
+    fn insert_imported_instance(&mut self, published: &PublishedInstance) {
+        if !self
+            .instances
+            .iter()
+            .any(|known| known.same_declaration(published))
+        {
+            self.instances.push(published.clone());
+        }
     }
 
     // TODO Use insert_foreign_union_type (and rename to remove the foreign part)
@@ -1272,6 +1447,8 @@ mod tests {
             infixes: HashMap::new(),
             infix_functions: HashMap::new(),
             arities: HashMap::new(),
+            classes: HashMap::new(),
+            instances: Vec::new(),
             file: None,
             incomplete: false,
         };
@@ -1390,6 +1567,8 @@ mod tests {
                     infixes: HashMap::new(),
                     infix_functions: HashMap::new(),
                     arities: HashMap::new(),
+                    classes: HashMap::new(),
+                    instances: Vec::new(),
                     file: None,
                     incomplete: false,
                 },
@@ -1888,6 +2067,8 @@ mod tests {
             infixes,
             infix_functions: HashMap::new(),
             arities: HashMap::new(),
+            classes: HashMap::new(),
+            instances: Vec::new(),
             file: None,
             incomplete: false,
         };

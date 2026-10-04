@@ -28,6 +28,11 @@ use std::collections::BinaryHeap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use zelkova_syntax::parser;
 
+mod classes;
+pub use classes::{
+    Class, ClassSignature, Constraint, DeclarationSite, Derivation, HeadName, Instance,
+    InstanceBody, InstanceHead, InstanceName, InstanceSignature, Member, PublishedInstance,
+};
 mod environment;
 /// Part of [`Error::AmbiguousVariables`] and [`Error::AmbiguousVariants`]'s public
 /// shape, so it is re-exported alongside the error rather than left behind a
@@ -60,6 +65,15 @@ pub struct Module {
     /// Operator name to infix details
     pub infixes: HashMap<Name, Infix>,
     pub types: HashMap<Name, UnionType>,
+    /// Every `class` declaration that canonicalized, by name. A member is not in
+    /// [`values`](Self::values): it has a signature and no body, and the class carries it.
+    pub classes: HashMap<Name, Class>,
+    /// Every `instance` declaration that passed every check, in source order.
+    pub instances: Vec<Instance>,
+    /// Every instance this module's imports brought into scope, each once.
+    /// [`to_interface`](Self::to_interface) publishes them beside the module's own, which
+    /// is what carries an instance to every module that can reach its declaring one.
+    pub imported_instances: Vec<PublishedInstance>,
     pub values: HashMap<Name, Value>,
     /// The value declarations that were written and have no canonical form, sorted by name.
     ///
@@ -83,8 +97,9 @@ pub struct Module {
     ///
     /// Set when the module's scope ended incomplete: an import did not resolve, an
     /// import resolved to an [`Interface`] whose own
-    /// [`incomplete`](Interface::incomplete) is set, a `type` or `infix` declaration
-    /// failed, or a declaration chunk that names nothing failed to parse. Also set when a
+    /// [`incomplete`](Interface::incomplete) is set, a `type`, `infix`, `class` or
+    /// `instance` declaration failed, or a declaration chunk that names nothing failed to
+    /// parse. Also set when a
     /// value declaration was written with an annotation that did not canonicalize, or is
     /// named by a chunk that failed to parse and has no type, since its annotation may be
     /// that chunk: those are the two ways a name goes missing from
@@ -127,8 +142,8 @@ impl Broken {
 #[derive(Debug)]
 pub struct Canonicalized {
     /// The module, holding every declaration that canonicalized. A value declaration
-    /// that did not is in [`Module::broken`]; a `type` or `infix` declaration that did
-    /// not is in neither.
+    /// that did not is in [`Module::broken`]; a `type`, `infix`, `class` or `instance`
+    /// declaration that did not is in neither.
     pub module: Module,
     /// Every error canonicalization reported. Empty exactly when [`canonicalize`] would
     /// answer `Ok` with [`module`](Self::module).
@@ -185,8 +200,20 @@ impl Module {
     ///   `process_import`'s `Privacy::Private` arm reads the arity from — and no
     ///   constructor to build or match one with.
     ///
+    /// A class reaches it, with every member, when the header names it
+    /// ([`ExportType::Class`]).
+    ///
     /// [`Exports::Everything`] — a `exposing (..)` header — exposes every
     /// declaration with every constructor, so nothing is dropped in that case.
+    ///
+    /// # What the header does not remove
+    ///
+    /// Every instance reaches the interface: the module's own, and every one its imports
+    /// brought into scope ([`imported_instances`](Self::imported_instances)). An instance
+    /// has no name for a header to list, and it has to be in scope in every module that
+    /// can reach the module declaring it, through however many imports, so each module
+    /// passes on what it received
+    /// ([Type classes](../../docs/spec/type-classes.md#declaring-an-instance)).
     ///
     /// An exposed infix whose backing function is not itself separately exposed
     /// — `infix left 6 (+) = add` with `(+)` in the header and `add` not, which
@@ -269,6 +296,29 @@ impl Module {
             })
             .collect();
 
+        let classes = self
+            .classes
+            .iter()
+            .filter(|(name, _)| self.exports.exposes(name, &ExportType::Class))
+            .map(|(name, class)| (name.clone(), class.signature.clone()))
+            .collect();
+
+        let instances = self
+            .instances
+            .iter()
+            .map(|instance| PublishedInstance {
+                signature: instance.signature.clone(),
+                source: file.and_then(|file| {
+                    instance
+                        .signature
+                        .span
+                        .span()
+                        .map(|span| super::SourceSpan { file, span })
+                }),
+            })
+            .chain(self.imported_instances.iter().cloned())
+            .collect();
+
         super::Interface {
             module_name: self.name.clone(),
             values,
@@ -277,6 +327,8 @@ impl Module {
             infixes,
             infix_functions,
             arities,
+            classes,
+            instances,
             file,
             incomplete: self.incomplete,
         }
@@ -347,7 +399,10 @@ impl Exports {
             Exports::Specifics(specifics) => match specifics.get(name) {
                 Some(ExportType::UnionPublic) => UnionVisibility::Transparent,
                 Some(ExportType::UnionPrivate) => UnionVisibility::Opaque,
-                Some(ExportType::Value) | Some(ExportType::Infix) | None => UnionVisibility::Hidden,
+                Some(ExportType::Value)
+                | Some(ExportType::Infix)
+                | Some(ExportType::Class)
+                | None => UnionVisibility::Hidden,
             },
         }
     }
@@ -373,6 +428,8 @@ pub enum ExportType {
     Infix,
     UnionPublic,
     UnionPrivate,
+    /// A class, named bare in the header, which exposes it with every member.
+    Class,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1594,12 +1651,74 @@ pub enum Error {
     /// A function was declared with multiple bindings (multi-clause definitions),
     /// which the compiler does not support yet.
     MultipleBindingsUnsupported(Name, NodeSpan),
-    /// A `class` declaration. It parses, and nothing checks or keeps it yet: the span is
-    /// the declaration's head line, `class` through `where`.
-    ClassUnsupported(NodeSpan),
-    /// An `instance` declaration, which parses and is not checked or kept yet. The span is
-    /// the declaration's head line, `instance` through `where`.
-    InstanceUnsupported(NodeSpan),
+    /// A class head that is not an uppercase name applied to exactly one type variable,
+    /// and where the head was written, context excluded.
+    InvalidClassHead(NodeSpan),
+    /// A class declared where a type or an earlier class of the module already has its
+    /// name, the two sharing [one namespace](../../docs/spec/name-resolution.md#namespaces):
+    /// the name, which kind of declaration had it first, the class's head line and the
+    /// other declaration's.
+    ClassNameTaken(Name, NameTakenBy, NodeSpan, NodeSpan),
+    /// A class name — a superclass, an instance's class, a constraint in an instance's
+    /// context — that nothing in scope declares: the name as written, and the
+    /// constraint or the instance head it was written in.
+    ClassNotFound(Name, NodeSpan),
+    /// A constraint in a class head or an instance's context whose argument is not one
+    /// type variable, and the constraint's span.
+    ConstraintNotOnVariable(NodeSpan),
+    /// A constraint in a class head or an instance's context on a type variable the head
+    /// does not bind: the variable, and where it was written.
+    ConstraintVariableUnbound(Name, NodeSpan),
+    /// A member signature written with a context of its own: the member, and the
+    /// context's span. A member signature carries no constraint.
+    MemberConstrained(Name, NodeSpan),
+    /// A member signature marked `unsafe`, which only a facade signature may be: the
+    /// member, and the signature's span, which starts at the word.
+    MemberUnsafe(Name, NodeSpan),
+    /// A member signature that never mentions the class variable, so no use of it could
+    /// say which instance it meant: the member, the class, the class variable, and the
+    /// signature's span.
+    MemberMissesClassVariable(Name, Name, Name, NodeSpan),
+    /// Two member signatures of one name in one class: the name, the second signature's
+    /// span and the first's.
+    MemberDeclaredTwice(Name, NodeSpan, NodeSpan),
+    /// A member whose name another value of the module already has — a top-level
+    /// declaration, or a member of another of its classes. A member is a top-level
+    /// value of the module declaring its class. Carries the member, its class, the
+    /// other class when the other is a member, the member's signature span and the
+    /// other declaration's.
+    MemberNameTaken(Name, Name, Option<Name>, NodeSpan, NodeSpan),
+    /// A member named on its own in its module's `exposing` list, where it is exposed
+    /// with its class or not at all: the member, its class, and the entry's span.
+    MemberExposedAlone(Name, Name, NodeSpan),
+    /// `Name(..)` in a module's `exposing` list naming one of its classes, which has no
+    /// constructors: the class, and the entry's span.
+    ClassExposedWithConstructors(Name, NodeSpan),
+    /// An instance head that is not one of the forms
+    /// [a head may take](../../docs/spec/type-classes.md#what-an-instance-is-declared-for):
+    /// what is wrong with it, and the span of the part that is.
+    InvalidInstanceHead(InstanceHeadProblem, NodeSpan),
+    /// An instance binding that names no member of the class: the binding's name, the
+    /// class, and the binding's span.
+    InstanceBindingNotMember(Name, Name, NodeSpan),
+    /// A member of the class no binding of the instance defines: the member, the class,
+    /// and the instance's head line.
+    InstanceMemberMissing(Name, Name, NodeSpan),
+    /// A member an instance binds twice: the member, the second binding's span and the
+    /// first's.
+    InstanceMemberBoundTwice(Name, NodeSpan, NodeSpan),
+    /// An instance declared in a module that declares neither its class nor its head's
+    /// type ([the orphan rule](../../docs/spec/type-classes.md#where-an-instance-may-be-declared)):
+    /// the instance's class and head, and its head line. The class and a declared head
+    /// type each carry the module that declares them, which the message names.
+    OrphanInstance(Box<InstanceName>, NodeSpan),
+    /// A second instance of one class for one head name: that class and head, the
+    /// second instance's head line, and where the first was declared.
+    DuplicateInstance(Box<InstanceName>, NodeSpan, DeclarationSite),
+    /// An instance of a class with a superclass, with no instance of the superclass for
+    /// the same head name in scope: the instance's class and head, the superclass, and
+    /// the instance's head line.
+    MissingSuperclassInstance(Box<InstanceName>, QualName, NodeSpan),
     /// A type name applied to the wrong number of arguments: the name, its
     /// declaration's own arity, the number of arguments actually written, and
     /// `tpe.span` — the whole application, so the caret covers every argument
@@ -1664,6 +1783,11 @@ pub enum Error {
     // Binding module
     InfixDeclared(Name, NodeSpan),
     TypeDeclared(Name, NodeSpan),
+    /// A `class` declaration in a `module foreign` facade, which holds signatures only:
+    /// the class's head line.
+    ClassDeclared(NodeSpan),
+    /// An `instance` declaration in a `module foreign` facade: its head line.
+    InstanceDeclared(NodeSpan),
     NoTypeInBinding(Name, NodeSpan),
     /// An annotation outside a `module foreign` facade was marked `unsafe`: the
     /// name it annotates, and the annotation's span — which the grammar takes
@@ -1820,6 +1944,38 @@ pub enum InvalidConstraintKind {
     Record,
 }
 
+/// What had a class's name first — see [`Error::ClassNameTaken`].
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum NameTakenBy {
+    /// A `type` declaration of the same module.
+    Type,
+    /// An earlier `class` declaration of the same module.
+    Class,
+}
+
+/// What is wrong with an instance head — see [`Error::InvalidInstanceHead`].
+///
+/// A head is a class name applied to one type, and that type is a declared type applied
+/// to distinct variables, a tuple of distinct variables, or `()`.
+#[derive(Debug, PartialEq, Clone)]
+pub enum InstanceHeadProblem {
+    /// Something other than a class name applied to a type — `instance a where`.
+    NotAClass,
+    /// The class applied to some number of types other than one — `instance Eq Int Char`.
+    ClassApplied(usize),
+    /// A bare type variable — `instance Eq a`.
+    Variable(Name),
+    /// A function type — `instance Eq (a -> b)`.
+    Function,
+    /// A record type.
+    Record,
+    /// An argument of the head's type that is not a type variable — `Int` in
+    /// `instance Eq (Maybe Int)`.
+    ArgumentNotVariable,
+    /// A variable the head already bound — the second `a` of `instance Eq (Pair a a)`.
+    RepeatedVariable(Name),
+}
+
 /// The two forms [What a facade signature may not
 /// name](../../docs/spec/interop.md#what-a-facade-signature-may-not-name)
 /// rejects — see [`Error::FacadeTypeNotAdmitted`].
@@ -1921,12 +2077,121 @@ impl PhaseError for Error {
                 "`{}` is declared over several bindings, which is not supported yet",
                 name
             ),
-            Error::ClassUnsupported(_) => {
-                "a `class` declaration is not supported yet".to_string()
+            Error::InvalidClassHead(_) => {
+                "a class head is the class's name applied to one type variable".to_owned()
             }
-            Error::InstanceUnsupported(_) => {
-                "an `instance` declaration is not supported yet".to_string()
+            Error::ClassNameTaken(name, NameTakenBy::Type, _, _) => format!(
+                "`{}` is declared as both a type and a class, and the two share one namespace",
+                name
+            ),
+            Error::ClassNameTaken(name, NameTakenBy::Class, _, _) => {
+                format!("the class `{}` is declared twice", name)
             }
+            Error::ClassNotFound(name, _) => format!("cannot find a class named `{}`", name),
+            Error::ConstraintNotOnVariable(_) => {
+                "a constraint in a class or instance head is a class applied to one type variable"
+                    .to_owned()
+            }
+            Error::ConstraintVariableUnbound(name, _) => format!(
+                "the type variable `{}` is constrained, but the head does not bind it",
+                name
+            ),
+            Error::MemberConstrained(name, _) => format!(
+                "the member `{}` is written with a constraint, and a member signature carries none",
+                name
+            ),
+            Error::MemberUnsafe(name, _) => format!(
+                "the member `{}` is marked `unsafe`, which only a signature in a `module foreign` facade may be",
+                name
+            ),
+            Error::MemberMissesClassVariable(name, class, variable, _) => format!(
+                "the member `{}` of `{}` never mentions the class variable `{}`, so no use of it could say which instance it means",
+                name, class, variable
+            ),
+            Error::MemberDeclaredTwice(name, _, _) => {
+                format!("the member `{}` is declared twice in this class", name)
+            }
+            Error::MemberNameTaken(name, class, Some(other), _, _) => format!(
+                "`{}` is a member of both `{}` and `{}`",
+                name, other, class
+            ),
+            Error::MemberNameTaken(name, class, None, _, _) => format!(
+                "`{}` is a member of `{}` and is also declared as a value of this module",
+                name, class
+            ),
+            Error::MemberExposedAlone(name, class, _) => format!(
+                "`{}` is a member of `{}`, and a member is exposed with its class, not on its own",
+                name, class
+            ),
+            Error::ClassExposedWithConstructors(name, _) => format!(
+                "`{}` is a class, and a class has no constructors for `(..)` to expose",
+                name
+            ),
+            Error::InvalidInstanceHead(problem, _) => match problem {
+                InstanceHeadProblem::NotAClass => {
+                    "an instance head is a class name applied to the type the instance is for"
+                        .to_owned()
+                }
+                InstanceHeadProblem::ClassApplied(n) => format!(
+                    "an instance head applies its class to one type, and this one applies it to {}",
+                    n
+                ),
+                InstanceHeadProblem::Variable(name) => format!(
+                    "an instance is for a type, and the type variable `{}` is not one",
+                    name
+                ),
+                InstanceHeadProblem::Function => {
+                    "an instance cannot be declared for a function type".to_owned()
+                }
+                InstanceHeadProblem::Record => {
+                    "an instance cannot be declared for a record type".to_owned()
+                }
+                InstanceHeadProblem::ArgumentNotVariable => {
+                    "every argument of an instance head's type must be a type variable"
+                        .to_owned()
+                }
+                InstanceHeadProblem::RepeatedVariable(name) => format!(
+                    "the type variable `{}` is written twice in this instance head",
+                    name
+                ),
+            },
+            Error::InstanceBindingNotMember(name, class, _) => {
+                format!("`{}` is not a member of the class `{}`", name, class)
+            }
+            Error::InstanceMemberMissing(name, class, _) => format!(
+                "this instance does not define `{}`, a member of the class `{}`",
+                name, class
+            ),
+            Error::InstanceMemberBoundTwice(name, _, _) => {
+                format!("this instance defines `{}` twice", name)
+            }
+            Error::OrphanInstance(instance, _) => match instance.head.module() {
+                Some(head_module) => format!(
+                    "`{}` is declared in `{}` and {} in `{}`; an instance may go in either",
+                    instance.class.unqualified_name(),
+                    instance.class.module_name(),
+                    instance.head.describe(),
+                    head_module.name()
+                ),
+                None => format!(
+                    "`{}` is declared in `{}`, and an instance of it for {} may go only there",
+                    instance.class.unqualified_name(),
+                    instance.class.module_name(),
+                    instance.head.describe()
+                ),
+            },
+            Error::DuplicateInstance(instance, _, _) => format!(
+                "`{}` already has an instance for {}",
+                instance.class.unqualified_name(),
+                instance.head.describe()
+            ),
+            Error::MissingSuperclassInstance(instance, superclass, _) => format!(
+                "an instance of `{}` for {} needs an instance of its superclass `{}` for {}",
+                instance.class.unqualified_name(),
+                instance.head.describe(),
+                superclass.unqualified_name(),
+                instance.head.describe()
+            ),
             Error::TypeArityMismatch(name, declared, written, _) => format!(
                 "`{}` takes {}, but is applied to {} here",
                 name,
@@ -2008,6 +2273,12 @@ impl PhaseError for Error {
                 "a `module foreign` facade cannot declare a type, but declares `{}`",
                 name
             ),
+            Error::ClassDeclared(_) => {
+                "a `module foreign` facade cannot declare a class".to_owned()
+            }
+            Error::InstanceDeclared(_) => {
+                "a `module foreign` facade cannot declare an instance".to_owned()
+            }
             Error::NoTypeInBinding(name, _) => format!(
                 "`{}` has no type annotation, and a `module foreign` facade is annotations only",
                 name
@@ -2084,6 +2355,16 @@ impl PhaseError for Error {
                 file: None,
             }],
             None => Vec::new(),
+        };
+
+        // A secondary label in the module under check, when the span has a position.
+        let secondary = |span: &NodeSpan, message: String| {
+            span.span().map(|span| SpanLabel {
+                span,
+                message,
+                primary: false,
+                file: None,
+            })
         };
 
         // A secondary label pointing at where one ambiguous candidate is declared,
@@ -2201,8 +2482,102 @@ impl PhaseError for Error {
             Error::BindingPatternsInvalidLen(span) => primary(span, "declared here"),
             Error::NoBindings(span) => primary(span, "this annotation has no body"),
             Error::MultipleBindingsUnsupported(_, span) => primary(span, "declared here"),
-            Error::ClassUnsupported(span) => primary(span, "this class is declared here"),
-            Error::InstanceUnsupported(span) => primary(span, "this instance is declared here"),
+            Error::InvalidClassHead(span) => primary(span, "not a class name and one variable"),
+            Error::ClassNameTaken(name, taken_by, span, other) => {
+                let mut labels = primary(span, &format!("the class `{}` is declared here", name));
+                if let Some(other) = other.span() {
+                    labels.push(SpanLabel {
+                        span: other,
+                        message: match taken_by {
+                            NameTakenBy::Type => format!("the type `{}` is declared here", name),
+                            NameTakenBy::Class => format!("`{}` is first declared here", name),
+                        },
+                        primary: false,
+                        file: None,
+                    });
+                }
+                labels
+            }
+            Error::ClassNotFound(_, span) => primary(span, "no class of this name is in scope"),
+            Error::ConstraintNotOnVariable(span) => {
+                primary(span, "this constrains something other than one type variable")
+            }
+            Error::ConstraintVariableUnbound(_, span) => {
+                primary(span, "not bound by the head")
+            }
+            Error::MemberConstrained(_, span) => primary(span, "a constraint on a member signature"),
+            Error::MemberUnsafe(_, span) => primary(span, "marked `unsafe` here"),
+            Error::MemberMissesClassVariable(_, _, variable, span) => primary(
+                span,
+                &format!("this signature does not mention `{}`", variable),
+            ),
+            Error::MemberDeclaredTwice(name, span, first) => {
+                let mut labels = primary(span, &format!("`{}` is declared a second time here", name));
+                labels.extend(secondary(first, format!("`{}` is first declared here", name)));
+                labels
+            }
+            Error::MemberNameTaken(name, _, _, span, other) => {
+                let mut labels = primary(span, &format!("the member `{}` is declared here", name));
+                labels.extend(secondary(other, format!("`{}` is also declared here", name)));
+                labels
+            }
+            Error::MemberExposedAlone(_, class, span) => primary(
+                span,
+                &format!("expose `{}` to expose this member", class),
+            ),
+            Error::ClassExposedWithConstructors(_, span) => {
+                primary(span, "a class has no constructors")
+            }
+            Error::InvalidInstanceHead(problem, span) => primary(
+                span,
+                match problem {
+                    InstanceHeadProblem::NotAClass => "not a class applied to a type",
+                    InstanceHeadProblem::ClassApplied(_) => "a class applied to other than one type",
+                    InstanceHeadProblem::Variable(_) => "a type variable, where a type belongs",
+                    InstanceHeadProblem::Function => "a function type",
+                    InstanceHeadProblem::Record => "a record type",
+                    InstanceHeadProblem::ArgumentNotVariable => "not a type variable",
+                    InstanceHeadProblem::RepeatedVariable(_) => "already bound in this head",
+                },
+            ),
+            Error::InstanceBindingNotMember(_, class, span) => {
+                primary(span, &format!("not a member of `{}`", class))
+            }
+            Error::InstanceMemberMissing(name, _, span) => {
+                primary(span, &format!("this instance has no definition of `{}`", name))
+            }
+            Error::InstanceMemberBoundTwice(name, span, first) => {
+                let mut labels = primary(span, &format!("`{}` is defined a second time here", name));
+                labels.extend(secondary(first, format!("`{}` is first defined here", name)));
+                labels
+            }
+            Error::OrphanInstance(instance, span) => primary(
+                span,
+                &match instance.head.module() {
+                    Some(head_module) => format!(
+                        "declare this instance in `{}` or in `{}`",
+                        instance.class.module_name(),
+                        head_module.name()
+                    ),
+                    None => format!(
+                        "declare this instance in `{}`",
+                        instance.class.module_name()
+                    ),
+                },
+            ),
+            Error::DuplicateInstance(_, span, first) => {
+                let mut labels = primary(span, "declared a second time here");
+                labels.extend(first.label("first declared here".to_owned()));
+                labels
+            }
+            Error::MissingSuperclassInstance(instance, superclass, span) => primary(
+                span,
+                &format!(
+                    "no instance of `{}` for {} is in scope",
+                    superclass.unqualified_name(),
+                    instance.head.describe()
+                ),
+            ),
             Error::TypeArityMismatch(name, declared, written, span) => primary(
                 span,
                 &format!(
@@ -2265,6 +2640,8 @@ impl PhaseError for Error {
             }
             Error::InfixDeclared(_, span) => primary(span, "declared here"),
             Error::TypeDeclared(_, span) => primary(span, "declared here"),
+            Error::ClassDeclared(span) => primary(span, "declared here"),
+            Error::InstanceDeclared(span) => primary(span, "declared here"),
             Error::NoTypeInBinding(_, span) => primary(span, "declared here"),
             Error::UnsafeOutsideFacade(_, span) => primary(span, "marked `unsafe` here"),
             Error::FacadeTypeNotAdmitted(_, kind, span) => primary(
@@ -2343,6 +2720,10 @@ impl PhaseError for Error {
             ],
             Error::InvalidScalarDeclaration(..) => vec![
                 "nothing in the language constructs or inspects a value of an opaque scalar, so its declaration exists to be read rather than built from"
+                    .to_owned(),
+            ],
+            Error::OrphanInstance(..) => vec![
+                "where neither the class nor the type is declared in this module, a type of this module's own that wraps the one wanted can be given the instance"
                     .to_owned(),
             ],
             Error::AmbiguousVariables(_, candidates, _)
@@ -2428,6 +2809,7 @@ fn export_type_noun(tpe: &ExportType) -> &'static str {
         ExportType::Value => "value",
         ExportType::Infix => "infix operator",
         ExportType::UnionPublic | ExportType::UnionPrivate => "type",
+        ExportType::Class => "class",
     }
 }
 
@@ -2680,10 +3062,11 @@ fn check_facade_signature(function: &parser::Function, tpe: &Type) -> Result<(),
 /// and hand back each constraint's class name and arguments.
 ///
 /// A constraint here is an uppercase name applied to one or more arguments.
-/// Nothing is resolved: whether the name is a class, and whether its arguments
-/// are types in scope, is not checked, because no class can be declared yet. The
-/// list may be of any length. Every malformed element is reported, each at its
-/// own span.
+/// Nothing is resolved here: whether the name is a class, and whether its arguments
+/// are types in scope, is not checked. A class head's and an instance's constraints
+/// are resolved afterwards, by the caller in `classes`; an annotation's are not
+/// resolved at all. The list may be of any length. Every malformed element is
+/// reported, each at its own span.
 fn validate_context(
     context: &parser::Context,
 ) -> Result<Vec<(&Name, &[parser::Type])>, Vec<Error>> {
@@ -2732,9 +3115,9 @@ pub fn canonicalize(
 /// [`Error::EnvironmentErrors`] and costs the module that import and nothing else. A
 /// declaration that does not canonicalize costs the module that declaration and nothing
 /// else. A value declaration is recorded in [`Module::broken`], with its annotation when
-/// that canonicalized; a `type` or an `infix` declaration is left out of
-/// [`Module::types`] or [`Module::infixes`]. An `exposing` entry that does not resolve is
-/// left out of [`Module::exports`].
+/// that canonicalized; a `type`, `infix`, `class` or `instance` declaration is left out of
+/// [`Module::types`], [`Module::infixes`], [`Module::classes`] or [`Module::instances`]. An
+/// `exposing` entry that does not resolve is left out of [`Module::exports`].
 ///
 /// # Declarations that failed to parse
 ///
@@ -2756,8 +3139,10 @@ pub fn canonicalize(
 /// Each sub-pass's errors are filtered by the flag as it stood **before** that sub-pass
 /// ran: a declaration's own failure is reported, and what it makes incomplete is
 /// everything after it. A failed `infix` declaration makes the scope incomplete for
-/// the `type` declarations, the values and the `exposing` list, and a failed `type`
-/// declaration for the values and the `exposing` list. Dropping an error does not make
+/// everything after the infixes, a failed `type` declaration for everything after the
+/// types, a failed `class` declaration for the values, the bindings of the classes and
+/// the instances, and the `exposing` list, and a failed `instance` declaration for the
+/// `exposing` list. Dropping an error does not make
 /// its declaration sound. A declaration the dropped error broke is left out all the same;
 /// one whose only error was a name that did not resolve stays in [`Module::values`] holding
 /// a hole ([`ExpressionKind::Hole`], [`PatternKind::Hole`]) for it, which no backend emits
@@ -2798,26 +3183,6 @@ pub fn canonicalize_recovering(
         env.set_incomplete();
     }
 
-    // A class and an instance parse and are checked by nothing yet, so each is reported
-    // and left out of the module. A class would have declared its members as values, so
-    // the scope is incomplete from the first sub-pass on and a use of one is not
-    // reported a second time as a name that does not resolve.
-    errors.extend(
-        source
-            .classes
-            .iter()
-            .map(|class| Error::ClassUnsupported(class.span)),
-    );
-    errors.extend(
-        source
-            .instances
-            .iter()
-            .map(|instance| Error::InstanceUnsupported(instance.span)),
-    );
-    if !source.classes.is_empty() {
-        env.set_incomplete();
-    }
-
     // `unsafe` is a claim about the companion standing behind a facade signature,
     // so it has nothing to say on a declaration with a body above it. The grammar
     // accepts the word on any annotation — it has no way to know the module's
@@ -2839,7 +3204,8 @@ pub fn canonicalize_recovering(
     // no place for one and nothing downstream reads a context yet, so the type
     // checker sees only the type after `=>`. Resolving the class names and keeping
     // the context on the canonical value is the next step of the type-class
-    // program (`LANG-70`, after `LANG-39`'s class table), not an oversight here.
+    // program (`LANG-70`, which reads the class table `classes` builds), not an
+    // oversight here.
     for function in source.functions.iter() {
         if let Some(context) = &function.context {
             if let Err(malformed) = validate_context(context) {
@@ -2855,7 +3221,7 @@ pub fn canonicalize_recovering(
         }
     }
 
-    let (infixes, types, values, mut broken) = if source.binding_foreign {
+    let (infixes, types, classes, instances, values, mut broken) = if source.binding_foreign {
         // A `module foreign` facade runs a parallel canonicalization process as the constraints are a bit different:
         // - Only functions without bindings are authorized.
         // - Infixes and types are forbidden.
@@ -2878,6 +3244,19 @@ pub fn canonicalize_recovering(
                 .map(|t| Error::TypeDeclared(t.name.clone(), t.span));
             errors.extend(e);
         }
+        // Nor classes and instances: a facade holds signatures only.
+        errors.extend(
+            source
+                .classes
+                .iter()
+                .map(|class| Error::ClassDeclared(class.span)),
+        );
+        errors.extend(
+            source
+                .instances
+                .iter()
+                .map(|instance| Error::InstanceDeclared(instance.span)),
+        );
 
         // Register each binding as a top-level value before resolving any of
         // them, the same as the non-`foreign` branch below — otherwise
@@ -2978,7 +3357,14 @@ pub fn canonicalize_recovering(
         let (broken, rejected_errors) = Rejected::split(rejected);
         errors.extend(without_restated(rejected_errors, env.is_incomplete()));
 
-        (HashMap::new(), HashMap::new(), values, broken)
+        (
+            HashMap::new(),
+            HashMap::new(),
+            HashMap::new(),
+            Vec::new(),
+            values,
+            broken,
+        )
     } else {
         // Because we are rewriting infixes in this phase, we must do this check before
         // resolving values.
@@ -2986,9 +3372,28 @@ pub fn canonicalize_recovering(
         // Each sub-pass below has its errors filtered by whether the scope was
         // incomplete when the sub-pass *started* (`without_restated`): the failure of a
         // declaration is reported, and what it makes incomplete is what comes after it.
+        // A class member is a top-level value of this module, which is what lets an
+        // `infix` declaration name one.
+        let members: Vec<(&Name, &Name, NodeSpan)> = source
+            .classes
+            .iter()
+            .filter_map(|class| match &class.head.kind {
+                parser::TypeKind::Unqualified(name, _) => Some((name, class)),
+                _ => None,
+            })
+            .flat_map(|(class_name, class)| {
+                classes::member_names(class).map(move |(member, span)| (member, class_name, span))
+            })
+            .collect();
+
         let incomplete = env.is_incomplete();
-        let (infixes, infix_errors) =
-            do_infixes(&source.infixes, &mut env, &source.functions, &unparsed);
+        let (infixes, infix_errors) = do_infixes(
+            &source.infixes,
+            &mut env,
+            &source.functions,
+            &members,
+            &unparsed,
+        );
         if !infix_errors.is_empty() {
             // The operator the declaration would have named is missing from the scope.
             env.set_incomplete();
@@ -3022,6 +3427,34 @@ pub fn canonicalize_recovering(
 
         trace!("Environment after do_types: {:#?}", env);
 
+        // Every class name is registered before any class is read, so a superclass or an
+        // instance can name one written further down the file. A class that fails leaves
+        // its members, and the instances of it, missing from the scope.
+        let incomplete = env.is_incomplete();
+        let (declared, mut class_errors) =
+            classes::declare_classes(&mut env, &source.classes, &source.types);
+        let mut signatures = Vec::new();
+        for (index, name, variable) in declared {
+            let class = &source.classes[index];
+            match classes::class_signature(&env, class, name, variable) {
+                Ok(signature) => {
+                    env.insert_class_signature(name, signature.clone());
+                    signatures.push((class, name, signature));
+                }
+                Err(errors) => class_errors.extend(errors),
+            }
+        }
+        if !class_errors.is_empty() {
+            env.set_incomplete();
+        }
+        errors.extend(without_restated(class_errors, incomplete));
+        // A member and a value sharing a name leave neither missing from the scope.
+        errors.extend(member_clashes(&members, &source.functions, &unparsed));
+
+        for (member, _, _) in members.iter() {
+            env.insert_top_level_value((*member).clone());
+        }
+
         // TODO Should I manage infixes rewrite here too ?
         // Yes I should do it here
         let incomplete = env.is_incomplete();
@@ -3032,7 +3465,37 @@ pub fn canonicalize_recovering(
         } = do_values(&mut env, &source.functions, &unparsed);
         errors.extend(without_restated(value_errors, incomplete));
 
-        (infixes, types, values, broken)
+        // A derivation's bindings and an instance's are ordinary values, and may name
+        // any value of the module, so they are read once every value is in scope.
+        let incomplete = env.is_incomplete();
+        let mut unresolved = Vec::new();
+        let mut binding_errors = Vec::new();
+        let mut canonical_classes = HashMap::new();
+        for (class, name, signature) in signatures {
+            let (derivations, derivation_errors) =
+                classes::derivations(&env, class, &mut unresolved);
+            binding_errors.extend(derivation_errors);
+            canonical_classes.insert(
+                name.clone(),
+                Class {
+                    signature,
+                    derivations,
+                },
+            );
+        }
+
+        let classes::Instances {
+            instances,
+            errors: instance_errors,
+        } = classes::do_instances(&env, &source.instances, &mut unresolved);
+        if !instance_errors.is_empty() {
+            env.set_incomplete();
+        }
+        binding_errors.extend(instance_errors);
+        binding_errors.extend(unresolved);
+        errors.extend(without_restated(binding_errors, incomplete));
+
+        (infixes, types, canonical_classes, instances, values, broken)
     };
 
     // A value only a failed chunk declares has no `parser::Function` for either branch
@@ -3077,7 +3540,17 @@ pub fn canonicalize_recovering(
         })
         .map(|f| (f.name.clone(), f.span))
         .collect();
-    let (exports, export_errors) = do_exports(&source.exposing, &env, &values, &unannotated_broken);
+    let member_classes: HashMap<&Name, &Name> = classes
+        .iter()
+        .flat_map(|(class, c)| c.signature.members.iter().map(move |m| (&m.name, class)))
+        .collect();
+    let (exports, export_errors) = do_exports(
+        &source.exposing,
+        &env,
+        &values,
+        &unannotated_broken,
+        &member_classes,
+    );
     errors.extend(without_restated(export_errors, env.is_incomplete()));
 
     // A declaration written with an annotation that did not canonicalize is recorded
@@ -3100,6 +3573,9 @@ pub fn canonicalize_recovering(
             exposing_span: source.exposing_span,
             infixes,
             types,
+            classes,
+            instances,
+            imported_instances: env.imported_instances().to_vec(),
             values,
             broken,
             binding_foreign: source.binding_foreign,
@@ -3129,8 +3605,8 @@ fn unparsed_values(source: &parser::Module) -> HashMap<Name, NodeSpan> {
 ///
 /// An incomplete scope is one where a name could be missing for a reason that has been
 /// reported ([`Module::incomplete`]), so a name that is not found in it says nothing new:
-/// `VariableNotFound`, `VariantNotFound`, `TypeNotFound`, `ExportNotFound` and
-/// `InfixReferenceInvalidValue` are dropped, and every other error is kept. An
+/// `VariableNotFound`, `VariantNotFound`, `TypeNotFound`, `ClassNotFound`,
+/// `ExportNotFound` and `InfixReferenceInvalidValue` are dropped, and every other error is kept. An
 /// [`Error::Many`] is flattened into its members first, so a group holding one of each
 /// keeps the member that is not a restatement. With `incomplete` false, `errors` comes
 /// back untouched.
@@ -3168,6 +3644,7 @@ fn without_restated(errors: Vec<Error>, incomplete: bool) -> Vec<Error> {
             Error::VariableNotFound(..)
                 | Error::VariantNotFound(..)
                 | Error::TypeNotFound(..)
+                | Error::ClassNotFound(..)
                 | Error::ExportNotFound(..)
                 | Error::InfixReferenceInvalidValue(..)
         )
@@ -3677,30 +4154,8 @@ fn value_body(
 
     match function.bindings.len() {
         0 => Err(Error::NoBindings(function.span)),
-        1 => {
-            // if one binding, we can convert directly to canonical format
-            let binding = &function.bindings[0];
-
-            let mut scoped = env.new_scope();
-
-            let patterns: Vec<Pattern> = binding
-                .patterns
-                .iter()
-                .map(|p| Pattern::from_parser(p, env, unresolved))
-                .collect::<Result<Vec<_>, Error>>()?;
-
-            for p in &patterns {
-                scoped.expose_pattern(p);
-            }
-
-            // Maybe create a case_branch function and make it common with Expression::Case ?
-            // Or maybe not at the case_branch level, as here we can have multiple patterns
-            // whereas cases cannot.
-            // eg. a: Int -> Int -> Int  ==>  a b c = b + c
-            let body = Expression::from_parser(&binding.body, &scoped, unresolved)?;
-
-            Ok((patterns, body))
-        }
+        // if one binding, we can convert directly to canonical format
+        1 => match_body(env, &function.bindings[0], unresolved),
         _ => {
             // if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
             Err(Error::MultipleBindingsUnsupported(
@@ -3709,6 +4164,99 @@ fn value_body(
             ))
         }
     }
+}
+
+/// The parameters and the body of one binding, its parameters in scope in its body, or
+/// the first error that kept them from canonicalizing. Every name they could not resolve
+/// is a hole, with its error pushed onto `unresolved`.
+fn match_body(
+    env: &RootEnvironment,
+    binding: &parser::Match,
+    unresolved: &mut Vec<Error>,
+) -> Result<(Vec<Pattern>, Expression), Error> {
+    let mut scoped = env.new_scope();
+
+    let patterns: Vec<Pattern> = binding
+        .patterns
+        .iter()
+        .map(|p| Pattern::from_parser(p, env, unresolved))
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    for p in &patterns {
+        scoped.expose_pattern(p);
+    }
+
+    // Maybe create a case_branch function and make it common with Expression::Case ?
+    // Or maybe not at the case_branch level, as here we can have multiple patterns
+    // whereas cases cannot.
+    // eg. a: Int -> Int -> Int  ==>  a b c = b + c
+    let body = Expression::from_parser(&binding.body, &scoped, unresolved)?;
+
+    Ok((patterns, body))
+}
+
+/// One binding written inside a class or an instance body, canonicalized as an ordinary
+/// value with no annotation.
+fn binding_value(
+    env: &RootEnvironment,
+    binding: &parser::FunBinding,
+    unresolved: &mut Vec<Error>,
+) -> Result<Value, Error> {
+    let (patterns, body) = match_body(env, &binding.pattern, unresolved)?;
+
+    Ok(Value::Value {
+        name: binding.name.clone(),
+        patterns,
+        body,
+        span: binding.span,
+    })
+}
+
+/// Every class member whose name another value of the module already has: a top-level
+/// declaration, one a chunk that failed to parse names, or a member of an earlier class.
+/// `members` is every member of every class the module writes, with its class and its
+/// signature's span, in source order.
+fn member_clashes(
+    members: &[(&Name, &Name, NodeSpan)],
+    functions: &[parser::Function],
+    unparsed: &HashMap<Name, NodeSpan>,
+) -> Vec<Error> {
+    let mut errors = Vec::new();
+
+    for (index, (member, class, span)) in members.iter().enumerate() {
+        let value = functions
+            .iter()
+            .find(|f| &f.name == *member)
+            .map(|f| f.span)
+            .or_else(|| unparsed.get(*member).copied());
+
+        if let Some(other) = value {
+            errors.push(Error::MemberNameTaken(
+                (*member).clone(),
+                (*class).clone(),
+                None,
+                *span,
+                other,
+            ));
+            continue;
+        }
+
+        // A member repeated inside one class is that class's own error.
+        if let Some((_, other_class, other)) = members[..index]
+            .iter()
+            .find(|(earlier, earlier_class, _)| earlier == member && earlier_class != class)
+        {
+            errors.push(Error::MemberNameTaken(
+                (*member).clone(),
+                (*class).clone(),
+                Some((*other_class).clone()),
+                *span,
+                *other,
+            ));
+        }
+    }
+
+    errors
 }
 
 /// Canonicalize every `type` declaration of a module, keeping each one that canonicalized
@@ -3824,11 +4372,13 @@ fn do_types(
 
 /// Canonicalize every `infix` declaration of a module, registering each one that names a
 /// function this module declares, beside the errors of those that do not. A function
-/// `unparsed` names is declared, though nothing of it parsed.
+/// `unparsed` names is declared, though nothing of it parsed, and so is a member of one of
+/// the module's classes, `members`.
 fn do_infixes(
     infixes: &[parser::Infix],
     env: &mut RootEnvironment,
     functions: &[parser::Function],
+    members: &[(&Name, &Name, NodeSpan)],
     unparsed: &HashMap<Name, NodeSpan>,
 ) -> (HashMap<Name, Infix>, Vec<Error>) {
     let iter = infixes.iter().map(|infix| {
@@ -3836,7 +4386,10 @@ fn do_infixes(
         let function_name = infix.function_name.clone();
 
         let function_exist = functions.iter().any(|f| f.name == infix.function_name)
-            || unparsed.contains_key(&infix.function_name);
+            || unparsed.contains_key(&infix.function_name)
+            || members
+                .iter()
+                .any(|(member, _, _)| **member == infix.function_name);
 
         if function_exist {
             let infix = Infix {
@@ -3887,11 +4440,15 @@ fn do_infixes(
 // for an explicit list, every entry that did not error, so a bad entry costs the module
 // that entry alone; for `exposing (..)`, everything, beside an error per unannotated
 // declaration.
+//
+// `member_classes` is each member of this module's own classes, to its class. A member is
+// exposed with its class, and an entry naming one alone is an error.
 fn do_exports(
     source_exposing: &parser::Exposing,
-    env: &dyn Environment,
+    env: &RootEnvironment,
     values: &HashMap<Name, Value>,
     unannotated_broken: &HashMap<Name, NodeSpan>,
+    member_classes: &HashMap<&Name, &Name>,
 ) -> (Exports, Vec<Error>) {
     match source_exposing {
         // `exposing (..)` exposes every top-level declaration this module
@@ -3921,6 +4478,14 @@ fn do_exports(
             let specifics =
                 exposed.iter().map(|exposed| match &exposed.kind {
                     parser::ExposedKind::Lower(name) => {
+                        if let Some(class) = member_classes.get(name) {
+                            return Err(Error::MemberExposedAlone(
+                                name.clone(),
+                                (*class).clone(),
+                                exposed.span,
+                            ));
+                        }
+
                         if env.find_value(name).is_none() {
                             return Err(Error::ExportNotFound(
                                 name.clone(),
@@ -3956,6 +4521,11 @@ fn do_exports(
                     parser::ExposedKind::Upper(name, parser::Privacy::Public) => {
                         if env.find_type(name).is_some() {
                             Ok((name.clone(), ExportType::UnionPublic))
+                        } else if env.find_class(name).is_some() {
+                            Err(Error::ClassExposedWithConstructors(
+                                name.clone(),
+                                exposed.span,
+                            ))
                         } else {
                             Err(Error::ExportNotFound(
                                 name.clone(),
@@ -3967,6 +4537,8 @@ fn do_exports(
                     parser::ExposedKind::Upper(name, parser::Privacy::Private) => {
                         if env.find_type(name).is_some() {
                             Ok((name.clone(), ExportType::UnionPrivate))
+                        } else if env.find_class(name).is_some() {
+                            Ok((name.clone(), ExportType::Class))
                         } else {
                             Err(Error::ExportNotFound(
                                 name.clone(),

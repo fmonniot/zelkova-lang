@@ -336,6 +336,20 @@ pub struct Interface {
     /// interface in a test leaves out — is read as arity 0, the arity of a parameterless
     /// binding.
     pub arities: HashMap<Name, usize>,
+    /// Every class the module declares and exposes, by name, with its members. A member
+    /// is not in [`values`](Self::values): an importer reaches it through its class.
+    pub classes: HashMap<Name, canonical::ClassSignature>,
+    /// Every instance in scope in the module: the ones it declares, and every one an
+    /// import brought into it.
+    ///
+    /// The one part of an interface the module's `exposing` header does not filter. An
+    /// instance has no name an importer could write, and it is in scope wherever its
+    /// class and its type are, so it travels through every import, transitively, whether
+    /// or not the importer named anything ([Type
+    /// classes](../../docs/spec/type-classes.md#declaring-an-instance)). Each entry
+    /// records the module that declared it, which is what recognises the same instance
+    /// arriving by two routes as one.
+    pub instances: Vec<canonical::PublishedInstance>,
     /// The file this interface's module was read from, when the caller knows it.
     ///
     /// It is what makes a diagnostic about an imported name able to underline that
@@ -384,6 +398,8 @@ impl Interface {
             infixes: HashMap::new(),
             infix_functions: HashMap::new(),
             arities: HashMap::new(),
+            classes: HashMap::new(),
+            instances: Vec::new(),
             file: Some(file),
             incomplete: true,
         }

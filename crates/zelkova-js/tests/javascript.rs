@@ -2690,3 +2690,48 @@ fn a_facade_record_holding_a_function_is_refused() {
         unsafe point : { x : Int } -> { y : Int }
     "#});
 }
+
+/// A module holding a class and an instance is refused whole, one error each, in source
+/// order and each under its own head line: the backend emits neither yet, and a module
+/// emitted without them would be missing what its source declares.
+///
+/// Mutation-checked by dropping the early return of the refusals in `emit`: the module
+/// then emits, with the class and the instance missing.
+#[test]
+fn a_module_holding_a_class_is_refused() {
+    let source = indoc! {r#"
+        module Test exposing (Colour, Same)
+
+        type Colour
+          = Red
+
+        class Same a where
+          same : a -> a -> Bool
+
+        instance Same Colour where
+          same x y =
+            True
+    "#};
+    let errors = refused(source);
+
+    match errors.as_slice() {
+        [Error::Class { name, span: class }, Error::Instance {
+            class: of,
+            span: instance,
+        }] => {
+            assert_eq!(name.as_str(), "Same");
+            assert_eq!(of.as_str(), "Same");
+            let class_start = position(source, "class Same a where");
+            assert_eq!(
+                class.to_range(),
+                Some(class_start..class_start + "class Same a where".len())
+            );
+            let instance_start = position(source, "instance Same Colour where");
+            assert_eq!(
+                instance.to_range(),
+                Some(instance_start..instance_start + "instance Same Colour where".len())
+            );
+        }
+        other => panic!("expected a class and an instance refused, got {:?}", other),
+    }
+}

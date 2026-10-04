@@ -80,7 +80,7 @@ this as well as on the record tickets.
 8. **Nothing is written for an instance head.**
    [`DEC-25` decision 2](../decisions/dec-25.md#2--an-instance-head-written-through-an-alias-is-the-type-the-alias-names)
    has a head written through an alias judged as the type it names, which step 3 delivers once
-   [`LANG-39`](lang-39.md) resolves heads: the head it reads is already expanded. If `LANG-39`
+   [`LANG-39`](README.md) resolves heads: the head it reads is already expanded. If `LANG-39`
    has landed first, add its test here; if not, there is nothing to do and nothing to defer.
 
 **Acceptance:** the first two blocks under [Type aliases](../spec/types.md#type-aliases) go red

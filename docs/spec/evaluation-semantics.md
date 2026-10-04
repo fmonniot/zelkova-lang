@@ -400,9 +400,8 @@ alike a b =
   eq a b
 ```
 
-**Not implemented:** a class and an instance parse and are rejected
-([`LANG-39`](../tickets/lang-39.md)), and `std/core` declares no classes
-([`LANG-42`](../tickets/lang-42.md)). A type asks for the definition above rather than writing
+**Not implemented:** `std/core` declares no classes ([`LANG-42`](../tickets/lang-42.md)), so
+`eq` resolves to nothing in the block above. A type asks for the definition above rather than writing
 it out by declaring an instance whose body is `derived` — and what that yields is the definition
 [`Eq`'s own declaration supplies](type-classes.md#a-class-says-how-it-is-derived), not one the
 compiler holds for a class it recognises.

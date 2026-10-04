@@ -188,6 +188,8 @@ pub fn maybe_interface() -> (Name, Interface) {
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
+        classes: HashMap::new(),
+        instances: Vec::new(),
         file: None,
         incomplete: false,
     };
@@ -237,6 +239,8 @@ pub fn basics_interface() -> (Name, Interface) {
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
+        classes: HashMap::new(),
+        instances: Vec::new(),
         file: None,
         incomplete: false,
     };
@@ -267,6 +271,8 @@ pub fn char_interface() -> (Name, Interface) {
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
+        classes: HashMap::new(),
+        instances: Vec::new(),
         file: None,
         incomplete: false,
     };
@@ -296,6 +302,8 @@ pub fn string_interface() -> (Name, Interface) {
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
+        classes: HashMap::new(),
+        instances: Vec::new(),
         file: None,
         incomplete: false,
     };
@@ -339,6 +347,8 @@ pub fn result_interface() -> (Name, Interface) {
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
+        classes: HashMap::new(),
+        instances: Vec::new(),
         file: None,
         incomplete: false,
     };
@@ -401,6 +411,8 @@ pub fn task_interface() -> (Name, Interface) {
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
+        classes: HashMap::new(),
+        instances: Vec::new(),
         file: None,
         incomplete: false,
     };

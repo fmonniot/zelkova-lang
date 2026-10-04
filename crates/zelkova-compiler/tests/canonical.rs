@@ -2531,6 +2531,8 @@ fn widgets_task_interface() -> (zelkova_compiler::name::Name, Interface) {
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
+        classes: HashMap::new(),
+        instances: Vec::new(),
         file: None,
         incomplete: false,
     };
@@ -4479,6 +4481,8 @@ fn lib_interface(incomplete: bool) -> HashMap<zelkova_compiler::name::Name, Inte
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
+        classes: HashMap::new(),
+        instances: Vec::new(),
         file: None,
         incomplete,
     };
@@ -6135,93 +6139,914 @@ fn a_hole_inside_an_access_is_held_by_its_declaration() {
     assert!(value.holds_hole(), "`r` holds a hole");
 }
 
-// ── LANG-38: a class and an instance parse, and are rejected one error each ──
+// ── LANG-39: classes and instances, resolved ──
 
-/// A class and an instance are each one error, on the declaration's head line, and
-/// neither reaches the module. A class's member, used below, is not reported again as a
-/// name that does not resolve: the module's scope is incomplete.
-///
-/// Mutation-checked by dropping each of the two `errors.extend` calls in
-/// `canonicalize_recovering` that report a class and an instance (the matching half of
-/// this test goes red), and by dropping `env.set_incomplete()` after them (`compare` is
-/// then reported as `VariableNotFound`, and the module is not incomplete).
-#[test]
-fn a_class_and_an_instance_are_rejected_one_error_each() {
-    let source = indoc::indoc! {r#"
-        module A exposing (use)
-
-        class Eq a => Comparable a where
-          compare : a -> a -> Int
-
-        instance Comparable Int where
-          compare a b =
-            0
-
-        use : Int
-        use = compare 1 2
-    "#};
-
-    let canonical::Canonicalized { module, errors } =
-        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
-
-    let [canonical::Error::ClassUnsupported(_), canonical::Error::InstanceUnsupported(_)] =
-        errors.as_slice()
-    else {
-        panic!(
-            "expected one ClassUnsupported and one InstanceUnsupported, got {:?}",
-            errors
-        );
-    };
-
-    let range = |error: &canonical::Error| {
-        use zelkova_compiler::PhaseError;
-
-        let labels = error.labels();
-        assert_eq!(labels.len(), 1, "one label, got {:?}", labels);
-        labels[0].span.to_range()
-    };
-    let class = source.find("class").expect("the source declares a class");
-    let instance = source
-        .find("instance")
-        .expect("the source declares an instance");
-
-    assert_eq!(
-        range(&errors[0]),
-        class..class + "class Eq a => Comparable a where".len()
-    );
-    assert_eq!(
-        range(&errors[1]),
-        instance..instance + "instance Comparable Int where".len()
-    );
-    assert!(module.incomplete);
+/// Canonicalize `source` against `interfaces`, insist that it canonicalizes, and add its
+/// interface to `interfaces` under its own name, so a module after it can import it.
+fn publish(source: &str, interfaces: &mut HashMap<zelkova_compiler::name::Name, Interface>) {
+    let module = canonicalize_with_interfaces(source, interfaces)
+        .unwrap_or_else(|errors| panic!("expected the module to canonicalize, got {:?}", errors));
+    let interface = module.to_interface(None);
+    interfaces.insert(interface.module_name.name().clone(), interface);
 }
 
-/// An instance is rejected, and does not mark its module incomplete: only a class can
-/// leave a name undefined, so a name the module never defined is still reported on its own.
+/// The errors `source` canonicalizes with against the scalars, insisting that there are
+/// some.
+fn class_errors(source: &str) -> Vec<canonical::Error> {
+    canonicalize_with_scalars(source).expect_err("expected the module to be rejected")
+}
+
+/// Every label `error` renders with, as the byte ranges they underline, primary first.
+fn label_ranges(error: &canonical::Error) -> Vec<(bool, std::ops::Range<usize>)> {
+    use zelkova_compiler::PhaseError;
+
+    let mut labels: Vec<_> = error
+        .labels()
+        .into_iter()
+        .map(|label| (label.primary, label.span.to_range()))
+        .collect();
+    labels.sort_by_key(|(primary, _)| !*primary);
+    labels
+}
+
+/// The byte range of the `nth` occurrence of `needle` in `source`, counting from zero.
+fn nth_range(source: &str, needle: &str, nth: usize) -> std::ops::Range<usize> {
+    let start = source
+        .match_indices(needle)
+        .nth(nth)
+        .unwrap_or_else(|| panic!("`{}` does not occur {} times", needle, nth + 1))
+        .0;
+    start..start + needle.len()
+}
+
+/// A class and its instances are in the canonical module: the members' types, the
+/// superclass, an instance's context and its bindings.
 ///
-/// Verified to fail by setting `incomplete` for an instance in `canonicalize_recovering`.
+/// Mutation-checked by building every class's `superclasses` as empty in
+/// `class_signature`, and every instance's `context` as empty in `do_instances`: the
+/// matching assertion goes red.
 #[test]
-fn an_instance_does_not_mark_its_module_incomplete() {
+fn a_class_and_its_instances_are_in_the_module() {
     let source = indoc::indoc! {r#"
-        module A exposing (use)
+        module Test exposing (Eq, Comparable, Colour, Order(..))
 
-        instance Comparable Int where
-          compare a b =
-            0
+        type Order
+          = LT
+          | EQ
+          | GT
 
-        use : Int
-        use = missing
+        type Colour
+          = Red
+
+        type Box a
+          = Box a
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Eq a => Comparable a where
+          compare : a -> a -> Order
+
+        instance Eq Colour where
+          eq x y =
+            True
+
+        instance Comparable Colour where
+          compare x y =
+            EQ
+
+        instance Eq a => Eq (Box a) where
+          eq left right =
+            True
     "#};
+    let module = canonicalize_with_scalars(source).expect("the module canonicalizes");
 
-    let canonical::Canonicalized { module, errors } =
-        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+    let eq = test_qual("Test.Eq");
+    let a = || canonical::Type::Variable("a".into());
+    let order = canonical::Type::Type(test_qual("Test.Order"), vec![]);
+    let arrow = |l, r| canonical::Type::Arrow(Box::new(l), Box::new(r));
 
-    assert!(
-        errors
-            .iter()
-            .any(|e| matches!(e, canonical::Error::InstanceUnsupported(_))),
-        "{:?}",
-        errors
+    let comparable = &module.classes[&"Comparable".into()].signature;
+    assert_eq!(comparable.variable.as_str(), "a");
+    let [superclass] = comparable.superclasses.as_slice() else {
+        panic!("one superclass, got {:?}", comparable.superclasses);
+    };
+    assert_eq!(superclass.class, eq);
+    assert_eq!(superclass.variable.as_str(), "a");
+    let [compare] = comparable.members.as_slice() else {
+        panic!("one member, got {:?}", comparable.members);
+    };
+    assert_eq!(compare.name.as_str(), "compare");
+    assert_eq!(compare.tpe, arrow(a(), arrow(a(), order)));
+
+    let eq_members = &module.classes[&"Eq".into()].signature.members;
+    assert_eq!(eq_members[0].tpe, arrow(a(), arrow(a(), bool_t())));
+
+    assert_eq!(module.instances.len(), 3);
+    let boxed = &module.instances[2];
+    assert_eq!(boxed.signature.class, eq);
+    assert_eq!(
+        boxed.signature.head,
+        canonical::InstanceHead::Type(test_qual("Test.Box"), vec!["a".into()])
     );
-    assert!(!module.incomplete);
+    let [context] = boxed.signature.context.as_slice() else {
+        panic!("one constraint, got {:?}", boxed.signature.context);
+    };
+    assert_eq!(context.class, eq);
+    assert_eq!(context.variable.as_str(), "a");
+    let canonical::InstanceBody::Bindings(bindings) = &boxed.body else {
+        panic!("a written instance, got {:?}", boxed.body);
+    };
+    let [canonical::Value::Value { name, patterns, .. }] = bindings.as_slice() else {
+        panic!("one binding, got {:?}", bindings);
+    };
+    assert_eq!(name.as_str(), "eq");
+    assert_eq!(patterns.len(), 2);
+}
+
+/// The module every instance-head test below writes its one instance into: a class, and
+/// the types a head can name.
+fn with_instance(instance: &str) -> String {
+    format!(
+        "{}\n{}",
+        indoc::indoc! {r#"
+            module Test exposing ()
+
+            type Box a
+              = Box a
+
+            type Pair a b
+              = Pair a b
+
+            class Eq a where
+              eq : a -> a -> Bool
+        "#},
+        instance
+    )
+}
+
+/// The one error `source` is rejected with, which has to be an instance-head error.
+fn head_problem(source: &str) -> (canonical::InstanceHeadProblem, std::ops::Range<usize>) {
+    match class_errors(source).as_slice() {
+        [canonical::Error::InvalidInstanceHead(problem, span)] => (
+            problem.clone(),
+            span.to_range().expect("the head error has a position"),
+        ),
+        other => panic!("expected one InvalidInstanceHead, got {:?}", other),
+    }
+}
+
+/// An argument of the head's type that is not a variable is an error under it.
+///
+/// Mutation-checked by accepting any argument in `distinct_variables`: the module
+/// canonicalizes.
+#[test]
+fn an_instance_head_applied_to_a_concrete_type_is_an_error() {
+    let source = with_instance("instance Eq (Box Int) where\n  eq x y =\n    True\n");
+    let (problem, range) = head_problem(&source);
+    assert_eq!(problem, canonical::InstanceHeadProblem::ArgumentNotVariable);
+    assert_eq!(range, range_of(&source, "Int"));
+}
+
+/// A variable written twice in a head is an error under the second.
+///
+/// Mutation-checked by never recording a variable as seen in `distinct_variables`.
+#[test]
+fn an_instance_head_repeating_a_variable_is_an_error() {
+    let source = with_instance("instance Eq (Pair a a) where\n  eq x y =\n    True\n");
+    let (problem, range) = head_problem(&source);
+    assert_eq!(
+        problem,
+        canonical::InstanceHeadProblem::RepeatedVariable("a".into())
+    );
+    let second = source.find("Pair a a").expect("the head") + "Pair a ".len();
+    assert_eq!(range, second..second + 1);
+}
+
+/// A function type is not a head.
+///
+/// Mutation-checked by answering `Unit` for an arrow in `instance_head_type`.
+#[test]
+fn an_instance_head_naming_a_function_type_is_an_error() {
+    let source = with_instance("instance Eq (b -> c) where\n  eq x y =\n    True\n");
+    let (problem, range) = head_problem(&source);
+    assert_eq!(problem, canonical::InstanceHeadProblem::Function);
+    assert_eq!(range, range_of(&source, "b -> c"));
+}
+
+/// A bare variable is not a head.
+///
+/// Mutation-checked by answering `Unit` for a variable in `instance_head_type`.
+#[test]
+fn an_instance_head_naming_a_bare_variable_is_an_error() {
+    let source = with_instance("instance Eq b where\n  eq x y =\n    True\n");
+    let (problem, range) = head_problem(&source);
+    assert_eq!(
+        problem,
+        canonical::InstanceHeadProblem::Variable("b".into())
+    );
+    let at = source.find("instance Eq b").expect("the head") + "instance Eq ".len();
+    assert_eq!(range, at..at + 1);
+}
+
+/// A class applied to two types is an error under the whole head.
+///
+/// Mutation-checked by reading only the first argument of a head in `instance_head`.
+#[test]
+fn an_instance_head_applying_its_class_to_two_types_is_an_error() {
+    let source = with_instance("instance Eq Int Bool where\n  eq x y =\n    True\n");
+    let (problem, range) = head_problem(&source);
+    assert_eq!(problem, canonical::InstanceHeadProblem::ClassApplied(2));
+    assert_eq!(range, range_of(&source, "Eq Int Bool"));
+}
+
+/// A context may constrain only a variable the head binds.
+///
+/// Mutation-checked by accepting every variable in `constraints`' bound check.
+#[test]
+fn an_instance_context_on_a_variable_the_head_does_not_bind_is_an_error() {
+    let source = with_instance("instance Eq c => Eq (Box a) where\n  eq x y =\n    True\n");
+    match class_errors(&source).as_slice() {
+        [canonical::Error::ConstraintVariableUnbound(name, span)] => {
+            assert_eq!(name.as_str(), "c");
+            let at = source.find("Eq c").expect("the context") + "Eq ".len();
+            assert_eq!(span.to_range(), Some(at..at + 1));
+        }
+        other => panic!("expected one ConstraintVariableUnbound, got {:?}", other),
+    }
+}
+
+/// A member signature with a context of its own is an error under the context.
+///
+/// Mutation-checked by dropping the `MemberConstrained` push in `class_signature`.
+#[test]
+fn a_member_signature_with_a_constraint_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Same a where
+          same : Eq b => a -> b -> Bool
+    "#};
+    match class_errors(source).as_slice() {
+        [canonical::Error::MemberConstrained(name, span)] => {
+            assert_eq!(name.as_str(), "same");
+            assert_eq!(span.to_range(), Some(range_of(source, "Eq b")));
+        }
+        other => panic!("expected one MemberConstrained, got {:?}", other),
+    }
+}
+
+/// A member signature marked `unsafe` is an error, the caret starting at the word.
+///
+/// Mutation-checked by dropping the `MemberUnsafe` push in `class_signature`.
+#[test]
+fn a_member_signature_marked_unsafe_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Same a where
+          unsafe same : a -> a -> Bool
+    "#};
+    match class_errors(source).as_slice() {
+        [canonical::Error::MemberUnsafe(name, span)] => {
+            assert_eq!(name.as_str(), "same");
+            assert_eq!(
+                span.to_range(),
+                Some(range_of(source, "unsafe same : a -> a -> Bool"))
+            );
+        }
+        other => panic!("expected one MemberUnsafe, got {:?}", other),
+    }
+}
+
+/// A member signature that never mentions the class variable is an error under it.
+///
+/// Mutation-checked by making `mentions` answer `true` for every type.
+#[test]
+fn a_member_signature_not_mentioning_the_class_variable_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Sized a where
+          size : Int
+    "#};
+    match class_errors(source).as_slice() {
+        [canonical::Error::MemberMissesClassVariable(name, class, variable, span)] => {
+            assert_eq!(name.as_str(), "size");
+            assert_eq!(class.as_str(), "Sized");
+            assert_eq!(variable.as_str(), "a");
+            assert_eq!(span.to_range(), Some(range_of(source, "size : Int")));
+        }
+        other => panic!("expected one MemberMissesClassVariable, got {:?}", other),
+    }
+}
+
+/// The module every instance-body test below writes its one instance into.
+fn with_eq_instance(bindings: &str) -> String {
+    format!(
+        "{}\ninstance Eq Colour where\n{}",
+        indoc::indoc! {r#"
+            module Test exposing ()
+
+            type Colour
+              = Red
+
+            class Eq a where
+              eq : a -> a -> Bool
+              neq : a -> a -> Bool
+        "#},
+        bindings
+    )
+}
+
+/// A member no binding defines is an error under the instance's head line, naming the
+/// member and the class.
+///
+/// Mutation-checked by dropping the missing-member loop in `instance_bindings`.
+#[test]
+fn an_instance_missing_a_member_is_an_error_naming_it_and_the_class() {
+    use zelkova_compiler::PhaseError;
+
+    let source = with_eq_instance("  eq x y =\n    True\n");
+    let errors = class_errors(&source);
+    let [error @ canonical::Error::InstanceMemberMissing(member, class, span)] = errors.as_slice()
+    else {
+        panic!("expected one InstanceMemberMissing, got {:?}", errors);
+    };
+    assert_eq!(member.as_str(), "neq");
+    assert_eq!(class.as_str(), "Eq");
+    assert_eq!(
+        span.to_range(),
+        Some(range_of(&source, "instance Eq Colour where"))
+    );
+    let message = error.message();
+    assert!(
+        message.contains("`neq`") && message.contains("`Eq`"),
+        "{}",
+        message
+    );
+}
+
+/// A binding that names no member is an error under the binding.
+///
+/// Mutation-checked by skipping the membership test in `instance_bindings`.
+#[test]
+fn an_instance_binding_naming_no_member_is_an_error() {
+    let source =
+        with_eq_instance("  eq x y =\n    True\n  neq x y =\n    False\n  other x =\n    True\n");
+    match class_errors(&source).as_slice() {
+        [canonical::Error::InstanceBindingNotMember(name, class, span)] => {
+            assert_eq!(name.as_str(), "other");
+            assert_eq!(class.as_str(), "Eq");
+            let start = source.find("other x").expect("the binding");
+            assert_eq!(span.to_range().map(|r| r.start), Some(start));
+        }
+        other => panic!("expected one InstanceBindingNotMember, got {:?}", other),
+    }
+}
+
+/// A member bound twice is an error under the second binding, with the first labelled.
+///
+/// Mutation-checked by never recording a binding as seen in `instance_bindings`.
+#[test]
+fn an_instance_binding_a_member_twice_is_an_error() {
+    let source =
+        with_eq_instance("  eq x y =\n    True\n  neq x y =\n    False\n  eq a b =\n    False\n");
+    let errors = class_errors(&source);
+    let [error @ canonical::Error::InstanceMemberBoundTwice(name, _, _)] = errors.as_slice() else {
+        panic!("expected one InstanceMemberBoundTwice, got {:?}", errors);
+    };
+    assert_eq!(name.as_str(), "eq");
+    let first = source.find("eq x y").expect("the first binding");
+    let second = source.find("eq a b").expect("the second binding");
+    let starts: Vec<_> = label_ranges(error)
+        .into_iter()
+        .map(|(primary, range)| (primary, range.start))
+        .collect();
+    assert_eq!(starts, vec![(true, second), (false, first)]);
+}
+
+/// A class and a type of one name are an error, under the class with the type labelled.
+///
+/// Mutation-checked by dropping the type lookup in `declare_classes`.
+#[test]
+fn a_class_and_a_type_of_one_name_are_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Eq
+          = Eq
+
+        class Eq a where
+          eq : a -> a -> Bool
+    "#};
+    let errors = class_errors(source);
+    let [error @ canonical::Error::ClassNameTaken(name, canonical::NameTakenBy::Type, _, _)] =
+        errors.as_slice()
+    else {
+        panic!("expected one ClassNameTaken, got {:?}", errors);
+    };
+    assert_eq!(name.as_str(), "Eq");
+    assert_eq!(
+        label_ranges(error),
+        vec![
+            (true, range_of(source, "class Eq a where")),
+            (false, range_of(source, "type Eq\n  = Eq")),
+        ]
+    );
+}
+
+/// A superclass that names no class is an error under the constraint.
+///
+/// Mutation-checked by dropping the `ClassNotFound` push in `constraints`.
+#[test]
+fn a_superclass_naming_no_class_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Missing a => Same a where
+          same : a -> a -> Bool
+    "#};
+    match class_errors(source).as_slice() {
+        [canonical::Error::ClassNotFound(name, span)] => {
+            assert_eq!(name.as_str(), "Missing");
+            assert_eq!(span.to_range(), Some(range_of(source, "Missing a")));
+        }
+        other => panic!("expected one ClassNotFound, got {:?}", other),
+    }
+}
+
+/// An instance whose class names no class is an error under the head.
+///
+/// Mutation-checked by dropping the `ClassNotFound` push in `instance_head`: the
+/// instance is then dropped with no error at all.
+#[test]
+fn an_instance_of_no_class_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Colour
+          = Red
+
+        instance Missing Colour where
+          same x y =
+            True
+    "#};
+    match class_errors(source).as_slice() {
+        [canonical::Error::ClassNotFound(name, span)] => {
+            assert_eq!(name.as_str(), "Missing");
+            assert_eq!(span.to_range(), Some(range_of(source, "Missing Colour")));
+        }
+        other => panic!("expected one ClassNotFound, got {:?}", other),
+    }
+}
+
+/// `Comparable`, declared in a module of its own name, beside the `Order` its member
+/// returns.
+const COMPARABLE: &str = indoc::indoc! {r#"
+    module Comparable exposing (Comparable, Order(..))
+
+    type Order
+      = LT
+      | EQ
+      | GT
+
+    class Comparable a where
+      compare : a -> a -> Order
+"#};
+
+/// `Colour`, declared in a module of its own name.
+const COLOUR: &str = indoc::indoc! {r#"
+    module Colour exposing (Colour(..))
+
+    type Colour
+      = Red
+      | Blue
+"#};
+
+/// An instance is legal in the module declaring its class, and in the module declaring
+/// its type.
+///
+/// Mutation-checked by comparing the instance's module against the class's only in
+/// `do_instances`: the instance in `Colour` is then the orphan error.
+#[test]
+fn an_instance_beside_its_class_or_its_type_resolves() {
+    let mut interfaces = scalar_interfaces();
+    publish(COLOUR, &mut interfaces);
+
+    let with_class = indoc::indoc! {r#"
+        module Comparable exposing (Comparable, Order(..))
+
+        import Colour exposing (Colour)
+
+        type Order
+          = EQ
+
+        class Comparable a where
+          compare : a -> a -> Order
+
+        instance Comparable Colour where
+          compare a b =
+            EQ
+    "#};
+    let module = canonicalize_with_interfaces(with_class, &interfaces)
+        .expect("an instance beside its class resolves");
+    assert_eq!(module.instances.len(), 1);
+
+    let mut interfaces = scalar_interfaces();
+    publish(COMPARABLE, &mut interfaces);
+    let with_type = indoc::indoc! {r#"
+        module Colour exposing (Colour(..))
+
+        import Comparable exposing (Comparable, Order(..))
+
+        type Colour
+          = Red
+
+        instance Comparable Colour where
+          compare a b =
+            EQ
+    "#};
+    let module = canonicalize_with_interfaces(with_type, &interfaces)
+        .expect("an instance beside its type resolves");
+    assert_eq!(module.instances.len(), 1);
+}
+
+/// An instance in a third module is the orphan error, which names both modules the
+/// instance may go in.
+///
+/// Mutation-checked by accepting every instance in `do_instances`'s orphan check.
+#[test]
+fn an_instance_in_a_third_module_is_an_orphan() {
+    use zelkova_compiler::PhaseError;
+
+    let mut interfaces = scalar_interfaces();
+    publish(COMPARABLE, &mut interfaces);
+    publish(COLOUR, &mut interfaces);
+
+    let source = indoc::indoc! {r#"
+        module App exposing ()
+
+        import Colour exposing (Colour)
+        import Comparable exposing (Comparable, Order(..))
+
+        instance Comparable Colour where
+          compare a b =
+            EQ
+    "#};
+    let errors = canonicalize_with_interfaces(source, &interfaces)
+        .expect_err("an orphan instance is rejected");
+    let [error @ canonical::Error::OrphanInstance(..)] = errors.as_slice() else {
+        panic!("expected one OrphanInstance, got {:?}", errors);
+    };
+    assert_eq!(
+        error.message(),
+        "`Comparable` is declared in `Comparable` and `Colour` in `Colour`; an instance may go in either"
+    );
+    let labels = error.labels();
+    assert_eq!(labels.len(), 1, "{:?}", labels);
+    assert_eq!(
+        labels[0].span.to_range(),
+        range_of(source, "instance Comparable Colour where")
+    );
+    assert_eq!(
+        labels[0].message,
+        "declare this instance in `Comparable` or in `Colour`"
+    );
+}
+
+/// An instance for a tuple is legal only beside its class.
+///
+/// Mutation-checked by letting a head no module declares pass `do_instances`' orphan
+/// check.
+#[test]
+fn a_tuple_instance_away_from_its_class_is_an_orphan() {
+    use zelkova_compiler::PhaseError;
+
+    let mut interfaces = scalar_interfaces();
+    publish(COMPARABLE, &mut interfaces);
+
+    let source = indoc::indoc! {r#"
+        module App exposing ()
+
+        import Comparable exposing (Comparable, Order(..))
+
+        instance Comparable (a, b) where
+          compare x y =
+            EQ
+    "#};
+    let errors = canonicalize_with_interfaces(source, &interfaces)
+        .expect_err("a tuple instance away from its class is rejected");
+    let [error @ canonical::Error::OrphanInstance(instance, span)] = errors.as_slice() else {
+        panic!("expected one OrphanInstance, got {:?}", errors);
+    };
+    assert_eq!(instance.head, canonical::HeadName::TwoTuple);
+    assert_eq!(
+        span.to_range(),
+        Some(range_of(source, "instance Comparable (a, b) where"))
+    );
+    assert_eq!(
+        error.labels()[0].message,
+        "declare this instance in `Comparable`"
+    );
+}
+
+/// Two instances of one class for one type in one module: the second is the error, and
+/// the first is labelled.
+///
+/// Mutation-checked by never recording an instance in `do_instances`'s `declared`.
+#[test]
+fn two_instances_of_one_class_for_one_type_are_a_duplicate() {
+    let source = with_eq_instance("  eq x y =\n    True\n  neq x y =\n    False\n")
+        + "\ninstance Eq Colour where\n  eq x y =\n    False\n  neq x y =\n    True\n";
+    let errors = class_errors(&source);
+    let [error @ canonical::Error::DuplicateInstance(..)] = errors.as_slice() else {
+        panic!("expected one DuplicateInstance, got {:?}", errors);
+    };
+    assert_eq!(
+        label_ranges(error),
+        vec![
+            (true, nth_range(&source, "instance Eq Colour where", 1)),
+            (false, nth_range(&source, "instance Eq Colour where", 0)),
+        ]
+    );
+}
+
+/// An instance reaches every module that can reach its declaring module through
+/// imports, whatever any `exposing` list says: `A` exposes nothing, `B` imports `A` and
+/// exposes nothing, and `C`, importing only `B`, has `A`'s instance in scope and
+/// publishes it in turn. Reached by two routes, it is in scope once.
+///
+/// Mutation-checked by publishing only the module's own instances in `to_interface`
+/// (`C` then has nothing in scope), and by dropping the check in
+/// `insert_imported_instance` (`D` then has it twice).
+#[test]
+fn an_instance_reaches_a_module_through_its_imports_transitively() {
+    let mut interfaces = scalar_interfaces();
+    publish(
+        indoc::indoc! {r#"
+            module A exposing ()
+
+            type Colour
+              = Red
+
+            class Eq a where
+              eq : a -> a -> Bool
+
+            instance Eq Colour where
+              eq x y =
+                True
+        "#},
+        &mut interfaces,
+    );
+    publish(
+        "module B exposing ()\n\nimport A\n\nb : Int\nb =\n  1\n",
+        &mut interfaces,
+    );
+
+    let c = canonicalize_with_interfaces(
+        "module C exposing ()\n\nimport B\n\nc : Int\nc =\n  1\n",
+        &interfaces,
+    )
+    .expect("C canonicalizes");
+
+    let a_instance = |instances: &[canonical::PublishedInstance]| {
+        instances
+            .iter()
+            .filter(|published| {
+                published.signature.class == test_qual("A.Eq")
+                    && published.signature.head
+                        == canonical::InstanceHead::Type(test_qual("A.Colour"), vec![])
+                    && published.signature.module.name().as_str() == "A"
+            })
+            .count()
+    };
+    assert_eq!(a_instance(&c.imported_instances), 1, "in C's scope");
+    assert_eq!(
+        a_instance(&c.to_interface(None).instances),
+        1,
+        "in C's interface"
+    );
+
+    let d = canonicalize_with_interfaces(
+        "module D exposing ()\n\nimport A\nimport B\n\nd : Int\nd =\n  1\n",
+        &interfaces,
+    )
+    .expect("D canonicalizes");
+    assert_eq!(d.imported_instances.len(), 1, "{:?}", d.imported_instances);
+}
+
+/// An instance of a class with a superclass needs an instance of the superclass for the
+/// same type.
+///
+/// Mutation-checked by dropping the superclass loop in `do_instances`.
+#[test]
+fn an_instance_without_its_superclass_instance_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Order
+          = EQ
+
+        type Colour
+          = Red
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Eq a => Comparable a where
+          compare : a -> a -> Order
+
+        instance Comparable Colour where
+          compare x y =
+            EQ
+    "#};
+    match class_errors(source).as_slice() {
+        [canonical::Error::MissingSuperclassInstance(instance, superclass, span)] => {
+            assert_eq!(instance.class, test_qual("Test.Comparable"));
+            assert_eq!(*superclass, test_qual("Test.Eq"));
+            assert_eq!(
+                instance.head,
+                canonical::HeadName::Type(test_qual("Test.Colour"))
+            );
+            assert_eq!(
+                span.to_range(),
+                Some(range_of(source, "instance Comparable Colour where"))
+            );
+        }
+        other => panic!("expected one MissingSuperclassInstance, got {:?}", other),
+    }
+}
+
+/// The `VarForeign` a value's body is, when it is one.
+fn foreign_body(module: &canonical::Module, name: &str) -> QualName {
+    let Some(canonical::Value::TypedValue { body, .. }) = module.values.get(&name.into()) else {
+        panic!("`{}` is an annotated value", name);
+    };
+    match &body.kind {
+        canonical::ExpressionKind::Apply(callee, _) => match &callee.kind {
+            canonical::ExpressionKind::Apply(callee, _) => match &callee.kind {
+                canonical::ExpressionKind::VarForeign(qname, _, _) => qname.clone(),
+                other => panic!("expected a foreign value, got {:?}", other),
+            },
+            other => panic!("expected an application, got {:?}", other),
+        },
+        other => panic!("expected an application, got {:?}", other),
+    }
+}
+
+/// A member is callable by its bare name where the import list names its class, by its
+/// bare name where the import list names it alone, and qualified with neither.
+///
+/// Mutation-checked by inserting the class without its members in
+/// `insert_foreign_class` (the import naming the class fails), and by dropping the
+/// member lookup of `process_import`'s `Lower` arm (the import naming the member fails).
+#[test]
+fn a_member_is_callable_wherever_its_class_or_it_is_imported() {
+    let mut interfaces = scalar_interfaces();
+    publish(COMPARABLE, &mut interfaces);
+    let compare = test_qual("Comparable.compare");
+
+    for source in [
+        "module App exposing ()\n\nimport Comparable exposing (Comparable, Order)\n\nuse : Int -> Order\nuse x =\n  compare x x\n",
+        "module App exposing ()\n\nimport Comparable exposing (compare, Order)\n\nuse : Int -> Order\nuse x =\n  compare x x\n",
+        "module App exposing ()\n\nimport Comparable exposing (Order)\n\nuse : Int -> Order\nuse x =\n  Comparable.compare x x\n",
+    ] {
+        let module = canonicalize_with_interfaces(source, &interfaces)
+            .unwrap_or_else(|errors| panic!("{} got {:?}", source, errors));
+        assert_eq!(foreign_body(&module, "use"), compare, "{}", source);
+    }
+}
+
+/// A member listed on its own in its module's header is an error under the entry.
+///
+/// Mutation-checked by dropping the `MemberExposedAlone` check in `do_exports`.
+#[test]
+fn a_header_listing_a_member_alone_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (same)
+
+        class Same a where
+          same : a -> a -> Bool
+    "#};
+    match class_errors(source).as_slice() {
+        [canonical::Error::MemberExposedAlone(member, class, span)] => {
+            assert_eq!(member.as_str(), "same");
+            assert_eq!(class.as_str(), "Same");
+            assert_eq!(span.to_range(), Some(nth_range(source, "same", 0)));
+        }
+        other => panic!("expected one MemberExposedAlone, got {:?}", other),
+    }
+}
+
+/// `Class(..)` in a module's header is an error under the entry.
+///
+/// Mutation-checked by answering `UnionPublic` for a class in `do_exports`.
+#[test]
+fn a_header_exposing_a_class_with_constructors_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (Same(..))
+
+        class Same a where
+          same : a -> a -> Bool
+    "#};
+    match class_errors(source).as_slice() {
+        [canonical::Error::ClassExposedWithConstructors(name, span)] => {
+            assert_eq!(name.as_str(), "Same");
+            assert_eq!(span.to_range(), Some(range_of(source, "Same(..)")));
+        }
+        other => panic!("expected one ClassExposedWithConstructors, got {:?}", other),
+    }
+}
+
+/// An `infix` declaration may name a member of a class its module declares, and a use
+/// of the operator in that module names the member.
+///
+/// Mutation-checked by dropping the member half of `do_infixes`' existence check.
+#[test]
+fn an_infix_may_name_a_member_of_a_class_of_its_module() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        infix non 4 (===) = same
+
+        class Same a where
+          same : a -> a -> Bool
+
+        use : Int -> Bool
+        use x =
+          x === x
+    "#};
+    let module = canonicalize_with_scalars(source).expect("the module canonicalizes");
+    assert_eq!(module.infixes[&"===".into()].function_name.as_str(), "same");
+}
+
+/// A facade holds signatures only, so a class and an instance in one are each an error
+/// under its head line.
+///
+/// Mutation-checked by dropping each of the two `errors.extend` calls for a facade's
+/// classes and instances in `canonicalize_recovering`: the matching error goes missing.
+#[test]
+fn a_facade_declaring_a_class_or_an_instance_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing ()
+
+        class Same a where
+          same : a -> a -> Bool
+
+        instance Same Int where
+          same x y =
+            True
+    "#};
+    match class_errors(source).as_slice() {
+        [canonical::Error::ClassDeclared(class), canonical::Error::InstanceDeclared(instance)] => {
+            assert_eq!(
+                class.to_range(),
+                Some(range_of(source, "class Same a where"))
+            );
+            assert_eq!(
+                instance.to_range(),
+                Some(range_of(source, "instance Same Int where"))
+            );
+        }
+        other => panic!(
+            "expected ClassDeclared and InstanceDeclared, got {:?}",
+            other
+        ),
+    }
+}
+
+/// A member shares the value namespace of its module: a top-level declaration of its
+/// name is an error under the member, with the declaration labelled.
+///
+/// Mutation-checked by dropping the top-level half of `member_clashes`.
+#[test]
+fn a_member_and_a_value_of_one_name_are_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Same a where
+          same : a -> a -> Bool
+
+        same : Int
+        same =
+          1
+    "#};
+    let errors = class_errors(source);
+    let [error @ canonical::Error::MemberNameTaken(member, class, None, _, _)] = errors.as_slice()
+    else {
+        panic!("expected one MemberNameTaken, got {:?}", errors);
+    };
+    assert_eq!(member.as_str(), "same");
+    assert_eq!(class.as_str(), "Same");
+    assert_eq!(
+        label_ranges(error),
+        vec![
+            (true, range_of(source, "same : a -> a -> Bool")),
+            (false, range_of(source, "same : Int\nsame =\n  1")),
+        ]
+    );
 }

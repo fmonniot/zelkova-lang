@@ -119,11 +119,11 @@ from, beside the `ir::Module` a backend will read.
 | Layout | `crates/zelkova-syntax/src/parser/layout.rs` | offside rule; injects `OpenBlock`/`CloseBlock`. 2-space indent, no tabs |
 | Parsing | `crates/zelkova-syntax/src/parser/grammar.lalrpop` | LALRPOP grammar → `parser::Module`. Compiled by `crates/zelkova-syntax/build.rs` |
 | Dependency resolution | `crates/zelkova-compiler/src/dependencies.rs` | petgraph; Tarjan SCC for cycles; yields a topological order |
-| Canonicalization | `crates/zelkova-compiler/src/canonical/` | resolves imports against `Interface`s, qualifies names, validates exports → `canonical::Module` |
+| Canonicalization | `crates/zelkova-compiler/src/canonical/` | resolves imports against `Interface`s, qualifies names, resolves classes and instances and holds each instance to the orphan rule, validates exports → `canonical::Module` |
 | Type checking | `crates/zelkova-compiler/src/typer/` | Hindley–Milner: `annotate.rs` → `constraint.rs` → `unifier.rs`. **Wired into `check_module`** |
 | Exhaustiveness | `crates/zelkova-compiler/src/exhaustiveness.rs` | **stub** — `check` inspects nothing and accepts every module. `Error::NonExhaustiveMatch` exists and renders, but nothing constructs it yet |
 | Backend IR | `crates/zelkova-compiler/src/ir/` | the shape a backend reads: a type on every node, the four kinds of name apart, arity, saturation and a constructor's place in its declaration. `ir::build` turns the canonical module and what the typer solved into one `ir::Module`. Its module doc comment is where the WebAssembly constraints are written, and is what to read before changing the shape |
-| Code generation | `crates/zelkova-js/src/lib.rs`, `crates/zelkova-js/src/output.rs` | `zelkova_js::emit` turns one `CheckedModule` into the text of an ES module. Once the whole build has checked, `zelkova::compile_package` emits every module and writes them, the runtime and each facade's companion to `build/out/js/` beside the root manifest — or nothing, if anything failed; `zelkova-js`'s *Paths* section is the layout. It emits every module of `std/core`, `case` included, and an `unsafe` facade's forwarding code runs its companion's result through the predicate of the declared type (*The boundary check*); an effectful facade's call site builds a `Task` over the runtime's `$effect` (`Ok`, `Threw`, `Malformed`); it refuses a facade with no companion, a facade result no predicate decides, a module holding a declaration the typer could not check, and a declaration holding a name that did not resolve. Its module doc comment has the shape, the representations and the call rule |
+| Code generation | `crates/zelkova-js/src/lib.rs`, `crates/zelkova-js/src/output.rs` | `zelkova_js::emit` turns one `CheckedModule` into the text of an ES module. Once the whole build has checked, `zelkova::compile_package` emits every module and writes them, the runtime and each facade's companion to `build/out/js/` beside the root manifest — or nothing, if anything failed; `zelkova-js`'s *Paths* section is the layout. It emits every module of `std/core`, `case` included, and an `unsafe` facade's forwarding code runs its companion's result through the predicate of the declared type (*The boundary check*); an effectful facade's call site builds a `Task` over the runtime's `$effect` (`Ok`, `Threw`, `Malformed`); it refuses a facade with no companion, a facade result no predicate decides, a module holding a class or an instance, a module holding a declaration the typer could not check, and a declaration holding a name that did not resolve. Its module doc comment has the shape, the representations and the call rule |
 
 `Name` (`crates/zelkova-syntax/src/name.rs`, re-exported by `zelkova_compiler::name`) is an
 unqualified identifier; `QualName` (`crates/zelkova-compiler/src/name.rs`) is one that carries
@@ -252,8 +252,11 @@ behind it, and *Active work: type classes* in
 order they have to land in. Read the chapter before touching any of it.
 
 A class and an instance parse, into `parser::ClassDecl` and `parser::InstanceDecl`, and
-canonicalization rejects each with `Error::ClassUnsupported` or `Error::InstanceUnsupported`
-until `LANG-39` gives them a meaning. **`class` and `instance` are reserved words, and `where`
+canonicalization resolves them (`canonical/classes.rs`; its module doc comment is the account):
+a member is a top-level value of its class's module, and an instance reaches every module that
+imports its declaring one, transitively, through `Interface::instances`. Nothing about either
+is type checked yet, and `zelkova_js::emit` refuses a module holding one. **`class` and
+`instance` are reserved words, and `where`
 is reserved as a type variable** and nowhere else: it stays an ordinary name wherever a value
 is named, and `derived` is soft, read by the token after it. The layout pass gives each member
 of a body its own block (`Context::Members` and `Context::Member`), which is what the grammar's
