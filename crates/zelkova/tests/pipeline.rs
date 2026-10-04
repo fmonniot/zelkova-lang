@@ -1765,7 +1765,7 @@ fn helper_interface() -> (Name, Interface) {
     let mut values = HashMap::new();
     values.insert(
         "add".into(),
-        (
+        canonical::ValueSignature::unconstrained(
             NodeSpan::none(),
             canonical::Type::Arrow(
                 Box::new(canonical::Type::Variable("a".into())),
@@ -3074,7 +3074,10 @@ fn basics_interface_with_plus() -> (Name, Interface) {
     );
 
     let mut values = HashMap::new();
-    values.insert("add".into(), (NodeSpan::none(), add_type));
+    values.insert(
+        "add".into(),
+        canonical::ValueSignature::unconstrained(NodeSpan::none(), add_type),
+    );
 
     let mut unions = HashMap::new();
     unions.insert(

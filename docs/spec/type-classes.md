@@ -26,9 +26,8 @@ It holds an instance to its class's members, to its superclasses and to [the orp
 rule](#where-an-instance-may-be-declared), and a member is a value of its module. A declaration
 that uses a member is not type checked, a derivation and a `derived` instance are read and not
 checked, nothing yet produces the members a derived instance stands for, and a module holding a
-class or an instance does not compile to JavaScript. A constraint in an annotation parses and is
-checked to be shaped like one, and is then ignored: see [Constraining an
-annotation](#constraining-an-annotation). The type-class ticket program in
+class or an instance does not compile to JavaScript. A constraint in an annotation is resolved
+and asks nothing of a caller: see [Constraining an annotation](#constraining-an-annotation). The type-class ticket program in
 [`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
 land.
 
@@ -577,12 +576,15 @@ the variable that class applies to, and that variable must be one the type menti
 `Eq b => a -> a` is an error, since no caller could say which `b` it meant.
 
 ```zel expect=ok
-module Example exposing (Order, min)
+module Example exposing (Order, Comparable, min)
 
 type Order
   = LT
   | EQ
   | GT
+
+class Comparable a where
+  compare : a -> a -> Order
 
 min : Comparable a => a -> a -> a
 min x y =
@@ -596,11 +598,17 @@ site, pointing at the call.
 Several constraints are parenthesised and comma-separated:
 
 ```zel expect=ok
-module Example exposing (Bit, describe)
+module Example exposing (Bit, Eq, Comparable, describe)
 
 type Bit
   = Zero
   | One
+
+class Eq a where
+  eq : a -> a -> Bool
+
+class Eq a => Comparable a where
+  lt : a -> a -> Bool
 
 describe : (Comparable k, Eq v) => k -> v -> Bit
 describe a b =
@@ -610,20 +618,22 @@ describe a b =
 The list may be of any length:
 
 ```zel expect=ok
-module Example exposing (Bit, four)
+module Example exposing (Bit, Eq, four)
 
 type Bit
   = Zero
+
+class Eq a where
+  eq : a -> a -> Bool
 
 four : (Eq a, Eq b, Eq c, Eq d) => a -> b -> c -> d -> Bit
 four a b c d =
   Zero
 ```
 
-**Not implemented:** a constraint is checked to be shaped like one and then ignored. Its class
-name is not resolved, and a constrained annotation is checked exactly as it would be without its
-constraint, so none of the blocks above asks anything of a caller
-([`LANG-70`](../tickets/lang-70.md), [`LANG-40`](../tickets/lang-40.md)).
+**Not implemented:** a constrained annotation is type checked exactly as it would be without its
+constraints, so none of the blocks above asks anything of a caller
+([`LANG-40`](../tickets/lang-40.md)).
 
 ### A constraint is never inferred
 

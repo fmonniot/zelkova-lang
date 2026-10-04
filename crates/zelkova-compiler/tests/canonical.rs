@@ -145,6 +145,7 @@ fn typed_identity_function() {
     assert_eq!(
         module.values.get(&"identity".into()).unwrap(),
         &canonical::Value::TypedValue {
+            context: vec![],
             marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
@@ -175,6 +176,7 @@ fn function_multiple_parameters() {
     assert_eq!(
         module.values.get(&"add".into()).unwrap(),
         &canonical::Value::TypedValue {
+            context: vec![],
             marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
@@ -235,6 +237,7 @@ fn union_type_definition_and_constructor() {
     assert_eq!(
         module.values.get(&"favorite".into()).unwrap(),
         &canonical::Value::TypedValue {
+            context: vec![],
             marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
@@ -346,6 +349,7 @@ fn if_then_else_expression() {
     assert_eq!(
         module.values.get(&"max".into()).unwrap(),
         &canonical::Value::TypedValue {
+            context: vec![],
             marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
@@ -587,6 +591,7 @@ fn foreign_facade_module() {
     assert_eq!(
         module.values.get(&"add".into()).unwrap(),
         &canonical::Value::TypedValue {
+            context: vec![],
             marked_unsafe: true,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
@@ -669,6 +674,7 @@ fn tuple_of_two_canonicalizes() {
     assert_eq!(
         module.values.get(&"pair".into()).unwrap(),
         &canonical::Value::TypedValue {
+            context: vec![],
             marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
@@ -698,6 +704,7 @@ fn tuple_of_three_canonicalizes() {
     assert_eq!(
         module.values.get(&"triple".into()).unwrap(),
         &canonical::Value::TypedValue {
+            context: vec![],
             marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
@@ -3509,8 +3516,8 @@ fn range_of(source: &str, needle: &str) -> std::ops::Range<usize> {
 }
 
 /// A well-formed context canonicalizes, and the value's type is the one after
-/// `=>`: the context is validated and then set aside, and nothing about it
-/// leaks into the canonical `Type`.
+/// `=>`: the context is kept beside the type, and nothing about it leaks into the
+/// canonical `Type`.
 ///
 /// Verified to fail by making `validate_context` reject every constraint (its
 /// first arm never matching, so an applied name falls through to `Unapplied`):
@@ -3519,6 +3526,13 @@ fn range_of(source: &str, needle: &str) -> std::ops::Range<usize> {
 fn well_formed_constraint_context_is_accepted() {
     let source = indoc::indoc! {r#"
         module Test exposing (lookup)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Comparable a where
+          lt : a -> a -> Bool
+
         lookup : (Comparable k, Eq v) => k -> v -> Bool
         lookup key value =
           True
@@ -3544,8 +3558,9 @@ fn well_formed_constraint_context_is_accepted() {
 /// type — and is rejected here, naming what was written and putting the caret
 /// under the function type alone rather than the whole annotation.
 ///
-/// Verified to fail by deleting the `validate_context` call in `canonicalize`:
-/// the module then canonicalizes cleanly and `expect_err` panics.
+/// Verified to fail by deleting the `validate_context` call in
+/// `classes::constraints` (returning no constraint in its place): the module then
+/// canonicalizes cleanly and `expect_err` panics.
 #[test]
 fn function_type_as_constraint_context_is_rejected() {
     use zelkova_compiler::PhaseError;
@@ -3744,6 +3759,7 @@ fn unit_type_and_value_canonicalize() {
     assert_eq!(
         value,
         &canonical::Value::TypedValue {
+            context: vec![],
             marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
@@ -4299,14 +4315,17 @@ fn a_broken_declaration_reaches_the_interface_by_its_annotation() {
     let int_to_int = canonical::Type::Arrow(Box::new(int_t()), Box::new(int_t()));
 
     assert_eq!(
-        interface.values.get(&"f".into()).map(|(_, tpe)| tpe),
+        interface
+            .values
+            .get(&"f".into())
+            .map(|signature| &signature.tpe),
         Some(&int_to_int)
     );
     assert_eq!(
         interface
             .infix_functions
             .get(&"add".into())
-            .map(|(_, tpe)| tpe),
+            .map(|signature| &signature.tpe),
         Some(&canonical::Type::Arrow(
             Box::new(int_t()),
             Box::new(int_to_int.clone())
@@ -7314,4 +7333,363 @@ fn a_member_and_a_value_of_one_name_are_an_error() {
             (false, range_of(source, "same : Int\nsame =\n  1")),
         ]
     );
+}
+
+// ── LANG-70: an annotation's constraints, resolved and kept ──
+
+/// The module the annotation tests below write one declaration into: `Eq` and
+/// `Comparable`, each declared.
+fn with_classes(declaration: &str) -> String {
+    format!(
+        "{}\n{}",
+        indoc::indoc! {r#"
+            module Test exposing ()
+
+            class Eq a where
+              eq : a -> a -> Bool
+
+            class Comparable a where
+              lt : a -> a -> Bool
+        "#},
+        declaration
+    )
+}
+
+/// A constraint naming a class nothing declares is an error naming it, with the caret
+/// under the constraint and not under the annotation.
+///
+/// Mutation-checked by resolving no annotation's context in `annotation` (handing
+/// `classes::constraints` no context): the module then canonicalizes and
+/// `class_errors` panics.
+#[test]
+fn an_annotation_constraint_naming_no_class_is_an_error() {
+    let source = with_classes(indoc::indoc! {r#"
+        min : Nonsense a => a -> a -> a
+        min x y =
+          x
+    "#});
+    match class_errors(&source).as_slice() {
+        [error @ canonical::Error::ClassNotFound(name, _)] => {
+            assert_eq!(name.as_str(), "Nonsense");
+            assert_eq!(sole_label(error), range_of(&source, "Nonsense a"));
+        }
+        other => panic!("expected one ClassNotFound, got {:?}", other),
+    }
+}
+
+/// A constraint has exactly one argument, and it is a type variable: a concrete type, an
+/// applied type and two arguments are each an error under the constraint.
+///
+/// Mutation-checked by resolving no annotation's context in `annotation`: each module
+/// then canonicalizes and `class_errors` panics.
+#[test]
+fn an_annotation_constraint_not_on_one_variable_is_an_error() {
+    for constraint in ["Comparable Int", "Comparable (Maybe a)", "Comparable a b"] {
+        let source = with_classes(&format!("f : {} => a -> a\nf x =\n  x\n", constraint));
+        match class_errors(&source).as_slice() {
+            [error @ canonical::Error::ConstraintNotOnVariable(_)] => {
+                assert_eq!(sole_label(error), range_of(&source, constraint));
+            }
+            other => panic!(
+                "expected one ConstraintNotOnVariable for `{}`, got {:?}",
+                constraint, other
+            ),
+        }
+    }
+}
+
+/// A constraint on a variable the annotated type does not mention is an error naming the
+/// variable, with the caret under it.
+///
+/// Mutation-checked by accepting every variable in `classes::constraints`' bound check
+/// (`bound.contains(&variable) || true`): the module then canonicalizes and
+/// `class_errors` panics.
+#[test]
+fn an_annotation_constraint_on_a_variable_its_type_does_not_mention_is_an_error() {
+    use zelkova_compiler::PhaseError;
+
+    let source = with_classes(indoc::indoc! {r#"
+        f : Eq b => a -> a
+        f x =
+          x
+    "#});
+    match class_errors(&source).as_slice() {
+        [error @ canonical::Error::ConstraintVariableNotInType(name, _)] => {
+            assert_eq!(name.as_str(), "b");
+            assert_eq!(
+                error.message(),
+                "the type variable `b` is constrained, but the annotated type does not mention it"
+            );
+            let written = range_of(&source, "b =>").start;
+            assert_eq!(sole_label(error), written..written + 1);
+        }
+        other => panic!("expected one ConstraintVariableNotInType, got {:?}", other),
+    }
+}
+
+/// Every bad constraint of one context is reported, each at its own span.
+///
+/// Mutation-checked by resolving no annotation's context in `annotation`: the module
+/// then canonicalizes and `class_errors` panics.
+#[test]
+fn every_bad_constraint_of_an_annotation_is_reported() {
+    let source = with_classes(indoc::indoc! {r#"
+        f : (Missing a, Eq Int, Eq b) => a -> a
+        f x =
+          x
+    "#});
+    let errors = class_errors(&source);
+    let [missing @ canonical::Error::ClassNotFound(..), concrete @ canonical::Error::ConstraintNotOnVariable(_), unmentioned @ canonical::Error::ConstraintVariableNotInType(..)] =
+        errors.as_slice()
+    else {
+        panic!("expected three errors, got {:?}", errors);
+    };
+    assert_eq!(sole_label(missing), range_of(&source, "Missing a"));
+    assert_eq!(sole_label(concrete), range_of(&source, "Eq Int"));
+    let written = range_of(&source, "b)").start;
+    assert_eq!(sole_label(unmentioned), written..written + 1);
+}
+
+/// The byte range `constraint` was written at.
+fn constraint_range(constraint: &canonical::Constraint) -> std::ops::Range<usize> {
+    constraint
+        .span
+        .span()
+        .expect("a constraint read from source has a span")
+        .to_range()
+}
+
+/// A context naming declared classes resolves, and is on the canonical value beside the
+/// type: each constraint's class, its variable and where it was written, in order. A
+/// constraint repeated, and one a superclass already implies, are legal.
+///
+/// Mutation-checked by building every `Value::TypedValue`'s `context` as empty in
+/// `value_declaration`: the destructuring panics.
+#[test]
+fn an_annotation_context_is_on_the_canonical_value() {
+    let source = with_classes(indoc::indoc! {r#"
+        lookup : (Comparable k, Eq v, Eq v) => k -> v -> Bool
+        lookup key value =
+          True
+    "#});
+    let module = canonicalize_with_scalars(&source).expect("the module canonicalizes");
+
+    let Some(canonical::Value::TypedValue { context, .. }) = module.values.get(&"lookup".into())
+    else {
+        panic!("expected a TypedValue for `lookup`");
+    };
+    let [comparable, eq, again] = context.as_slice() else {
+        panic!("expected three constraints, got {:?}", context);
+    };
+    assert_eq!(comparable.class, test_qual("Test.Comparable"));
+    assert_eq!(comparable.variable.as_str(), "k");
+    assert_eq!(
+        constraint_range(comparable),
+        range_of(&source, "Comparable k")
+    );
+    assert_eq!(eq.class, test_qual("Test.Eq"));
+    assert_eq!(eq.variable.as_str(), "v");
+    assert_eq!(constraint_range(eq), nth_range(&source, "Eq v", 0));
+    assert_eq!(constraint_range(again), nth_range(&source, "Eq v", 1));
+}
+
+/// A declaration whose body fails and whose annotation does not is broken with its
+/// context, and the interface publishes that context with its type.
+///
+/// Mutation-checked by building every `Broken`'s `context` as empty in `Broken::of`:
+/// the destructuring panics.
+#[test]
+fn a_broken_declaration_keeps_its_annotation_context() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (f)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        f : Eq a => a -> a
+        f x y =
+          x
+    "#};
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &scalar_interfaces());
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [canonical::Error::BindingPatternsInvalidLen(_)]
+        ),
+        "got {:?}",
+        errors
+    );
+
+    let [broken] = module.broken.as_slice() else {
+        panic!("expected one broken declaration, got {:?}", module.broken);
+    };
+    let [eq] = broken.context.as_slice() else {
+        panic!("expected one constraint, got {:?}", broken.context);
+    };
+    assert_eq!(eq.class, test_qual("Test.Eq"));
+
+    let interface = module.to_interface(None);
+    let [published] = interface.values[&"f".into()].context.as_slice() else {
+        panic!("expected `f` published with one constraint");
+    };
+    assert_eq!(published.class, test_qual("Test.Eq"));
+}
+
+/// A constraint may name a variable the annotated type mentions only inside an applied
+/// type, or only inside a tuple: either is a variable of the type, and the context lands
+/// on the canonical value.
+///
+/// Mutation-checked by emptying the `Unqualified` arm, then the `Tuple` arm, of
+/// `classes::written_variables`: `same`, then `first`, is reported with
+/// `ConstraintVariableNotInType` and `canonicalize_with_scalars` returns the error.
+#[test]
+fn a_constraint_on_a_variable_inside_an_applied_type_or_a_tuple_resolves() {
+    let source = with_classes(indoc::indoc! {r#"
+        type Box a = Box a
+
+        same : Eq a => Box a -> Box a -> Bool
+        same x y =
+          True
+
+        first : Comparable b => (b, Int) -> Bool
+        first pair =
+          True
+    "#});
+    let module = canonicalize_with_scalars(&source).expect("the module canonicalizes");
+
+    for (name, class, variable) in [("same", "Test.Eq", "a"), ("first", "Test.Comparable", "b")] {
+        let Some(canonical::Value::TypedValue { context, .. }) = module.values.get(&name.into())
+        else {
+            panic!("expected a TypedValue for `{}`", name);
+        };
+        let [constraint] = context.as_slice() else {
+            panic!("expected one constraint on `{}`, got {:?}", name, context);
+        };
+        assert_eq!(constraint.class, test_qual(class));
+        assert_eq!(constraint.variable.as_str(), variable);
+    }
+}
+
+/// A declaration whose context fails is broken with no annotation at all: it is not a
+/// value of the module, its broken entry carries neither type nor context, and the
+/// interface does not publish it. Keeping the type with the bad constraints dropped would
+/// publish a constrained function as an unconstrained one.
+///
+/// Mutation-checked by having `value_declaration` push a failed annotation's errors onto
+/// `unresolved` and carry on with `Annotation::Canonical(tpe, Vec::new())` whenever the
+/// type itself canonicalizes: the `ClassNotFound` is still reported, `f` is a value of
+/// the module, and the `broken` destructuring panics.
+#[test]
+fn a_declaration_whose_context_fails_is_broken_without_its_annotation() {
+    let source = with_classes(indoc::indoc! {r#"
+        f : Nonsense a => a -> a
+        f x =
+          x
+    "#});
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(&source, &scalar_interfaces());
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::ClassNotFound(..)]),
+        "got {:?}",
+        errors
+    );
+
+    let [broken] = module.broken.as_slice() else {
+        panic!("expected one broken declaration, got {:?}", module.broken);
+    };
+    assert_eq!(broken.name.as_str(), "f");
+    assert_eq!(broken.tpe, None);
+    assert!(broken.context.is_empty(), "got {:?}", broken.context);
+    assert!(!module.values.contains_key(&"f".into()));
+    assert!(module.incomplete);
+
+    let interface = module.to_interface(None);
+    assert!(!interface.values.contains_key(&"f".into()));
+}
+
+/// `Eq` and a function constrained by it, declared in a module of its own name.
+const CLASSES: &str = indoc::indoc! {r#"
+    module Classes exposing (Eq, same)
+
+    class Eq a where
+      eq : a -> a -> Bool
+
+    same : Eq a => a -> a -> Bool
+    same x y =
+      eq x y
+"#};
+
+/// A class imported from another module resolves through the import, to the class that
+/// module declared, and the interface the importer is canonicalized against carries the
+/// exporting module's constrained function with its context.
+///
+/// Mutation-checked by publishing every value with an empty `context` in
+/// `Module::declared_signature`, which turns the interface assertion red; and by
+/// resolving no annotation's context in `annotation`, which turns the importer's
+/// assertion red.
+#[test]
+fn an_imported_class_resolves_and_its_constrained_function_carries_its_context() {
+    let mut interfaces = scalar_interfaces();
+    publish(CLASSES, &mut interfaces);
+
+    let [published] = interfaces[&"Classes".into()].values[&"same".into()]
+        .context
+        .as_slice()
+    else {
+        panic!("expected `same` published with one constraint");
+    };
+    assert_eq!(published.class, test_qual("Classes.Eq"));
+    assert_eq!(published.variable.as_str(), "a");
+
+    let importer = indoc::indoc! {r#"
+        module Main exposing (alike)
+
+        import Classes exposing (Eq, same)
+
+        alike : Eq b => b -> Bool
+        alike x =
+          same x x
+    "#};
+    let module =
+        canonicalize_with_interfaces(importer, &interfaces).expect("the importer canonicalizes");
+    let Some(canonical::Value::TypedValue { context, .. }) = module.values.get(&"alike".into())
+    else {
+        panic!("expected a TypedValue for `alike`");
+    };
+    let [eq] = context.as_slice() else {
+        panic!("expected one constraint, got {:?}", context);
+    };
+    assert_eq!(eq.class, test_qual("Classes.Eq"));
+    assert_eq!(eq.variable.as_str(), "b");
+}
+
+/// A constrained function behind an exposed operator, itself not exposed by name, carries
+/// its context in `Interface::infix_functions`.
+///
+/// Mutation-checked by publishing every value with an empty `context` in
+/// `Module::declared_signature`: the destructuring panics.
+#[test]
+fn a_constrained_function_behind_an_exposed_operator_carries_its_context() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (Eq, (===))
+
+        infix non 4 (===) = same
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        same : Eq a => a -> a -> Bool
+        same x y =
+          eq x y
+    "#};
+    let module = canonicalize_with_scalars(source).expect("the module canonicalizes");
+    let interface = module.to_interface(None);
+
+    assert!(!interface.values.contains_key(&"same".into()));
+    let [eq] = interface.infix_functions[&"same".into()].context.as_slice() else {
+        panic!("expected `same` behind `===` with one constraint");
+    };
+    assert_eq!(eq.class, test_qual("Test.Eq"));
+    assert_eq!(eq.variable.as_str(), "a");
 }

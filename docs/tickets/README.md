@@ -135,7 +135,7 @@ LANG-39  resolution: what a class and an instance are, members in the   ← clos
   │      value namespace, instances across modules, the orphan rule
   │      ← the emitter refuses a module holding a class from here on
   │
-LANG-70  a constraint in an annotation is resolved; its context is
+LANG-70  a constraint in an annotation is resolved; its context is   ← closed
   │      kept, on the value and in the `Interface`
   │
 LANG-40  the solver: obligations are collected, deferred and discharged
@@ -347,7 +347,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-67](lang-67.md) | task | — | open | `pow`'s `bigint` branch can materialize an astronomically large intermediate before masking |
 | LANG-68 | task | — | closed 2026-09-28 | An unmarked facade signature is not held to the `Task (Result Failure a)` result shape |
 | LANG-69 | task | — | closed 2026-09-27 | There is no `zelkova test`: nothing runs a package's tests |
-| [LANG-70](lang-70.md) | task | — | open | A constraint in an annotation is resolved, and its context reaches the canonical module |
+| LANG-70 | task | — | closed 2026-10-04 | A constraint in an annotation is resolved, and its context reaches the canonical module |
 | LANG-71 | task | — | closed 2026-10-03 | A constraint context of four or more constraints does not parse |
 | LANG-72 | task | — | closed 2026-09-28 | `()` is not recognised as a type, an expression or a pattern |
 | LANG-73 | task | — | closed 2026-09-28 | `std/core` declares no `String`, so no annotation can name one |

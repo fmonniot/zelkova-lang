@@ -475,12 +475,12 @@ fn process_import(
         insert_foreign_class(env, Some(prefix), interface, class_name, signature, origin);
     }
 
-    for (value_name, (node_span, tpe)) in &interface.values {
+    for (value_name, signature) in &interface.values {
         insert_foreign_value(
             env,
             value_name.clone().qualify_with(prefix.to_string()),
-            tpe.clone(),
-            interface.source_span(*node_span),
+            signature.tpe.clone(),
+            interface.source_span(signature.span),
             &interface.module_name,
             origin,
         );
@@ -504,12 +504,12 @@ fn process_import(
         parser::Exposing::Open => {
             // We add everything to the current environment
 
-            for (value_name, (node_span, tpe)) in &interface.values {
+            for (value_name, signature) in &interface.values {
                 insert_foreign_value(
                     env,
                     value_name.clone(),
-                    tpe.clone(),
-                    interface.source_span(*node_span),
+                    signature.tpe.clone(),
+                    interface.source_span(signature.span),
                     &interface.module_name,
                     origin,
                 );
@@ -542,7 +542,7 @@ fn process_import(
             let iter = exposeds.iter().map(|exposed| {
                 match &exposed.kind {
                     parser::ExposedKind::Lower(value_name) => {
-                        let Some((node_span, tpe)) = interface.values.get(value_name) else {
+                        let Some(signature) = interface.values.get(value_name) else {
                             // A class member may be named on its own, as any exposed
                             // value may.
                             if let Some(member) = interface
@@ -579,8 +579,8 @@ fn process_import(
                         insert_foreign_value(
                             env,
                             value_name.clone(),
-                            tpe.clone(),
-                            interface.source_span(*node_span),
+                            signature.tpe.clone(),
+                            interface.source_span(signature.span),
                             &interface.module_name,
                             origin,
                         );
@@ -740,7 +740,7 @@ fn imported_infix(interface: &Interface, infix: &Infix) -> InfixEntry {
         .values
         .get(&infix.function_name)
         .or_else(|| interface.infix_functions.get(&infix.function_name))
-        .map(|(_, tpe)| tpe)
+        .map(|signature| &signature.tpe)
         .or_else(member)
     {
         Some(tpe) => InfixFunction::Imported(interface.module_name.clone(), tpe.clone()),
@@ -1380,7 +1380,7 @@ mod tests {
         // andThen : (a -> Maybe b) -> Maybe a -> Maybe b
         values.insert(
             "andThen".into(),
-            (
+            ValueSignature::unconstrained(
                 // Hand-built, not canonicalized from source: no position behind it.
                 NodeSpan::none(),
                 type_fun(
@@ -1395,7 +1395,7 @@ mod tests {
         // map : (a -> b) -> Maybe a -> Maybe b
         values.insert(
             "map".into(),
-            (
+            ValueSignature::unconstrained(
                 NodeSpan::none(),
                 type_fun(
                     type_fun(type_var("a"), type_var("b")),
@@ -1409,7 +1409,7 @@ mod tests {
         // withDefault : a -> Maybe a -> a
         values.insert(
             "withDefault".into(),
-            (
+            ValueSignature::unconstrained(
                 NodeSpan::none(),
                 type_fun(
                     type_var("a"),
@@ -1545,7 +1545,7 @@ mod tests {
             let mut values = HashMap::new();
             values.insert(
                 "length".into(),
-                (
+                ValueSignature::unconstrained(
                     NodeSpan::none(),
                     Type::Type(
                         QualName::parse(PackageName::core(), "Basics.Int").unwrap(),

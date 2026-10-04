@@ -273,10 +273,9 @@ pub struct SourceSpan {
 #[derive(Debug, Clone)]
 pub struct Interface {
     pub module_name: ModuleName,
-    /// Each value's type, paired with where its declaration (annotation and body
-    /// together) was written — [`canonical::Value::span`] — so a diagnostic about a
-    /// name found here can point at the declaration, not just name it.
-    pub values: HashMap<Name, (NodeSpan, canonical::Type)>,
+    /// Each value's type and the context its annotation wrote, with where its
+    /// declaration was written: a [`canonical::ValueSignature`].
+    pub values: HashMap<Name, canonical::ValueSignature>,
     /// Every union type the module exposes, opaquely or not. An opaque one — see
     /// [`opaque_unions`](Self::opaque_unions) — is here with its `variants` emptied.
     pub unions: HashMap<Name, canonical::UnionType>,
@@ -299,7 +298,7 @@ pub struct Interface {
     //aliases: HashMap<Name, >
     /// infixes is a map from the operator symbol to its information
     pub infixes: HashMap<Name, canonical::Infix>,
-    /// The type of an exposed infix's own backing function, keyed by that
+    /// The signature of an exposed infix's own backing function, keyed by that
     /// function's unqualified name — populated only when the function is *not*
     /// separately present in [`values`](Self::values), i.e. the header exposes
     /// the operator but not the function by name (`infix left 6 (+) = add`,
@@ -317,7 +316,7 @@ pub struct Interface {
     /// importing module's scope under its own name: a function that backs an
     /// exposed operator is importable by name only when the header says so too
     /// (`BUG-9`), and then it is [`values`](Self::values) that carries it.
-    pub infix_functions: HashMap<Name, (NodeSpan, canonical::Type)>,
+    pub infix_functions: HashMap<Name, canonical::ValueSignature>,
     /// How many parameters each value in [`values`](Self::values) and
     /// [`infix_functions`](Self::infix_functions) is emitted with, keyed the same way:
     /// [`canonical::Module::emitted_arity`].

@@ -120,7 +120,7 @@ pub fn maybe_interface() -> (Name, Interface) {
     // andThen : (a -> Maybe b) -> Maybe a -> Maybe b
     values.insert(
         "andThen".into(),
-        (
+        canonical::ValueSignature::unconstrained(
             // Hand-built, not canonicalized from source: no position behind it.
             NodeSpan::none(),
             type_fun(
@@ -135,7 +135,7 @@ pub fn maybe_interface() -> (Name, Interface) {
     // map : (a -> b) -> Maybe a -> Maybe b
     values.insert(
         "map".into(),
-        (
+        canonical::ValueSignature::unconstrained(
             NodeSpan::none(),
             type_fun(
                 type_fun(type_var("a"), type_var("b")),
@@ -149,7 +149,7 @@ pub fn maybe_interface() -> (Name, Interface) {
     // withDefault : a -> Maybe a -> a
     values.insert(
         "withDefault".into(),
-        (
+        canonical::ValueSignature::unconstrained(
             NodeSpan::none(),
             type_fun(
                 type_var("a"),
