@@ -86,6 +86,8 @@ pub enum Token {
     Else,
     Let,
     In,
+    Class,
+    Instance,
 
     // Soft keywords
     //
@@ -99,6 +101,8 @@ pub enum Token {
     Non,
     Foreign,
     Unsafe,
+    Where,
+    Derived,
 
     // Layout
     OpenBlock,
@@ -106,6 +110,23 @@ pub enum Token {
 }
 
 impl Token {
+    /// Whether the grammar's `VarIdent` reads this token as a lowercase name: an
+    /// ordinary identifier, or a soft keyword in a position where it is one. The layout
+    /// pass asks it what follows a `derived` in a class body.
+    pub(crate) fn names_a_value(&self) -> bool {
+        matches!(
+            self,
+            Token::LowerIdentifier(_)
+                | Token::Left
+                | Token::Right
+                | Token::Non
+                | Token::Foreign
+                | Token::Unsafe
+                | Token::Where
+                | Token::Derived
+        )
+    }
+
     /// Whether an expression can end with this token, which is to say whether a `.`
     /// written straight after it can be the `.` of a field access or a qualified name.
     ///
@@ -126,6 +147,8 @@ impl Token {
             | Token::Non
             | Token::Foreign
             | Token::Unsafe
+            | Token::Where
+            | Token::Derived
             | Token::Integer { .. }
             | Token::Float { .. }
             | Token::Char { .. }
@@ -164,6 +187,8 @@ impl Token {
             | Token::Else
             | Token::Let
             | Token::In
+            | Token::Class
+            | Token::Instance
             | Token::OpenBlock
             | Token::CloseBlock => false,
         }
@@ -189,6 +214,8 @@ fn keyword(s: &str) -> Option<Token> {
         "else" => Some(Token::Else),
         "let" => Some(Token::Let),
         "in" => Some(Token::In),
+        "class" => Some(Token::Class),
+        "instance" => Some(Token::Instance),
 
         // soft keywords
         "left" => Some(Token::Left),
@@ -196,6 +223,8 @@ fn keyword(s: &str) -> Option<Token> {
         "non" => Some(Token::Non),
         "foreign" => Some(Token::Foreign),
         "unsafe" => Some(Token::Unsafe),
+        "where" => Some(Token::Where),
+        "derived" => Some(Token::Derived),
 
         _ => None,
     }

@@ -127,7 +127,7 @@ LANG-71  a context holds any number of constraints, as a list   ← closed
 LANG-41  `Type::Number` retires; an integer literal is an `Int`   ← closed
   │      ← closed ERR-13
   │
-LANG-38  `class` / `instance` parse, with a `where` block of members
+LANG-38  `class` / `instance` parse, with a `where` block of members   ← closed
   │      ← syntax only: canonicalization rejects each one, the way a
   │        multi-clause declaration is rejected today
   │
@@ -315,7 +315,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-35 | task | — | closed 2026-09-20 | A parameterless binding may depend on itself, and nothing notices |
 | [LANG-36](lang-36.md) | task | — | open | `std/core`'s `Basics` documents three semantics the language does not have |
 | LANG-37 | task | — | closed 2026-09-27 | A type annotation may carry a constraint context, written `Class a =>` |
-| [LANG-38](lang-38.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
+| LANG-38 | task | — | closed 2026-10-03 | `class` and `instance` declarations parse, with a `where` block of members |
 | [LANG-39](lang-39.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
 | [LANG-40](lang-40.md) | task | — | open | Discharge class constraints in the type checker |
 | LANG-41 | task | — | closed 2026-10-03 | Retire `Type::Number`: an integer literal is an `Int` |

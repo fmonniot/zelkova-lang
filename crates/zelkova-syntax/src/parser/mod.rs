@@ -364,6 +364,10 @@ pub struct Module {
     pub imports: Vec<Import>,
     pub infixes: Vec<Infix>,
     pub types: Vec<UnionType>,
+    /// Every `class` declaration, in source order.
+    pub classes: Vec<ClassDecl>,
+    /// Every `instance` declaration, in source order.
+    pub instances: Vec<InstanceDecl>,
     pub functions: Vec<Function>,
     /// The declaration chunks that failed to parse, in source order.
     ///
@@ -388,6 +392,8 @@ impl Module {
         let mut imports = vec![];
         let mut types = vec![];
         let mut infixes = vec![];
+        let mut classes = vec![];
+        let mut instances = vec![];
         let mut functions = HashMap::<Name, Vec<Declaration>>::new();
 
         for declaration in declarations {
@@ -404,6 +410,8 @@ impl Module {
                 Declaration::Import(i) => imports.push(i),
                 Declaration::Infix(i) => infixes.push(i),
                 Declaration::Union(t) => types.push(t),
+                Declaration::Class(c) => classes.push(c),
+                Declaration::Instance(i) => instances.push(i),
             }
         }
 
@@ -451,6 +459,8 @@ impl Module {
             imports,
             infixes,
             types,
+            classes,
+            instances,
             functions,
             failed,
         }
@@ -579,7 +589,74 @@ pub enum Declaration {
     /// Union types are also called custom types in Elm
     Union(UnionType),
     Infix(Infix),
+    Class(ClassDecl),
+    Instance(InstanceDecl),
     // type aliases, infixes and ports will end up here
+}
+
+/// A `class` declaration: `class Eq a => Comparable a where`, and the members under it.
+///
+/// Nothing in it is checked. The head is what the grammar read as one constrained type,
+/// split into its context and the rest, and a head that is not shaped like a class name
+/// applied to a variable is still a `ClassDecl`.
+#[derive(Debug, PartialEq)]
+pub struct ClassDecl {
+    /// What was written in front of the head's `=>`: the class's superclasses.
+    pub context: Option<Context>,
+    /// The head after `=>`, or the whole head when there is no context.
+    pub head: Type,
+    /// The body, in the order written.
+    pub members: Vec<ClassMember>,
+    /// Where the head line was written, `class` through `where`.
+    pub span: NodeSpan,
+}
+
+/// One entry of a class body.
+#[derive(Debug, PartialEq)]
+pub enum ClassMember {
+    /// `name : Type`. The signature's own `context` and `marked_unsafe` are kept as
+    /// written; both are errors in a class body and neither is dropped here.
+    Signature(FunType),
+    /// `derived name`, with the bindings that define the derivation under it.
+    Derivation(Derivation),
+}
+
+/// A derivation in a class body: `derived compare` and the bindings under it.
+///
+/// The bindings are a list of ordinary function bindings. Which names a derivation has to
+/// hold is not the parser's to say.
+#[derive(Debug, PartialEq)]
+pub struct Derivation {
+    /// The member the derivation is for.
+    pub member: Name,
+    /// The bindings, in the order written. The grammar never builds one with none.
+    pub bindings: Vec<FunBinding>,
+    /// Where `derived name` was written.
+    pub span: NodeSpan,
+}
+
+/// An `instance` declaration: `instance Eq a => Eq (Box a) where`, and its body.
+///
+/// The head is kept as the grammar read it, as in [`ClassDecl`].
+#[derive(Debug, PartialEq)]
+pub struct InstanceDecl {
+    /// What was written in front of the head's `=>`.
+    pub context: Option<Context>,
+    /// The head after `=>`, or the whole head when there is no context.
+    pub head: Type,
+    pub body: InstanceBody,
+    /// Where the head line was written, `instance` through `where`.
+    pub span: NodeSpan,
+}
+
+/// What stands under an instance's `where`: the one word `derived`, or a binding per
+/// member. The grammar has no production for both.
+#[derive(Debug, PartialEq)]
+pub enum InstanceBody {
+    /// The body is the word `derived`.
+    Derived,
+    /// The bindings in the order written; none when nothing is under the `where`.
+    Bindings(Vec<FunBinding>),
 }
 
 /// A representation of the `import` declaration

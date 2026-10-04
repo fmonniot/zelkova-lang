@@ -132,8 +132,8 @@ describe("an update", () => {
 describe("a reserved word and an inherited name are fields of the record", () => {
   test("each is an own property, written as the label", () => {
     const keyed = Records.keyed(1n);
-    assert.deepEqual(Object.keys(keyed), ["class", "new", "constructor", "toString"]);
-    for (const label of ["class", "new", "constructor", "toString"]) {
+    assert.deepEqual(Object.keys(keyed), ["function", "new", "constructor", "toString"]);
+    for (const label of ["function", "new", "constructor", "toString"]) {
       assert.ok(Object.hasOwn(keyed, label), `${label} is an own property`);
     }
     assert.equal(keyed.constructor, 3n);
@@ -166,7 +166,7 @@ describe("a record a companion returns of its declared type", () => {
   });
 
   test("may hold a reserved word and an inherited name", () => {
-    assert.deepEqual(Source.rightKeyed(1n), { class: 1n, new: 2n, constructor: 3n, toString: 4n });
+    assert.deepEqual(Source.rightKeyed(1n), { function: 1n, new: 2n, constructor: 3n, toString: 4n });
   });
 
   test("may be frozen, an instance of a class, or have no prototype", () => {

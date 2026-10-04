@@ -32,10 +32,9 @@ against the spec's *Reserved words* block in `docs/spec/lexical-structure.md`.
 ## What the grammar approximates
 
 - **Soft keywords** are positional. `left`/`right`/`non` after `infix`, `foreign` in
-  `module foreign`, `unsafe` before a signature and `derived` alone on an indented line (or
-  followed by one member name) are keywords; anywhere else they are ordinary identifiers. A
-  line-at-a-time grammar cannot see a class or instance body, so `derived` is matched by shape.
-- **`class`, `instance` and `where`** are highlighted as keywords although the compiler does
-  not reserve them until `LANG-38`. `where` is reserved only as a type variable, so the
-  grammar over-highlights it where a value is named.
+  `module foreign`, `unsafe` before a signature, `derived` alone on an indented line (or
+  followed by one member name) and `where` at the end of a `class` or `instance` line are
+  keywords; anywhere else they are ordinary identifiers. A line-at-a-time grammar cannot see a
+  class or instance body, so `derived` is matched by shape, and a head wrapped over several
+  lines does not get its `where` highlighted.
 - **`true` and `false`** are ordinary identifiers, as the spec has it.

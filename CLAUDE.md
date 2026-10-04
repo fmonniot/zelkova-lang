@@ -251,9 +251,12 @@ behind it, and *Active work: type classes* in
 [`docs/tickets/README.md`](docs/tickets/README.md) carries the tickets implementing it and the
 order they have to land in. Read the chapter before touching any of it.
 
-One of its rules constrains diffs outside that program today: **`class` and `instance` become
-reserved, and `where` becomes reserved as a type variable.** All three are ordinary identifiers
-now, so this is a breaking change — and `instance C T where …` currently *misparses* as a
-function declaration named `instance` rather than being rejected. Four more cross-cutting rules
-— instance placement, `derived` bodies, no constraint on a facade signature, and the two
-constraints codegen inherits — are stated in the chapter.
+A class and an instance parse, into `parser::ClassDecl` and `parser::InstanceDecl`, and
+canonicalization rejects each with `Error::ClassUnsupported` or `Error::InstanceUnsupported`
+until `LANG-39` gives them a meaning. **`class` and `instance` are reserved words, and `where`
+is reserved as a type variable** and nowhere else: it stays an ordinary name wherever a value
+is named, and `derived` is soft, read by the token after it. The layout pass gives each member
+of a body its own block (`Context::Members` and `Context::Member`), which is what the grammar's
+`ClassDecl` and `InstanceDecl` read. Four more cross-cutting rules — instance placement,
+`derived` bodies, no constraint on a facade signature, and the two constraints codegen
+inherits — are stated in the chapter.

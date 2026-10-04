@@ -521,3 +521,206 @@ fn an_indented_line_inside_an_incomplete_declaration_is_left_to_the_grammar() {
     );
     assert!(!expected.iter().any(|e| e == "close block"));
 }
+
+// `LANG-38`: the members of a class or an instance each get a block.
+
+/// The layout pass's output for `source`, with each block token written `{` and `}` and
+/// every other token as the grammar names it, so a test reads the stream as one string.
+///
+/// The chunk is the whole source, which is right for the single declaration these tests
+/// run.
+fn layout_stream(source: &str) -> String {
+    use zelkova_syntax::position::Position;
+
+    let line = source.matches('\n').count() + 1;
+    let column = source.len() - source.rfind('\n').unwrap_or(0);
+    let end = Position::new(source.len(), column, line);
+    let tokens = parser::tokenizer::make_tokenizer(source).map(|token| token.map_err(Error::from));
+
+    parser::layout::layout(tokens, end)
+        .map(|item| match item.expect("the source lays out").1 {
+            Token::OpenBlock => "{".to_string(),
+            Token::CloseBlock => "}".to_string(),
+            Token::LowerIdentifier(name) | Token::UpperIdentifier(name) => name,
+            Token::Colon => ":".to_string(),
+            Token::Arrow => "->".to_string(),
+            Token::Equal => "=".to_string(),
+            Token::FatArrow => "=>".to_string(),
+            Token::Class => "class".to_string(),
+            Token::Instance => "instance".to_string(),
+            Token::Where => "where".to_string(),
+            Token::Derived => "derived".to_string(),
+            other => format!("{:?}", other),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Each member of a class body is its own block, inside the declaration's own: `Order lt`
+/// is a valid type application, so without the block the first member's type would take the
+/// second member's name.
+///
+/// Verified to fail by removing the `(Token::Where, Context::TopLevelDeclaration)` arm of
+/// `Layout::handle_next_token`: the members then share the declaration's one block.
+#[test]
+fn a_class_body_has_a_block_per_member() {
+    let stream = layout_stream(indoc::indoc! {"
+        class Comparable a where
+          compare : a -> a -> Order
+          lt : a -> a -> Bool
+    "});
+
+    assert_eq!(
+        stream,
+        "{ class Comparable a where \
+         { compare : a -> a -> Order } \
+         { lt : a -> a -> Bool } }"
+    );
+}
+
+/// A derivation is a member whose own body is a block per binding, inside the member's.
+///
+/// Verified to fail by removing the `derived_follows` branch in `Layout::handle_next_token`:
+/// the bindings then share the derivation's block.
+#[test]
+fn a_derivation_has_a_block_per_binding_inside_its_members() {
+    let stream = layout_stream(indoc::indoc! {"
+        class Comparable a where
+          compare : a -> a -> Order
+          derived compare
+            matched = EQ
+            differed i j =
+              compare i j
+          lt : a -> a -> Bool
+    "});
+
+    assert_eq!(
+        stream,
+        "{ class Comparable a where \
+         { compare : a -> a -> Order } \
+         { derived compare \
+         { matched = EQ } \
+         { differed i j = compare i j } } \
+         { lt : a -> a -> Bool } }"
+    );
+}
+
+#[test]
+fn an_instance_body_has_a_block_per_binding() {
+    let stream = layout_stream(indoc::indoc! {"
+        instance Comparable Colour where
+          compare a b =
+            EQ
+          lt a b =
+            False
+    "});
+
+    assert_eq!(
+        stream,
+        "{ instance Comparable Colour where \
+         { compare a b = EQ } \
+         { lt a b = False } }"
+    );
+}
+
+/// `derived` on its own line of an instance is a block of its own.
+#[test]
+fn the_request_to_derive_is_a_block_of_its_own() {
+    let stream = layout_stream(indoc::indoc! {"
+        instance Eq a => Eq (Box a) where
+          derived
+    "});
+
+    assert_eq!(
+        stream,
+        "{ instance Eq a => Eq LPar Box a RPar where { derived } }"
+    );
+}
+
+/// A `where` that no class or instance head is waiting for is an ordinary name, and opens
+/// nothing.
+///
+/// Verified to fail by dropping the `if self.awaiting_where` guard: the `where` of `f`'s
+/// parameter list is then followed by a block of members.
+#[test]
+fn a_where_outside_a_head_opens_no_block() {
+    assert_eq!(layout_stream("f where = where\n"), "{ f where = where }");
+}
+
+/// A member left of the first member's column, and still indented, is reported as a member
+/// off its column. It is not a top-level declaration that was indented by mistake.
+///
+/// Verified to fail by dropping the `MisalignedMember` check in `Layout::members_step`: the
+/// line is then reported as `IndentedDeclaration`, once the list is popped and the
+/// declaration is the innermost context.
+#[test]
+fn a_member_left_of_its_siblings_is_a_misaligned_member() {
+    for (source, line_of_member) in [
+        ("module Example exposing ()\n\nclass C a where\n    m : a -> Int\n  n : a -> Int\n", "n"),
+        ("module Example exposing ()\n\ninstance C A where\n    m a =\n      1\n  n a =\n      2\n", "n"),
+    ] {
+        let (error, range) = layout_error(source);
+
+        let LayoutError::MisalignedMember {
+            token,
+            member_column,
+        } = error
+        else {
+            panic!("{}: expected a misaligned member, got {:?}", source, error);
+        };
+        assert_eq!(member_column, 5, "{}", source);
+        assert_eq!(token.start().column, 3, "{}", source);
+        let start = source.rfind(&format!("\n  {}", line_of_member)).unwrap() + 3;
+        assert_eq!(range, start..start + 1, "{}", source);
+    }
+}
+
+/// The first member starts a line of its own, indented past the declaration.
+///
+/// Verified to fail by dropping the `MemberOnOpeningLine` check in `Layout::members_step`.
+#[test]
+fn the_first_member_is_not_on_the_where_line() {
+    for source in [
+        "module Example exposing ()\n\nclass C a where m : a -> Int\n",
+        "module Example exposing ()\n\ninstance C A where m a = 1\n",
+    ] {
+        let (error, _) = layout_error(source);
+
+        assert!(
+            matches!(error, LayoutError::MemberOnOpeningLine { .. }),
+            "{}: {:?}",
+            source,
+            error
+        );
+    }
+}
+
+/// A `where` that begins its line is refused, whatever the members under it do.
+///
+/// Verified to fail by dropping the `WhereOnItsOwnLine` check in `Layout::handle_next_token`.
+#[test]
+fn where_does_not_begin_a_line() {
+    for source in [
+        "module Example exposing ()\n\nclass C a\n  where\n  m : a -> Int\n",
+        "module Example exposing ()\n\nclass C a\n  where\n    m : a -> Int\n",
+        "module Example exposing ()\n\ninstance C A\n  where\n    m a = 1\n",
+    ] {
+        let (error, _) = layout_error(source);
+
+        assert!(
+            matches!(error, LayoutError::WhereOnItsOwnLine { .. }),
+            "{}: {:?}",
+            source,
+            error
+        );
+    }
+}
+
+/// A body whose members are on their own lines, and a declaration after it, is untouched.
+#[test]
+fn a_body_ends_at_column_one() {
+    assert_eq!(
+        layout_stream("class C a where\n  m : a -> Int\nf = g\n"),
+        "{ class C a where { m : a -> Int } } { f = g }"
+    );
+}

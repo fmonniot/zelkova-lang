@@ -12,13 +12,6 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-/// Words `docs/spec/type-classes.md` (*The words this reserves*) says become reserved, which the
-/// grammar highlights ahead of the compiler. This list is an allowance, not part of the spec's
-/// reserved list: when `LANG-38` adds the words to `lexical-structure.md`, the test below
-/// reports that, and this constant and the grammar's `not-yet-reserved-words` rule are what
-/// get removed, the words moving into `reserved-words`.
-const NOT_YET_RESERVED: [&str; 3] = ["class", "instance", "where"];
-
 fn read(path: &str) -> String {
     let full = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -96,22 +89,4 @@ fn true_and_false_are_not_keywords() {
             word
         );
     }
-}
-
-#[test]
-fn not_yet_reserved_words_are_the_named_allowance() {
-    let allowance: BTreeSet<String> = NOT_YET_RESERVED.iter().map(|w| w.to_string()).collect();
-    assert_eq!(
-        grammar_words("not-yet-reserved-words"),
-        allowance,
-        "the grammar's `not-yet-reserved-words` rule is not the NOT_YET_RESERVED allowance"
-    );
-    let spec = spec_reserved_words();
-    let reserved_now: Vec<_> = allowance.intersection(&spec).collect();
-    assert!(
-        reserved_now.is_empty(),
-        "the spec now reserves {:?}: remove it from NOT_YET_RESERVED and from the grammar's \
-         `not-yet-reserved-words` rule, and add it to `reserved-words`",
-        reserved_now
-    );
 }

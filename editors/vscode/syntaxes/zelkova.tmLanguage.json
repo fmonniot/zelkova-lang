@@ -9,7 +9,6 @@
     { "include": "#characters" },
     { "include": "#soft-keywords" },
     { "include": "#reserved-words" },
-    { "include": "#not-yet-reserved-words" },
     { "include": "#numbers" },
     { "include": "#identifiers" },
     { "include": "#operators" },
@@ -84,6 +83,26 @@
           }
         },
         {
+          "comment": "where: the end of a class or instance head, which opens the body. Anywhere else it is an ordinary identifier, so the rule is a head line (one that starts with class or instance) whose last word is where. A head wrapped over several lines is not matched. docs/spec/type-classes.md, The words this reserves.",
+          "begin": "^(class|instance)(?![\\p{L}\\p{N}_])",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.zelkova" }
+          },
+          "end": "$",
+          "patterns": [
+            {
+              "match": "(?<![\\p{L}\\p{N}_])(where)(?![\\p{L}\\p{N}_])(?=\\s*(?:--.*)?$)",
+              "captures": {
+                "1": { "name": "keyword.other.soft.zelkova" }
+              }
+            },
+            { "include": "#comments" },
+            { "include": "#identifiers" },
+            { "include": "#operators" },
+            { "include": "#punctuation" }
+          ]
+        },
+        {
           "comment": "derived: alone on an indented line (an instance body, or the request for a derived instance), or followed by one member name (a derivation in a class body). `derived = ...` and `derived : ...` are ordinary bindings and signatures. docs/spec/type-classes.md, An instance may be derived.",
           "match": "^(\\s+)(derived)(?=\\s*(?:--.*)?$|\\s+\\p{Ll}[\\p{L}\\p{N}_]*\\s*(?:--.*)?$)",
           "captures": {
@@ -95,12 +114,7 @@
     "reserved-words": {
       "comment": "Exactly the spec's Reserved words block; crates/zelkova-syntax/tests/editor_grammar.rs fails if the two drift. `true` and `false` are deliberately absent: the spec does not reserve them.",
       "name": "keyword.control.zelkova",
-      "match": "(?<![\\p{L}\\p{N}_])(as|case|else|exposing|if|import|in|infix|let|module|of|then|type)(?![\\p{L}\\p{N}_])"
-    },
-    "not-yet-reserved-words": {
-      "comment": "docs/spec/type-classes.md reserves these when LANG-38 lands; they are highlighted ahead of the compiler. `where` is reserved only as a type variable and stays an ordinary identifier where a value is named, so a plain keyword scope over-highlights it there. crates/zelkova-syntax/tests/editor_grammar.rs names this list, and the allowance goes when LANG-38 adds the words to the spec's reserved list.",
-      "name": "keyword.control.zelkova",
-      "match": "(?<![\\p{L}\\p{N}_])(class|instance|where)(?![\\p{L}\\p{N}_])"
+      "match": "(?<![\\p{L}\\p{N}_])(as|case|else|exposing|if|import|in|infix|let|module|of|then|type|class|instance)(?![\\p{L}\\p{N}_])"
     },
     "numbers": {
       "patterns": [

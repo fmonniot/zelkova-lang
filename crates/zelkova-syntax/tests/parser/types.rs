@@ -11,6 +11,8 @@ fn module_custom_type(tpe: UnionType) -> Module {
         imports: vec![],
         infixes: vec![],
         types: vec![tpe],
+        classes: vec![],
+        instances: vec![],
         functions: vec![],
         failed: vec![],
     }
@@ -33,6 +35,8 @@ fn module_constrained_function_type(
         imports: vec![],
         infixes: vec![],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![Function {
             name: function.into(),
             tpe: Some(tpe),

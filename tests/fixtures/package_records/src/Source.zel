@@ -30,7 +30,7 @@ unsafe wrongArrayLength : Int -> { length : Float }
 unsafe rightUnit : Int -> { done : (), n : Int }
 unsafe wrongUnitMissing : Int -> { done : (), n : Int }
 
-unsafe rightKeyed : Int -> { class : Int, new : Int, constructor : Int, toString : Int }
+unsafe rightKeyed : Int -> { function : Int, new : Int, constructor : Int, toString : Int }
 unsafe wrongInherited : Int -> { toString : Int }
 unsafe wrongSymbol : Int -> { x : Int }
 unsafe wrongHidden : Int -> { x : Int }

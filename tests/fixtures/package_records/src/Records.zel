@@ -99,29 +99,29 @@ describe shape =
 
 -- LABELS A JAVASCRIPT OBJECT HAS A MEANING FOR
 
-keyed : Int -> { class : Int, new : Int, constructor : Int, toString : Int }
+keyed : Int -> { function : Int, new : Int, constructor : Int, toString : Int }
 keyed n =
-  { class = n, new = n + 1, constructor = n + 2, toString = n + 3 }
+  { function = n, new = n + 1, constructor = n + 2, toString = n + 3 }
 
 
-readKeyed : { class : Int, new : Int, constructor : Int, toString : Int } -> Int
+readKeyed : { function : Int, new : Int, constructor : Int, toString : Int } -> Int
 readKeyed r =
-  r.class + r.new * 10 + r.constructor * 100 + r.toString * 1000
+  r.function + r.new * 10 + r.constructor * 100 + r.toString * 1000
 
 
-reachConstructor : { class : Int, new : Int, constructor : Int, toString : Int } -> Int
+reachConstructor : { function : Int, new : Int, constructor : Int, toString : Int } -> Int
 reachConstructor r =
   apply .constructor r
 
 
-replaceConstructor : { class : Int, new : Int, constructor : Int, toString : Int } -> { class : Int, new : Int, constructor : Int, toString : Int }
+replaceConstructor : { function : Int, new : Int, constructor : Int, toString : Int } -> { function : Int, new : Int, constructor : Int, toString : Int }
 replaceConstructor r =
   { r | constructor = 90 }
 
 
-patternKeyed : { class : Int, new : Int, constructor : Int, toString : Int } -> Int
-patternKeyed { class, constructor } =
-  class * 10 + constructor
+patternKeyed : { function : Int, new : Int, constructor : Int, toString : Int } -> Int
+patternKeyed { function, constructor } =
+  function * 10 + constructor
 
 
 -- THE ORDER FIELDS ARE EVALUATED IN

@@ -2,6 +2,7 @@ mod parser {
     #[macro_use]
     mod support;
 
+    mod classes;
     mod expressions;
     mod field_access;
     mod layout;

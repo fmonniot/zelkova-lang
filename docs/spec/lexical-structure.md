@@ -196,17 +196,18 @@ by which a leading underscore marks a parameter as deliberately unused; write `_
 
 ## Reserved words
 
-Thirteen words are reserved and may never be used as identifiers:
+Fifteen words are reserved and may never be used as identifiers:
 
 ```
 as     case   else   exposing   if     import   in
 infix  let    module of         then   type
+class  instance
 ```
 
 `let` and `in` are reserved although the construct that uses them is not implemented; see
 [Layout](layout.md#let--in).
 
-Seven further words are **soft keywords**. Each is a keyword only in the position listed against
+Eight further words are **soft keywords**. Each is a keyword only in the position listed against
 it, and an ordinary identifier everywhere else:
 
 | Word | Keyword in |
@@ -215,16 +216,18 @@ it, and an ordinary identifier everywhere else:
 | `foreign` | the header of a [facade](interop.md) module |
 | `derived` | the body of an [instance declaration](type-classes.md#an-instance-may-be-derived), and a [derivation](type-classes.md#a-class-says-how-it-is-derived) in a class body |
 | `unsafe` | before a signature in an [`unsafe` facade](interop.md#an-unsafe-facade) |
+| `where` | the end of a [class](type-classes.md#declaring-a-class) or [instance](type-classes.md#declaring-an-instance) head, where it opens the body |
 | `alias` | after `type`, opening a [type alias](types.md#type-aliases) |
 
-These seven read as ordinary vocabulary — a tree module wants `left` and `right`, and a program
+These eight read as ordinary vocabulary — a tree module wants `left` and `right`, and a program
 modelling another language will want `foreign` — and each sits where one token of context says
 which reading is meant, so reserving the word outright would take a useful name. `derived` and
 `unsafe` are the two that need the token *after* them rather than the one before: `derived`
 alone asks for an instance to be derived, `derived eq` opens the derivation of a member, and
 `derived = …` or `derived : …` is an ordinary binding or signature; `unsafe f : …` marks a
 facade signature where `unsafe : …` declares a constant of that name. The other six are
-keywords only in the position listed against them, and ordinary identifiers everywhere else:
+keywords only in the position listed against them, and ordinary identifiers everywhere else
+where a value is named:
 
 ```zel expect=ok
 module Example exposing ()
@@ -242,13 +245,14 @@ derived = 5
 unsafe = 6
 
 alias = 7
+
+where = 8
 ```
 
-**Not implemented:** `derived` is an ordinary identifier in every position today, because class
-and instance bodies do not parse at all ([`LANG-38`](../tickets/lang-38.md)). So is `alias`:
-nothing reads it after `type` ([`LANG-86`](../tickets/lang-86.md)).
+**Not implemented:** `alias` is an ordinary identifier in every position today: nothing reads it
+after `type` ([`LANG-86`](../tickets/lang-86.md)).
 
-`unsafe` does not get the plain-name fallback the other six soft keywords get. `left`,
+`unsafe` does not get the plain-name fallback the other seven soft keywords get. `left`,
 `right`, `non` and `foreign` are ordinary identifiers anywhere outside their one keyword
 position, with no dedicated rejection for using them elsewhere — a stray one just misparses.
 `unsafe` written before a signature is read as the modifier in every module, `module foreign`
