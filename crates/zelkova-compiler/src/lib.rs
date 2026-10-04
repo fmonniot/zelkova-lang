@@ -2110,6 +2110,7 @@ pub fn check_module_recovering(
     // imports against, for the types of what they declare.
     let typer::TypeCheck {
         solved,
+        instances,
         errors: type_errors,
     } = typer::type_check_recovering(&canonical, interfaces);
     if !type_errors.is_empty() {
@@ -2129,7 +2130,7 @@ pub fn check_module_recovering(
     // this point needs either half separately. Built whether or not anything above
     // reported an error, since a module with errors still has a typed tree for every
     // declaration the typer did not reject.
-    let ir = ir::build(&canonical, solved);
+    let ir = ir::build(&canonical, solved, instances);
 
     dependencies::Outcome::Module(CheckedModule { canonical, ir }, errors)
 }

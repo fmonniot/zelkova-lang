@@ -27,14 +27,21 @@
 //! so a reader arriving while only the JavaScript backend exists will find things
 //! JavaScript has no use for. None of them is spare:
 //!
-//! - **A type on every node.** JavaScript needs almost none of them: the canonical AST
-//!   already separates an `Int` literal from a `Float` one, and arithmetic and equality
-//!   are ordinary functions behind facades. WebAssembly is statically typed, and a node's
-//!   representation class — an `i64`, an `f64`, a reference — is read off its type.
-//!   Solved types are also what monomorphisation consumes, which is the only way
-//!   polymorphism reaches a target where [a class dictionary is erased by specialisation
-//!   and never
+//! - **A type on every node, and what a constrained one asks of it.** JavaScript needs
+//!   almost none of them: the canonical AST already separates an `Int` literal from a
+//!   `Float` one, and arithmetic and equality are ordinary functions behind facades.
+//!   WebAssembly is statically typed, and a node's representation class — an `i64`, an
+//!   `f64`, a reference — is read off its type. Solved types are also what
+//!   monomorphisation consumes, which is the only way polymorphism reaches a target where
+//!   [a class dictionary is erased by specialisation and never
 //!   passed](../../docs/decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed).
+//!   A specialiser needs the other half of a constrained name too, and there are three
+//!   places it is written. A [reference](TypedTermKind::Identifier) to a name whose type
+//!   has a context carries that context as instantiated at the use, one [`Predicate`]
+//!   per constraint, with the final substitution applied like every other type on the
+//!   node: `eq` used at `Int` carries `Eq Int`. A [`Declaration`] carries its own
+//!   context, read off its solved type the same way. And a [`Module`] carries its
+//!   [`Instance`]s, each with its class, head, context and one checked body per member.
 //!   A [hole](TypedTermKind::Hole), a name that did not resolve, has a type too: the one
 //!   inference solved for its position, which is an unsolved variable when nothing
 //!   around it constrains it.
@@ -82,8 +89,12 @@
 //!
 //! # What is not here yet
 //!
-//! One ticket adds a mark to this shape and is deliberately not written into it yet: a
-//! self tail call ([`GEN-6`](../../docs/tickets/gen-6.md)). [`Module`] holds its
+//! Two tickets add to this shape and are deliberately not written into it yet. Nothing
+//! here says which instance a [`Predicate`] is discharged by, or which of a constrained
+//! function's specialisations a call is: both are what specialisation works out from the
+//! predicates alone ([`GEN-24`](../../docs/tickets/gen-24.md)), and the shape gives it
+//! the instances and the contexts to read them from. The other is a self tail call
+//! ([`GEN-6`](../../docs/tickets/gen-6.md)). [`Module`] holds its
 //! declarations in a `Vec` sorted by name, which is a deterministic order and not an
 //! evaluation order; [`Module::initialisation_order`] is the evaluation order, over the
 //! parameterless ones alone, and `zelkova_js::emit`
@@ -148,6 +159,13 @@ pub struct Module {
     ///
     /// Sorted by name, the same as [`declarations`](Self::declarations).
     pub unchecked: Vec<Unchecked>,
+    /// The instances this module declares, in the order they were written, each with the
+    /// body it was checked with. An instance of another module that this one can use is
+    /// that module's, and is not repeated here.
+    ///
+    /// An instance that failed canonicalization is in no list: it never became a
+    /// [`canonical::Instance`], and the error behind it is canonicalization's.
+    pub instances: Vec<Instance>,
     /// The names of [`declarations`](Self::declarations) that take no parameter, in the
     /// order they must be initialised: each only after every parameterless declaration it
     /// depends on, whether its own body mentions that declaration or reaches it through a
@@ -196,6 +214,66 @@ pub struct Variant {
     pub arity: usize,
 }
 
+/// A class required of a type: `Eq Int`, `Comparable a`.
+///
+/// What a constrained name asks of its caller, once the variable its constraint was
+/// written on has been replaced by the type it was used at. A class is always over a
+/// complete type ([`DEC-2` decision
+/// 5](../../docs/decisions/dec-2.md#5--no-higher-kinded-variables)), so a predicate is a
+/// class and a type and never a partial application.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Predicate {
+    /// The class, named by the package and module that declared it.
+    pub class: QualName,
+    /// The type it is required of.
+    pub tpe: Type,
+}
+
+/// One `instance` declaration of a module: which class, which type, what it needs of that
+/// type's arguments, and a checked body for each member.
+///
+/// The types here and the types inside a member's [`Declaration`] are each their own
+/// inference's. The variables of [`head`](Self::head) are the ones the instance's
+/// [`context`](Self::context) is over; a member's declaration is solved on its own, so
+/// its type and its own context name variables of that solve, and the two are related by
+/// the member's signature at the head and not by sharing variable numbers.
+#[derive(Debug)]
+pub struct Instance {
+    /// The class, named by the package and module that declared it.
+    pub class: QualName,
+    /// The type the instance is for: a declared type applied to a distinct variable per
+    /// parameter, a tuple of distinct variables, or `()`
+    /// ([the head rule](../../docs/spec/type-classes.md#what-an-instance-is-declared-for)).
+    pub head: Type,
+    /// What the instance needs of the head's variables, in the order written.
+    pub context: Vec<Predicate>,
+    pub body: InstanceBody,
+    /// Whether the instance's own check failed: a superclass the instance cannot prove
+    /// at its head. An error stands behind it, and a backend refuses it.
+    pub rejected: bool,
+    /// Where the head line was written, `instance` through `where`.
+    pub span: NodeSpan,
+}
+
+/// What an [`Instance`] defines its members with.
+#[derive(Debug)]
+pub enum InstanceBody {
+    /// The body is the word `derived`: the members are the ones the class's derivation
+    /// stands for, which nothing produces yet
+    /// ([`LANG-83`](../../docs/tickets/lang-83.md)).
+    Derived,
+    /// One binding per member, written out.
+    Bindings {
+        /// The bindings that checked, sorted by name. Each is a [`Declaration`] named
+        /// for the member, whose [`context`](Declaration::context) is the instance's
+        /// own.
+        members: Vec<Declaration>,
+        /// The bindings that did not check, accounted for as
+        /// [`Module::unchecked`] accounts for a value, sorted by name.
+        unchecked: Vec<Unchecked>,
+    },
+}
+
 /// One value of a module: what a backend emits as a named binding.
 #[derive(Debug)]
 pub struct Declaration {
@@ -216,6 +294,23 @@ pub struct Declaration {
     /// The declaration's own type, as inference solved it — or, for a facade, as the
     /// signature declares it.
     pub tpe: Type,
+    /// What the declaration's annotation requires of its type variables, one
+    /// [`Predicate`] per constraint written, in the order written — empty for a
+    /// declaration whose annotation has no `=>`, for every declaration with no
+    /// annotation, and for a facade signature.
+    ///
+    /// Read off the declaration's solved type, as the types on its nodes are: each
+    /// predicate's type is the variable the annotation constrained, with the final
+    /// substitution applied. That is a variable of [`tpe`](Self::tpe) as long as the body
+    /// left it one. When the body forces it to a concrete type, `min : Comparable a => a
+    /// -> a -> a` over a body that makes `a` an `Int`, `tpe` is `Int -> Int -> Int` and
+    /// the predicate is `Comparable Int`: the declaration was checked at `Int` and the
+    /// predicate is the one it discharged there. Its signature, which callers are checked
+    /// against, still says `Comparable a`
+    /// ([`LANG-12`](../../docs/tickets/lang-12.md) closes the difference).
+    ///
+    /// A superclass the context implies is not listed.
+    pub context: Vec<Predicate>,
     /// The parameters and the expression they are in scope over, for a declaration that
     /// has a body.
     ///
@@ -683,7 +778,17 @@ pub enum TypedTermKind {
     /// See [`TermKind::String`].
     String(String),
     Float(f64),
-    Identifier(Reference),
+    /// A name, and — when its type has a context — what that context asks of the type
+    /// this use gave it.
+    Identifier {
+        reference: Reference,
+        /// One [`Predicate`] per constraint of the name's context, in the order its
+        /// annotation wrote them, with the final substitution applied. A class member's
+        /// context is its class: `eq` at `Int` carries `Eq Int`. Empty for a name whose
+        /// type has none, which is every local, every constructor and every value
+        /// declared without a constraint.
+        context: Vec<Predicate>,
+    },
     Fun {
         param: TypeBinder,
         body: Box<TypedTerm>,
@@ -768,7 +873,12 @@ pub enum Solved {
     ///
     /// The term may hold a [hole](TypedTermKind::Hole), with an error standing behind it,
     /// and a backend refuses it.
-    Typed(Box<TypedTerm>),
+    Typed {
+        term: Box<TypedTerm>,
+        /// What the declaration's annotation required of its type variables, with the
+        /// final substitution applied: [`Declaration::context`].
+        context: Vec<Predicate>,
+    },
     /// A declaration of a `module foreign` facade, whose body is a synthetic
     /// placeholder rather than anything the user wrote. Nothing about it is inferred.
     ///
@@ -828,18 +938,33 @@ impl Solved {
     /// The typed term, for a declaration that has one.
     pub fn typed(&self) -> Option<&TypedTerm> {
         match self {
-            Solved::Typed(term) => Some(term.as_ref()),
+            Solved::Typed { term, .. } => Some(term.as_ref()),
             _ => None,
         }
     }
+}
+
+/// What the typer has to say about one `instance` declaration: the type it is for, what
+/// it needs, and an answer for each binding of its body.
+#[derive(Debug)]
+pub struct SolvedInstance {
+    /// The type the instance is for, over variables of its own: [`Instance::head`].
+    pub head: Type,
+    /// What the instance needs of the head's variables: [`Instance::context`].
+    pub context: Vec<Predicate>,
+    /// An answer for every binding of the instance, by the member it defines, in the
+    /// order written. Empty for a derived instance, which has none.
+    pub bindings: Vec<(Name, Solved)>,
+    /// Whether the instance's own check failed: [`Instance::rejected`].
+    pub rejected: bool,
 }
 
 // ── Building a module ─────────────────────────────────────────────────────────
 
 /// Turn a checked module and what the typer solved for it into the IR a backend reads.
 ///
-/// `solved` is consumed rather than borrowed: a [`Declaration`] owns its body, and the
-/// only other holder of these terms is the caller that just received them.
+/// `solved` and `instances` are consumed rather than borrowed: a [`Declaration`] owns its
+/// body, and the only other holder of these terms is the caller that just received them.
 ///
 /// Every value of `module`, in [`values`](canonical::Module::values) or in
 /// [`broken`](canonical::Module::broken), ends up in exactly one of
@@ -847,7 +972,17 @@ impl Solved {
 /// nothing may merely go missing. A broken one is always unchecked, with an error
 /// reported behind it: canonicalization's, or the syntax error of a declaration chunk
 /// that did not parse.
-pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Module {
+///
+/// `instances` is one [`SolvedInstance`] for each of the module's
+/// [`instances`](canonical::Module::instances), in the same order. Every binding of an
+/// instance is accounted for the way a value is: in the instance's
+/// [`members`](InstanceBody::Bindings::members) or in its
+/// [`unchecked`](InstanceBody::Bindings::unchecked).
+pub fn build(
+    module: &canonical::Module,
+    solved: HashMap<Name, Solved>,
+    instances: Vec<SolvedInstance>,
+) -> Module {
     let mut unions: Vec<Union> = module
         .types
         .iter()
@@ -878,62 +1013,10 @@ pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Modul
 
     for name in names {
         let value = &module.values[name];
-        let span = value.span();
 
-        match solved.remove(name) {
-            Some(Solved::Typed(term)) => {
-                let tpe = term.tpe.clone();
-                let (parameters, expression) = peel(*term, value.arity());
-
-                declarations.push(Declaration {
-                    name: name.clone(),
-                    arity: parameters.len(),
-                    tpe,
-                    body: Some(Body {
-                        parameters,
-                        expression,
-                    }),
-                    span,
-                });
-            }
-            // A facade signature: the type is the one canonicalization recorded, and
-            // the arity is what the companion's parameter list has to be.
-            Some(Solved::NoBody) => match facade_signature(value, &mut counter) {
-                Some(tpe) => declarations.push(Declaration {
-                    name: name.clone(),
-                    arity: module.emitted_arity(value),
-                    tpe,
-                    body: None,
-                    span,
-                }),
-                None => unchecked.push(Unchecked {
-                    name: name.clone(),
-                    span,
-                    reported: false,
-                }),
-            },
-            // The error inference reported for it is the caller's to report.
-            Some(Solved::Rejected) => unchecked.push(Unchecked {
-                name: name.clone(),
-                span,
-                reported: true,
-            }),
-            // The typer walked past it. A name that did not resolve is a hole in the
-            // body, and its error stands behind the declaration whatever else kept the
-            // typer from typing it, so the entry is `reported` all the same
-            // ([`DEC-23` decision 5](../../../docs/decisions/dec-23.md)).
-            Some(Solved::Untranslatable { .. }) | Some(Solved::UnboundName { .. }) => unchecked
-                .push(Unchecked {
-                    name: name.clone(),
-                    span,
-                    reported: value.holds_hole(),
-                }),
-            // Impossible today, since the typer answers for every value it was given.
-            None => unchecked.push(Unchecked {
-                name: name.clone(),
-                span,
-                reported: false,
-            }),
+        match declare(module, name, value, solved.remove(name), &mut counter) {
+            Ok(declaration) => declarations.push(declaration),
+            Err(entry) => unchecked.push(entry),
         }
     }
 
@@ -946,6 +1029,13 @@ pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Modul
     }));
     unchecked.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
 
+    let mut solved_instances = instances.into_iter();
+    let instances = module
+        .instances
+        .iter()
+        .map(|instance| build_instance(module, instance, solved_instances.next(), &mut counter))
+        .collect();
+
     let initialisation_order = canonical::initialisation_order(module);
 
     Module {
@@ -954,7 +1044,137 @@ pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Modul
         unions,
         declarations,
         unchecked,
+        instances,
         initialisation_order,
+    }
+}
+
+/// One value of `module`, as the declaration a backend emits or the entry saying why it
+/// has none. `entry` is what the typer answered for it.
+fn declare(
+    module: &canonical::Module,
+    name: &Name,
+    value: &canonical::Value,
+    entry: Option<Solved>,
+    counter: &mut u32,
+) -> Result<Declaration, Unchecked> {
+    let span = value.span();
+    let unchecked = |reported| Unchecked {
+        name: name.clone(),
+        span,
+        reported,
+    };
+
+    match entry {
+        Some(Solved::Typed { term, context }) => {
+            let tpe = term.tpe.clone();
+            let (parameters, expression) = peel(*term, value.arity());
+
+            Ok(Declaration {
+                name: name.clone(),
+                arity: parameters.len(),
+                tpe,
+                context,
+                body: Some(Body {
+                    parameters,
+                    expression,
+                }),
+                span,
+            })
+        }
+        // A facade signature: the type is the one canonicalization recorded, and the
+        // arity is what the companion's parameter list has to be. A facade's signature
+        // carries no constraint ([`canonical::Error::FacadeConstrained`]), so there is
+        // no context.
+        Some(Solved::NoBody) => match facade_signature(value, counter) {
+            Some(tpe) => Ok(Declaration {
+                name: name.clone(),
+                arity: module.emitted_arity(value),
+                tpe,
+                context: Vec::new(),
+                body: None,
+                span,
+            }),
+            None => Err(unchecked(false)),
+        },
+        // The error inference reported for it is the caller's to report.
+        Some(Solved::Rejected) => Err(unchecked(true)),
+        // The typer walked past it. A name that did not resolve is a hole in the body,
+        // and its error stands behind the declaration whatever else kept the typer from
+        // typing it, so the entry is `reported` all the same
+        // ([`DEC-23` decision 5](../../../docs/decisions/dec-23.md)).
+        Some(Solved::Untranslatable { .. }) | Some(Solved::UnboundName { .. }) => {
+            Err(unchecked(value.holds_hole()))
+        }
+        // Impossible today, since the typer answers for every value it was given.
+        None => Err(unchecked(false)),
+    }
+}
+
+/// One instance of `module`, with the answer the typer gave for each of its bindings.
+///
+/// `solved` is `None` only for a caller that did not run the typer over the module, and
+/// then every binding is unchecked and the instance's head is read off its declaration.
+fn build_instance(
+    module: &canonical::Module,
+    instance: &canonical::Instance,
+    solved: Option<SolvedInstance>,
+    counter: &mut u32,
+) -> Instance {
+    let signature = &instance.signature;
+
+    let (head, context, bindings, rejected) = match solved {
+        Some(solved) => (
+            solved.head,
+            solved.context,
+            solved.bindings,
+            solved.rejected,
+        ),
+        None => (
+            crate::typer::instance_head_type(&signature.head, &mut HashMap::new(), counter),
+            Vec::new(),
+            Vec::new(),
+            false,
+        ),
+    };
+
+    let body = match &instance.body {
+        canonical::InstanceBody::Derived => InstanceBody::Derived,
+        canonical::InstanceBody::Bindings(values) => {
+            let mut answers: HashMap<Name, Solved> = bindings.into_iter().collect();
+            let mut members = Vec::new();
+            let mut unchecked = Vec::new();
+
+            for value in values {
+                let name = value_name(value);
+
+                match declare(module, name, value, answers.remove(name), counter) {
+                    Ok(declaration) => members.push(declaration),
+                    Err(entry) => unchecked.push(entry),
+                }
+            }
+
+            members.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
+            unchecked.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
+
+            InstanceBody::Bindings { members, unchecked }
+        }
+    };
+
+    Instance {
+        class: signature.class.clone(),
+        head,
+        context,
+        body,
+        rejected,
+        span: signature.span,
+    }
+}
+
+/// The name a value declares.
+fn value_name(value: &canonical::Value) -> &Name {
+    match value {
+        canonical::Value::Value { name, .. } | canonical::Value::TypedValue { name, .. } => name,
     }
 }
 

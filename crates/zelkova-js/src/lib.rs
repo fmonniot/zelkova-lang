@@ -238,8 +238,11 @@
 //! with no IR ([`ir::Module::unchecked`]), for a facade declaration with no type signature,
 //! for a facade signature not marked `unsafe` whose result is not `Task (Result Failure a)`,
 //! for a facade with no companion for the target being built, for a facade result no
-//! predicate can decide, and for a construct it does not emit ([`Construct`]), a name that
-//! did not resolve among them.
+//! predicate can decide, for a class, an instance, a declaration whose annotation has a
+//! constraint and a reference to a name that has one ([`Error::Constrained`],
+//! [`Error::Obligation`]) — none of which is emitted until specialisation
+//! ([`GEN-24`](../docs/tickets/gen-24.md)) — and for a construct it does not emit
+//! ([`Construct`]), a name that did not resolve among them.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -306,6 +309,19 @@ pub enum Error {
     Class { name: Name, span: NodeSpan },
     /// An `instance` declaration of `class`, refused for the reason a class is.
     Instance { class: Name, span: NodeSpan },
+    /// A declaration whose annotation has a constraint. A constrained function is
+    /// emitted as one ordinary function per type its constraint is discharged at, and this
+    /// backend does not specialise yet ([`GEN-24`](../docs/tickets/gen-24.md)).
+    Constrained { name: Name, span: NodeSpan },
+    /// A reference to a name whose type has a constraint — a class member, or a
+    /// constrained function — which asks an instance of `class` of the type it is used at.
+    /// It is refused for the reason [`Constrained`](Self::Constrained) is.
+    Obligation {
+        /// The declaration the reference was written in.
+        declaration: Name,
+        class: Name,
+        span: NodeSpan,
+    },
     /// A construct this backend does not emit: one the front end does not accept yet,
     /// or a name that did not resolve.
     Unsupported {
@@ -405,6 +421,17 @@ impl PhaseError for Error {
                 "an instance of `{}` cannot be compiled to JavaScript yet",
                 class.as_str()
             ),
+            Error::Constrained { name, .. } => format!(
+                "`{}` cannot be compiled to JavaScript yet: its annotation has a constraint",
+                name.as_str()
+            ),
+            Error::Obligation {
+                declaration, class, ..
+            } => format!(
+                "`{}` cannot be compiled to JavaScript yet: it uses a name that requires an instance of `{}`",
+                declaration.as_str(),
+                class.as_str()
+            ),
             Error::NoPredicate {
                 name,
                 found,
@@ -449,6 +476,8 @@ impl PhaseError for Error {
             Error::Unchecked { span, .. } => (span, "this declaration"),
             Error::Class { span, .. } => (span, "this class"),
             Error::Instance { span, .. } => (span, "this instance"),
+            Error::Constrained { span, .. } => (span, "this declaration"),
+            Error::Obligation { span, .. } => (span, "this use requires an instance"),
             Error::NoPredicate { span, .. } => (span, "this signature"),
             Error::Unsupported { span, .. } => (span, "not supported by the JavaScript backend"),
         };
@@ -1041,6 +1070,14 @@ pub fn emit(
             continue;
         };
 
+        // A constrained declaration has nothing to be emitted as until it is specialised.
+        if !declaration.context.is_empty() {
+            emitter.errors.push(Error::Constrained {
+                name: declaration.name.clone(),
+                span: declaration.span,
+            });
+        }
+
         let expression = emitter.expression(&body.expression);
         let name = mangle(declaration.name.as_str());
 
@@ -1524,6 +1561,18 @@ impl Emitter {
         String::new()
     }
 
+    /// Refuse a reference that carries a context: an instance is asked of the type it was
+    /// used at, and nothing here says which function answers that.
+    fn refuse_obligations(&mut self, context: &[ir::Predicate], span: NodeSpan) {
+        for predicate in context {
+            self.errors.push(Error::Obligation {
+                declaration: self.declaration.clone().unwrap_or_else(|| Name::new("")),
+                class: predicate.class.unqualified_name(),
+                span,
+            });
+        }
+    }
+
     fn curry(&mut self, function: &str, arity: usize) -> String {
         self.runtime.insert("$curry");
         format!("$curry({}, {})", function, arity)
@@ -1686,7 +1735,10 @@ impl Emitter {
             TypedTermKind::Float(f) => float_literal(*f),
             TypedTermKind::Char(c) => char_literal(*c),
             TypedTermKind::String(s) => string_literal(s),
-            TypedTermKind::Identifier(reference) => self.value(&reference.name, &reference.kind),
+            TypedTermKind::Identifier { reference, context } => {
+                self.refuse_obligations(context, term.span);
+                self.value(&reference.name, &reference.kind)
+            }
             TypedTermKind::Apply { .. } => self.application(term),
             TypedTermKind::If {
                 cond,
@@ -1856,33 +1908,36 @@ impl Emitter {
 
         // Evaluated in the order written: the function, then each argument.
         let (mut callee, rest) = match (&head.kind, saturated) {
-            (TypedTermKind::Identifier(reference), Some(last)) => match &reference.kind {
-                ReferenceKind::TopLevel(qname) => {
-                    let supplied = self.arguments(&arguments[..=last]);
-                    (
-                        format!(
-                            "{}({})",
-                            mangle(qname.unqualified_name().as_str()),
-                            supplied.join(", ")
-                        ),
-                        &arguments[last + 1..],
-                    )
+            (TypedTermKind::Identifier { reference, context }, Some(last)) => {
+                self.refuse_obligations(context, head.span);
+                match &reference.kind {
+                    ReferenceKind::TopLevel(qname) => {
+                        let supplied = self.arguments(&arguments[..=last]);
+                        (
+                            format!(
+                                "{}({})",
+                                mangle(qname.unqualified_name().as_str()),
+                                supplied.join(", ")
+                            ),
+                            &arguments[last + 1..],
+                        )
+                    }
+                    ReferenceKind::Foreign(qname, package, _) => {
+                        let local = self.import(qname, package);
+                        let supplied = self.arguments(&arguments[..=last]);
+                        (
+                            format!("{}({})", local, supplied.join(", ")),
+                            &arguments[last + 1..],
+                        )
+                    }
+                    ReferenceKind::Constructor(ctor) => {
+                        let supplied = self.arguments(&arguments[..=last]);
+                        let fields: Vec<String> = supplied;
+                        (tagged(&ctor.name, fields), &arguments[last + 1..])
+                    }
+                    _ => (self.operand(head), &arguments[..]),
                 }
-                ReferenceKind::Foreign(qname, package, _) => {
-                    let local = self.import(qname, package);
-                    let supplied = self.arguments(&arguments[..=last]);
-                    (
-                        format!("{}({})", local, supplied.join(", ")),
-                        &arguments[last + 1..],
-                    )
-                }
-                ReferenceKind::Constructor(ctor) => {
-                    let supplied = self.arguments(&arguments[..=last]);
-                    let fields: Vec<String> = supplied;
-                    (tagged(&ctor.name, fields), &arguments[last + 1..])
-                }
-                _ => (self.operand(head), &arguments[..]),
-            },
+            }
             _ => (self.operand(head), &arguments[..]),
         };
 

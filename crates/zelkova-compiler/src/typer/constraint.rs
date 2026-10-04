@@ -25,6 +25,7 @@
 //! in the order the labels were written, a nested record pattern's included, which is not
 //! the first rule's order: an access's record comes before its own label.
 
+use super::classes::Obligation;
 use super::{
     bool_type, CaseForm, Constraint, FieldConstraint, Reason, RecordUse, SubPattern, TermPattern,
     TermPatternKind, Type, TypeLiteral, TypedTerm, TypedTermKind,
@@ -95,7 +96,14 @@ fn walk(term: &TypedTerm, out: &mut Constraints) {
 
             walk(body, out);
         }
-        TypedTermKind::Identifier(_) => (),
+        // A use of a name whose type has a context asks something of the types the use
+        // gave the name's variables: one obligation per constraint, at the use. Nothing
+        // is an equation, and nothing is answered here — see `classes::discharge`.
+        TypedTermKind::Identifier { context, .. } => {
+            out.obligations.extend(context.iter().map(|predicate| {
+                Obligation::new(predicate.clone(), Reason::InstanceRequired, span)
+            }));
+        }
         // A name that did not resolve constrains nothing: its type is solved by whatever
         // constrains the node around it. Its type is remembered all the same, for the one
         // question asked of it later (see `Constraints::holes`).
@@ -320,16 +328,19 @@ fn walk(term: &TypedTerm, out: &mut Constraints) {
 }
 
 /// Everything a declaration's term requires of its types: the equations `unify` solves
-/// in order, and the field constraints read after them.
+/// in order, the field constraints read after them, and the class obligations read after
+/// those.
 ///
-/// The two are kept apart because they are solved apart — see [`FieldConstraint`] for
-/// why a field constraint is not an equation. Each list is in the order it was
-/// collected, which for the equations is the order the module doc states, and for the
-/// field constraints the order their labels were written.
+/// The three are kept apart because they are solved apart — see [`FieldConstraint`] for
+/// why a field constraint is not an equation, and `classes` for why an obligation is
+/// neither. Each list is in the order it was collected, which for the equations is the
+/// order the module doc states, for the field constraints the order their labels were
+/// written, and for the obligations the order the names that raised them were met.
 #[derive(Debug, Default)]
 pub(super) struct Constraints {
     pub(super) equations: Vec<Constraint>,
     pub(super) fields: Vec<FieldConstraint>,
+    pub(super) obligations: Vec<Obligation>,
     /// The type of every hole in the term, and of every argument of a constructor pattern
     /// that did not resolve. A field constraint whose record type nothing supplied, and
     /// which the name's real type could have, is not reported: the error that the name
@@ -454,7 +465,13 @@ mod tests {
     }
 
     fn identifier(tpe: Type, name: &str) -> TypedTerm {
-        typed(tpe, TypedTermKind::Identifier(Reference::local(name)))
+        typed(
+            tpe,
+            TypedTermKind::Identifier {
+                reference: Reference::local(name),
+                context: Vec::new(),
+            },
+        )
     }
 
     fn collect_equations(term: &TypedTerm) -> Vec<Constraint> {

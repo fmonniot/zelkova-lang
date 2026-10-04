@@ -44,7 +44,7 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
                     span,
                 })
             }
-            Some(tpe) => (tpe, TypedTermKind::Identifier(reference)),
+            Some((tpe, context)) => (tpe, TypedTermKind::Identifier { reference, context }),
         },
         TermKind::Apply {
             fun,

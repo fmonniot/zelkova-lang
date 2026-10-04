@@ -8,12 +8,12 @@ could make it bigger is a recursive type, which makes the second a fixed point.
 [LANG-39](README.md) introduced, `canonicalize_recovering`, `Module::to_interface`, `Error`;
 `crates/zelkova-compiler/src/lib.rs` — `Interface`'s class table;
 `crates/zelkova-compiler/src/scalars.rs` — where a type the compiler knows by qualified name is
-written down; `crates/zelkova-compiler/src/typer/mod.rs` — where [LANG-40](lang-40.md) checks an
+written down; `crates/zelkova-compiler/src/typer/mod.rs` — where [LANG-40](README.md) checks an
 instance's bindings; `crates/zelkova-compiler/tests/support/mod.rs` — `basics_interface()`, the
 stand-in `Basics` every spec block compiles against, which declares no `Position`.
 
 **Depends on:** [LANG-39](README.md), which carries a derivation and a `derived` body into the
-canonical module without reading either, and [LANG-40](lang-40.md), whose solver is what checks
+canonical module without reading either, and [LANG-40](README.md), whose solver is what checks
 the definitions this ticket produces.
 
 **Decided (`SPEC-14`, `SPEC-25` and `SPEC-27`, by the language owner):** every rule here is in
@@ -119,6 +119,14 @@ any module that holds a class.
    special case for an instance that was derived. An error in a generated definition is blamed
    on the word `derived`.
 
+   **Its superclasses are discharged against that context too.** `LANG-40` skips the superclass
+   obligations of a `derived` instance, because its context is none recorded until step 3 infers
+   one and checking against none would reject instances the derivation makes sound. Once the
+   context is inferred, a `derived` instance's superclass obligations are discharged at its head
+   with the inferred context given, as a written instance's are: `derived Comparable (Phantom a)`
+   for `type Phantom a = Phantom Int`, beside `instance Eq a => Eq (Phantom a)`, is an error
+   naming `Eq a`, because the inferred context is none.
+
    For a union and a two-value member `m`: match the first value's constructor; when the second
    is the same constructor, fold over the arguments, left to right; when it is not, `differed`
    at the two constructors' positions. For a one-value member: `atConstructor` at the
@@ -174,6 +182,10 @@ In `crates/zelkova-compiler/tests/typer.rs`:
 - A module with a derived `Eq` and a derived `Comparable` on a union with arguments, on a
   recursive type and on a tuple type checks, and a use at a type whose argument has no instance
   is an error.
+- A derived instance's superclasses are held to its inferred context. The test to turn round is
+  `a_derived_instance_is_not_held_to_its_superclass_context_until_lang_83`, which pins the skip
+  `LANG-40` has: `derived Comparable (Box a)` beside `instance Eq a => Eq (Box a)` checks
+  there, and the `Phantom` case above is the one that is an error once the context is inferred.
 
 In `crates/zelkova-compiler/tests/ir.rs`, on the generated bodies themselves:
 

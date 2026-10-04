@@ -623,7 +623,7 @@ mod tests {
             binding_foreign: false,
             incomplete: false,
         };
-        let ir = crate::ir::build(&canonical, HashMap::new());
+        let ir = crate::ir::build(&canonical, HashMap::new(), Vec::new());
 
         CheckedModule { canonical, ir }
     }

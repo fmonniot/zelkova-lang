@@ -8,7 +8,7 @@ taken.
 stand-in `Basics` a block compiles against.
 
 **Depends on:** none to file; the block's real repair depends on [LANG-12](lang-12.md) and
-[LANG-40](lang-40.md). **[LANG-12](lang-12.md) now closes this ticket with itself**, by the
+[LANG-40](README.md). **[LANG-12](lang-12.md) now closes this ticket with itself**, by the
 first option below: it is the last ticket of [the type-class
 order](README.md#active-work-type-classes), so both have landed when it does, and its own
 acceptance carries the repair.
@@ -17,10 +17,12 @@ acceptance carries the repair.
 and rewrote that paragraph. Not caused by that PR: before it the block failed in the parser and
 would have reached this failure next.
 
-**Problem:** the paragraph says a constraint is read and ignored, so nothing holds `a` to `Number`,
-and that once [LANG-40](lang-40.md) does, the declaration is an error because `mul x 2` forces `a`
-to be `Int`. The tag exists so the block goes red the day that is true. It fails today for a
-different reason. `cargo test --test spec -- --nocapture` prints
+**Problem:** the paragraph said a constraint is read and ignored, so nothing held `a` to `Number`,
+and that once [LANG-40](README.md) did, the declaration would be an error because `mul x 2` forces
+`a` to be `Int`. `LANG-40` has landed and the declaration is still accepted: the paragraph now
+names [LANG-12](lang-12.md), whose rigid variables are what make `a := Int` an error, and
+[LANG-42](lang-42.md), which declares `Number`. The tag exists so the block goes red the day that
+is true. It fails today for a different reason. `cargo test --test spec -- --nocapture` prints
 
 ```
 docs/spec/expressions.md:60 (expect=unimplemented) failed in canonicalization, as expected: [VariableNotFound(QualName { … name: "mul" }, …)]

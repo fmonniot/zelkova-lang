@@ -725,8 +725,8 @@ fn imported_infix(interface: &Interface, infix: &Infix) -> InfixEntry {
     };
 
     // A member of a class the module exposes may back an operator too, and its type is
-    // its member signature. The typer registers no type for a member, so a use of the
-    // operator is left unchecked, as a use of the member by name is.
+    // its member signature, with the class's constraint in front, which the typer declares
+    // for the member and so for a use of the operator.
     let member = || {
         interface
             .classes
@@ -798,9 +798,8 @@ fn insert_foreign_union_type<'a, I: Iterator<Item = &'a TypeConstructor>>(
 /// list adds. Every member of the class arrives with it under the same spelling, as a
 /// value whose type is its member signature.
 ///
-/// The members are not in [`Interface::values`], so the typer, which declares a foreign
-/// value from there, registers no type for one, and a declaration that uses a member is
-/// left unchecked.
+/// The members are not in [`Interface::values`], so the typer declares them from the class
+/// instead: each is its signature with the class's constraint in front.
 fn insert_foreign_class(
     env: &mut RootEnvironment,
     qualifier: Option<&Name>,
