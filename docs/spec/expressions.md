@@ -73,8 +73,8 @@ double x =
 ```
 
 **Not implemented:** `std/core` declares no `Number` class ([`LANG-42`](../tickets/lang-42.md)),
-and a constrained annotation is type checked as if it had no constraint, so nothing holds `a` to
-`Number`
+so neither `Number` nor `mul` resolves to anything in the block above. A constrained annotation
+is type checked as if it had no constraint, so nothing holds `a` to `Number`
 ([`LANG-40`](../tickets/lang-40.md), [`LANG-12`](../tickets/lang-12.md)). Once something does,
 that declaration is an error: `2` is an `Int`, so `mul x 2` forces `a` to be `Int` and the
 annotation promises more than the body supports. `double x = add x x` is the way to write it,

@@ -116,8 +116,8 @@ pub struct Broken {
     pub name: Name,
     /// Where the declaration was written, annotation and body together.
     pub span: NodeSpan,
-    /// The declaration's annotation, when it has one and it canonicalized, context
-    /// included.
+    /// The type of the declaration's annotation, when it has one and both that type and
+    /// its context canonicalized; `None` when either failed.
     pub tpe: Option<Type>,
     /// The constraints written in front of that annotation's `=>`, each resolved, in
     /// the order written; empty when `tpe` is `None`. Beside the type and not inside
