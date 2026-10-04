@@ -47,6 +47,14 @@ pub enum LayoutError {
     },
 }
 
+/// What [`Layout::members_step`] did with a token.
+enum MembersStep {
+    /// The block token it emits for the token, which is set aside to be read again.
+    Emit(Spanned<Position, Token>),
+    /// The token, handed back for the rest of `handle_next_token` to read.
+    Pass(Spanned<Position, Token>),
+}
+
 /// Apply the offside rule to a token stream, injecting `OpenBlock`/`CloseBlock`
 /// so the parser does not have to track indentation itself.
 ///
@@ -414,15 +422,12 @@ where
     /// Only the innermost context is looked at, and a context that has to go is removed
     /// before the next one is looked at. A member that has been left is closed with a
     /// `CloseBlock`; a list that has been left is dropped without emitting anything.
-    fn members_step(
-        &mut self,
-        token: Spanned<Position, Token>,
-    ) -> Result<Result<Spanned<Position, Token>, Spanned<Position, Token>>, Error> {
+    fn members_step(&mut self, token: Spanned<Position, Token>) -> Result<MembersStep, Error> {
         let start = token.span.start;
 
         loop {
             let Some(top) = self.contexts.last().copied() else {
-                return Ok(Err(token));
+                return Ok(MembersStep::Pass(token));
             };
 
             match top.context {
@@ -466,7 +471,7 @@ where
                             open.indent = start.column;
                         }
                     } else if start.column != top.indent {
-                        return Ok(Err(token));
+                        return Ok(MembersStep::Pass(token));
                     }
 
                     self.contexts.push(Offside {
@@ -477,7 +482,7 @@ where
                     self.after_derived = false;
                     self.reprocess_tokens.push(token);
 
-                    return Ok(Ok(spanned(start, start, Token::OpenBlock)));
+                    return Ok(MembersStep::Emit(spanned(start, start, Token::OpenBlock)));
                 }
                 Context::Member => {
                     // A token on the member's column that is not the member's own first
@@ -486,16 +491,16 @@ where
                         || (start.column == top.indent && start.line > top.line);
 
                     if !left {
-                        return Ok(Err(token));
+                        return Ok(MembersStep::Pass(token));
                     }
 
                     self.contexts.pop();
                     self.after_derived = false;
                     self.reprocess_tokens.push(token);
 
-                    return Ok(Ok(spanned(start, start, Token::CloseBlock)));
+                    return Ok(MembersStep::Emit(spanned(start, start, Token::CloseBlock)));
                 }
-                _ => return Ok(Err(token)),
+                _ => return Ok(MembersStep::Pass(token)),
             }
         }
     }
@@ -565,8 +570,8 @@ where
         // The members of a class or instance are handled before anything else, since
         // what they do with a token depends only on its column.
         let token = match self.members_step(token)? {
-            Ok(emitted) => return Ok(emitted),
-            Err(token) => token,
+            MembersStep::Emit(emitted) => return Ok(emitted),
+            MembersStep::Pass(token) => token,
         };
 
         // Retrieve the current offside and, if none exists, create one,
