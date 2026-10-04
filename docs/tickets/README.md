@@ -220,6 +220,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-47](bug-47.md) | bug | low | open | A qualified name an imported module does not expose is reported as under the importing module |
 | [BUG-48](bug-48.md) | bug | medium | open | `Js.Utils`'s structural equality throws a `ReferenceError` on a value nested more than a hundred deep |
 | [BUG-49](bug-49.md) | bug | medium | open | A pattern variable that shadows an outer name drops the outer binder when its branch ends, so a valid declaration is left unchecked |
+| [BUG-50](bug-50.md) | bug | low | open | A cycle of parameterless bindings that runs through an instance member is accepted and fails when the module loads |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
