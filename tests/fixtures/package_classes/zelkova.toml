@@ -2,7 +2,8 @@
 # that declares its own classes and uses them, since `std/core` has none until `LANG-42`.
 # `src/Classes.zel` declares the classes `Same` and `Ranked`, an instance of each for the scalars
 # and the tuples, and the constrained functions that use them; `src/Colour.zel` declares a type
-# and its instances, in a module of its own; `src/Box.zel` an instance with a context and
+# and its instances, in a module of its own; `src/Tags.zel` an instance with a point-free member and
+# one at a type with a phantom parameter; `src/Box.zel` an instance with a context and
 # `src/Shapes.zel` types whose instances are derived; `src/Report.zel` is a third module that
 # uses all of them. `tests/ClassTests.zel` holds the Zelkova tests, each judged by the value it
 # computes. `cargo test` never loads it; `cargo run -- test` and `node --test 'tests/js/**/*.mjs'` do.

@@ -2,11 +2,12 @@
 module ClassTests exposing (..)
 
 import Basics exposing (..)
-import Box exposing (Box(..), Wrapped(..), Tagged(..), sameTagged)
+import Box exposing (Box(..))
 import Classes exposing (Same, Ranked, (===), differs, smaller, smallest, sameWhenRanked)
 import Colour exposing (Colour(..))
 import Report
 import Shapes exposing (Shape(..), Chain(..), chain)
+import Tags exposing (Wrapped(..), Tagged(..), sameTagged)
 import Test exposing (Test)
 
 

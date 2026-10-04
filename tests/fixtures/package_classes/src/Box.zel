@@ -1,12 +1,7 @@
-module Box exposing (Box(..), Wrapped(..), Tagged(..), sameTagged, unbox)
+module Box exposing (Box(..), unbox)
 
 {-| An instance with a context, declared in the type's module: a `Box` is `Same` when what
 it holds is, and `Ranked` when what it holds is.
-
-`Wrapped` has the same kind of instance with a member bound point-free, whose variables are
-the ones `sameWrapped` was written over and not the instance head's. `Tagged` carries a type
-parameter that no value mentions, so its instance has no context and a use at `Tagged b` is
-the instance all the same.
 -}
 
 import Classes exposing (Same, Ranked)
@@ -43,33 +38,3 @@ instance Same a => Same (Box a) where
 instance Ranked a => Ranked (Box a) where
   rank (Box x) (Box y) =
     rank x y
-
-
-type Wrapped a
-  = Wrapped a
-
-
--- Not exposed: a copy of the point-free member below, in another module, has to reach it.
-sameWrapped : Same a => Wrapped a -> Wrapped a -> Bool
-sameWrapped (Wrapped x) (Wrapped y) =
-  same x y
-
-
-instance Same a => Same (Wrapped a) where
-  same =
-    sameWrapped
-
-
-type Tagged a
-  = Tagged Int
-
-
-instance Same (Tagged a) where
-  same (Tagged x) (Tagged y) =
-    x == y
-
-
--- A use at a type that holds a variable nobody can make ground.
-sameTagged : Tagged b -> Tagged b -> Bool
-sameTagged x y =
-  same x y
