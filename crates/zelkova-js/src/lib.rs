@@ -48,8 +48,8 @@
 //! **A record is a plain object keyed by its labels and by nothing else**: `{ x = 1, y = 2 }`
 //! is `{x: 1n, y: 2n}`, with no `$` to tell it from a union value — a label is never `$`,
 //! and a record is never read by `$`. The key is the label as the source spells it. A label
-//! is not a binding, so `mangle` never touches it: `{ class = 1 }` is `{class: 1n}` and
-//! `r.class` reads it, `constructor` and `toString` are the record's own fields where
+//! is not a binding, so `mangle` never touches it: `{ new = 1 }` is `{new: 1n}` and
+//! `r.new` reads it, `constructor` and `toString` are the record's own fields where
 //! every object inherits a property of that name, and a label that is not a bare ASCII
 //! identifier is a string-literal key, `r["é"]` (see `property` and `key`). The
 //! fields stand in the order they were written, which is the order they are evaluated in
@@ -662,7 +662,7 @@ fn field(index: usize) -> String {
 /// Whether `label` can be written as a bare property name, in `r.label` and `{label: …}`:
 /// ASCII letters, digits and `_`, starting with a letter or `_`, and not `__proto__`.
 ///
-/// A reserved word passes — `r.class` and `{class: 1n}` are legal ECMAScript — and so does a
+/// A reserved word passes — `r.new` and `{new: 1n}` are legal ECMAScript — and so does a
 /// name every object inherits, `constructor` or `toString`: written as a property of a
 /// record it is that record's own, and a record never renames a label the way [`mangle`]
 /// renames a binding. A label of any other character is written as a string literal rather

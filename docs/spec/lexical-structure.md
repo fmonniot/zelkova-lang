@@ -216,7 +216,7 @@ it, and an ordinary identifier everywhere else:
 | `foreign` | the header of a [facade](interop.md) module |
 | `derived` | the body of an [instance declaration](type-classes.md#an-instance-may-be-derived), and a [derivation](type-classes.md#a-class-says-how-it-is-derived) in a class body |
 | `unsafe` | before a signature in an [`unsafe` facade](interop.md#an-unsafe-facade) |
-| `where` | the end of a [class](type-classes.md#declaring-a-class) or [instance](type-classes.md#declaring-an-instance) head, where it opens the body; it is also not a type variable |
+| `where` | the end of a [class](type-classes.md#declaring-a-class) or [instance](type-classes.md#declaring-an-instance) head, where it opens the body |
 | `alias` | after `type`, opening a [type alias](types.md#type-aliases) |
 
 These eight read as ordinary vocabulary — a tree module wants `left` and `right`, and a program
