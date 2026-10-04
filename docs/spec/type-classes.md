@@ -21,13 +21,14 @@ class Comparable a where
   compare : a -> a -> Order
 ```
 
-**Not implemented:** a use of a class member or of a constrained function is checked against
-the instances in scope, and an instance's bindings against its class's member signatures. A
-derivation and a `derived` instance are read and not checked, nothing yet produces the members
-a derived instance stands for, and a module holding a class, an instance or a constrained
-declaration does not compile to JavaScript. An annotation's type variables are not rigid
+**Not implemented:** a derivation and a `derived` instance are read and not checked, and nothing
+yet produces the members a derived instance stands for ([`LANG-83`](../tickets/lang-83.md)). A
+constraint required of a record type is accepted without being checked
+([`LANG-85`](../tickets/lang-85.md)). An annotation's type variables are not rigid
 ([`LANG-12`](../tickets/lang-12.md)), so a body that forces a constrained variable to a concrete
-type is accepted whatever the annotation says. The type-class ticket program in
+type is accepted when that type has the instance, and the annotation's constraint is not held
+against the body. A module holding a class, an instance or a constrained declaration does not
+compile to JavaScript ([`GEN-24`](../tickets/gen-24.md)). The type-class ticket program in
 [`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
 land.
 

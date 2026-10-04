@@ -17,10 +17,12 @@ acceptance carries the repair.
 and rewrote that paragraph. Not caused by that PR: before it the block failed in the parser and
 would have reached this failure next.
 
-**Problem:** the paragraph says a constraint is read and ignored, so nothing holds `a` to `Number`,
-and that once [LANG-40](README.md) does, the declaration is an error because `mul x 2` forces `a`
-to be `Int`. The tag exists so the block goes red the day that is true. It fails today for a
-different reason. `cargo test --test spec -- --nocapture` prints
+**Problem:** the paragraph said a constraint is read and ignored, so nothing held `a` to `Number`,
+and that once [LANG-40](README.md) did, the declaration would be an error because `mul x 2` forces
+`a` to be `Int`. `LANG-40` has landed and the declaration is still accepted: the paragraph now
+names [LANG-12](lang-12.md), whose rigid variables are what make `a := Int` an error, and
+[LANG-42](lang-42.md), which declares `Number`. The tag exists so the block goes red the day that
+is true. It fails today for a different reason. `cargo test --test spec -- --nocapture` prints
 
 ```
 docs/spec/expressions.md:60 (expect=unimplemented) failed in canonicalization, as expected: [VariableNotFound(QualName { … name: "mul" }, …)]
