@@ -143,7 +143,7 @@ LANG-40  the solver: obligations are collected, deferred and discharged   ← cl
   │        declaration can under-prove its signature until LANG-12,
   │        and a test here pins that it does
   │
-LANG-83  a derivation is checked, and a `derived` instance gets members
+LANG-83  a derivation is checked, and a `derived` instance gets members   ← closed
   │
 GEN-24   specialisation: a member, an instance and a constrained
   │      function are emitted
@@ -360,7 +360,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-80](lang-80.md) | task | — | open | The spec does not settle a string's unknown escape, surrogate escape or `\u{…}` digit count |
 | [LANG-81](lang-81.md) | task | — | open | A `Float` or `String` literal pattern is not checked by the typer and not emitted |
 | [LANG-82](lang-82.md) | task | — | open | A character literal recognises no escape sequence |
-| [LANG-83](lang-83.md) | task | — | open | A derivation is not checked, and a `derived` instance has no members |
+| LANG-83 | task | — | closed 2026-10-04 | A derivation is not checked, and a `derived` instance has no members |
 | LANG-84 | task | — | closed 2026-10-02 | A record pattern is not type checked |
 | [LANG-85](lang-85.md) | task | — | open | An obligation at a record type is never discharged, so no derivation walks a record |
 | [LANG-86](lang-86.md) | task | — | open | There is no `type alias` production, so a type cannot be given a second name |

@@ -139,6 +139,10 @@ pub enum Reason {
     /// instance is for. It is the reason of the equation the member's signature stands in
     /// for, at the span of the instance's head line, where an annotation would be.
     InstanceMember,
+    /// A binding of a derivation has the type the chapter gives it over the member's
+    /// answer type. It is the reason of the equation that type stands in for, at the span
+    /// of `derived member`, where an annotation would be.
+    DerivationBinding,
 }
 
 impl Reason {
@@ -182,6 +186,7 @@ impl Reason {
             Reason::InstanceContext => "this use requires an instance, through another's context",
             Reason::SuperclassInstance => "this instance requires an instance of its superclass",
             Reason::InstanceMember => "this instance",
+            Reason::DerivationBinding => "this derivation",
         }
     }
 
@@ -220,6 +225,9 @@ impl Reason {
             Reason::InstanceContext => "an instance is required through another's context here",
             Reason::SuperclassInstance => "an instance is required because of this superclass",
             Reason::InstanceMember => "expected because this instance gives the member this type",
+            Reason::DerivationBinding => {
+                "expected because this derivation gives the binding this type"
+            }
         }
     }
 
@@ -255,6 +263,9 @@ impl Reason {
             ),
             Reason::InstanceMember => Some(
                 "an instance's binding must have the type its class gives the member, at the type the instance is for",
+            ),
+            Reason::DerivationBinding => Some(
+                "a derivation's binding has the type its role gives it over the type the member answers with",
             ),
             // The error that carries one of these says what is required and why, so a rule
             // note beside it would say it twice.
@@ -534,6 +545,9 @@ pub enum Written {
     /// one the member's signature binds and the instance's head does not, so no context
     /// of the instance can constrain it.
     MemberSignature,
+    /// A derivation's binding, which is given no context: none of its bindings mentions
+    /// the class variable, so they stand for every type that derives the class.
+    Derivation,
 }
 
 impl ErrorKind {
@@ -643,6 +657,7 @@ impl ErrorKind {
                     Written::Annotation => "the annotation",
                     Written::InstanceContext => "the instance's context",
                     Written::MemberSignature => "the member's signature",
+                    Written::Derivation => "the derivation, which is given no context,",
                 }
             ),
             ErrorKind::ConstraintNeedsAnnotation { class, .. } => format!(
@@ -758,6 +773,9 @@ enum Within {
     /// An instance, checked as a whole: `declaration` is the instance, written as its head
     /// line is.
     Instance,
+    /// A binding of a derivation in a class: `declaration` is the binding, and this is
+    /// the member the derivation is for.
+    Derivation(String),
 }
 
 /// Type errors are about types, and [`Type`]'s `Display` writes them the way the
@@ -776,6 +794,10 @@ impl PhaseError for Error {
                 self.declaration, instance
             ),
             Within::Instance => format!("in the instance `{}`", self.declaration),
+            Within::Derivation(member) => format!(
+                "in the binding `{}` of the derivation of `{}`",
+                self.declaration, member
+            ),
         }];
 
         // The rule that was broken, taken from the failing constraint and, if that
@@ -881,6 +903,12 @@ impl PhaseError for Error {
                 Written::MemberSignature => format!(
                     "`{}` is bound by the signature of the member and not by the head of the instance, so no context of the instance can constrain it: the binding has to hold for every `{}`, and cannot need `{} {}`; change the binding, or the member's signature",
                     variable,
+                    variable,
+                    class.unqualified_name(),
+                    variable
+                ),
+                Written::Derivation => format!(
+                    "a derivation's bindings carry no context, so the binding has to hold for every `{}` and cannot need `{} {}`; change the binding, or the member's signature",
                     variable,
                     class.unqualified_name(),
                     variable
@@ -1283,6 +1311,19 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
         }
     }
 
+    // The constructor of `Basics.Position` builds the place of a constructor from an
+    // `Int`. A module that declares `Position` has declared it above, and one that does
+    // not still has a derived instance that builds one.
+    let (position_name, _) = position_constructor();
+    global
+        .entry(environment_key(&position_name))
+        .or_insert_with(|| {
+            Scheme::unconstrained(Type::Fun {
+                param_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                return_tpe: Box::new(position_type()),
+            })
+        });
+
     // Third pass: check each value. A value that fails is recorded and the pass
     // moves on, so one broken declaration cannot hide the others.
     let spellings = Spellings::of(module, interfaces);
@@ -1339,6 +1380,17 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
         })
         .collect();
 
+    // Fifth pass: the derivations of this module's own classes. A derived instance carries
+    // these bindings placed in its members, but a class that nothing derives has them
+    // checked all the same, and an error in one is at the class, where it was written.
+    DerivationCheck {
+        global: &global,
+        table: &table,
+        translation: &translation,
+        spellings: &spellings,
+    }
+    .of(module, &mut counter, &mut errors);
+
     TypeCheck {
         solved,
         instances,
@@ -1385,20 +1437,19 @@ struct InstanceCheck<'a> {
 }
 
 impl InstanceCheck<'_> {
-    /// Check `instance`: each binding of its body against its member's signature at the
-    /// instance's type, and — for a body written out — the instance as a whole against
-    /// the superclasses its class has. Errors are pushed onto `errors`.
+    /// Check `instance`: each of its bindings against its member's signature at the
+    /// instance's type, and the instance as a whole against the superclasses its class
+    /// has. Errors are pushed onto `errors`.
     ///
     /// The instance's context is *given* in both, as an annotation's is inside a
     /// declaration: the variables the head binds are variables of the unification, a
     /// constraint of the context is on one of them, and an obligation on that same
     /// variable is answered by it.
     ///
-    /// A `derived` instance is an instance that exists, and nothing more. Its members are
-    /// the derivation's ([`LANG-83`](../../docs/tickets/lang-83.md)), and so is the
-    /// context it needs, which is none recorded until that ticket infers one; checking its
-    /// superclasses against a context that is not known yet would reject an instance whose
-    /// context the derivation will provide.
+    /// A derived instance is checked like any other. Canonicalization gave it the members
+    /// its class's derivation stands for and the context its type's arguments need, so its
+    /// superclasses are discharged against that context, and an error in a generated
+    /// binding is on the span of the word `derived`.
     fn of(
         &self,
         instance: &canonical::Instance,
@@ -1438,69 +1489,67 @@ impl InstanceCheck<'_> {
         let mut rejected = false;
         let mut bindings = Vec::new();
 
-        if let canonical::InstanceBody::Bindings(values) = &instance.body {
-            if let Some(class) = class {
-                let obligations = class
-                    .superclasses
-                    .iter()
-                    .map(|superclass| classes::Obligation {
-                        class: superclass.class.clone(),
-                        tpe: head.clone(),
-                        origin: Origin::new(Reason::SuperclassInstance, signature.span),
-                    })
-                    .collect();
+        if let Some(class) = class {
+            let obligations = class
+                .superclasses
+                .iter()
+                .map(|superclass| classes::Obligation {
+                    class: superclass.class.clone(),
+                    tpe: head.clone(),
+                    origin: Origin::new(Reason::SuperclassInstance, signature.span),
+                })
+                .collect();
 
-                let declared = classes::Declared {
-                    tpe: &head,
-                    annotated: true,
-                    given: &given,
-                    names: &names,
-                    member_variables: &[],
-                    written: Written::InstanceContext,
-                };
+            let declared = classes::Declared {
+                tpe: &head,
+                annotated: true,
+                given: &given,
+                names: &names,
+                member_variables: &[],
+                written: Written::InstanceContext,
+            };
 
-                if let Err(kind) =
-                    classes::discharge(self.table, obligations, &Substitution::empty(), &declared)
-                {
-                    rejected = true;
+            if let Err(kind) =
+                classes::discharge(self.table, obligations, &Substitution::empty(), &declared)
+            {
+                rejected = true;
+                errors.push(Error {
+                    kind,
+                    span: signature.span,
+                    declaration: Name::new(text.clone()),
+                    within: Within::Instance,
+                    spellings: self.spellings.clone(),
+                });
+            }
+        }
+
+        for value in &instance.bindings {
+            let canonical::Value::Value { name, .. } = value else {
+                continue;
+            };
+
+            let scope = InstanceScope {
+                head: &head,
+                span: signature.span,
+                given: &given,
+                names: &names,
+            };
+
+            let answer = match self.binding(value, class, &scope, counter) {
+                Some(Ok(answer)) => answer,
+                Some(Err(kind)) => {
                     errors.push(Error {
                         kind,
-                        span: signature.span,
-                        declaration: Name::new(text.clone()),
-                        within: Within::Instance,
+                        span: value.span(),
+                        declaration: name.clone(),
+                        within: Within::Binding(text.clone()),
                         spellings: self.spellings.clone(),
                     });
+                    Solved::Rejected
                 }
-            }
-
-            for value in values {
-                let canonical::Value::Value { name, .. } = value else {
-                    continue;
-                };
-
-                let scope = InstanceScope {
-                    head: &head,
-                    span: signature.span,
-                    given: &given,
-                    names: &names,
-                };
-
-                let answer = match self.binding(value, class, &scope, counter) {
-                    Some(Ok(answer)) => answer,
-                    Some(Err(kind)) => {
-                        errors.push(Error {
-                            kind,
-                            span: value.span(),
-                            declaration: name.clone(),
-                            within: Within::Binding(text.clone()),
-                            spellings: self.spellings.clone(),
-                        });
-                        Solved::Rejected
-                    }
-                    None => Solved::Untranslatable { span: value.span() },
-                };
-                bindings.push((name.clone(), answer));
-            }
+                None => Solved::Untranslatable { span: value.span() },
+            };
+            bindings.push((name.clone(), answer));
         }
 
         SolvedInstance {
@@ -1563,6 +1612,131 @@ impl InstanceCheck<'_> {
         };
 
         Some(solve(term, Some(annotation), self.global, self.table))
+    }
+}
+
+/// `Basics.Position`'s one constructor, and where it sits: the compiler knows it by
+/// name, as it knows the scalars ([`scalars::POSITION`]).
+fn position_constructor() -> (QualName, Constructor) {
+    let union = scalars::POSITION.qual_name();
+    let name = Name::new(scalars::POSITION.name);
+
+    (
+        union.sibling(&name),
+        Constructor {
+            union,
+            name,
+            index: 0,
+            arity: 1,
+        },
+    )
+}
+
+/// The type `Basics.Position`: what `differed` and `atConstructor` are handed.
+fn position_type() -> Type {
+    Type::Adt(scalars::POSITION.qual_name(), Vec::new())
+}
+
+/// What checking the derivations of a module's classes reads.
+struct DerivationCheck<'a> {
+    global: &'a HashMap<String, Scheme>,
+    table: &'a classes::ClassTable<'a>,
+    translation: &'a Translation<'a>,
+    spellings: &'a Spellings,
+}
+
+impl DerivationCheck<'_> {
+    /// Check the bindings of every derivation of `module`'s classes, each as a declaration
+    /// annotated with the type the chapter gives its role over the type the member
+    /// answers with — `matched : R`, `differed : Position -> Position -> R`,
+    /// `atConstructor : Position -> R` and `combine : R -> R -> R`. Errors are pushed onto
+    /// `errors`, classes in the order of their names.
+    ///
+    /// No context is given to a binding: none of them mentions the class variable, so each
+    /// stands for every type that derives the class, and what one needs of a type is an
+    /// instance in scope or an error. `Comparable`'s `differed i j = compare i j` needs
+    /// `Comparable Position`.
+    fn of(&self, module: &Module, counter: &mut u32, errors: &mut Vec<Error>) {
+        let mut classes: Vec<_> = module.classes.iter().collect();
+        classes.sort_by(|left, right| left.0.cmp(right.0));
+
+        for (_, class) in classes {
+            for derivation in &class.signature.derivations {
+                for (role, value) in derivation.bindings.roles() {
+                    self.binding(derivation, role, value, counter, errors);
+                }
+            }
+        }
+    }
+
+    fn binding(
+        &self,
+        derivation: &canonical::Derivation,
+        role: canonical::DerivationRole,
+        value: &canonical::Value,
+        counter: &mut u32,
+        errors: &mut Vec<Error>,
+    ) {
+        let canonical::Value::Value { name, .. } = value else {
+            return;
+        };
+        let Some((term, _)) = value_to_term_and_annotation(value, self.translation, counter) else {
+            return;
+        };
+
+        let mut variables: HashMap<String, TypeVariable> = HashMap::new();
+        let Some(answer) =
+            canonical_type_to_typer_type(&derivation.result, &mut variables, counter)
+        else {
+            return;
+        };
+        let function = |parameters: Vec<Type>, result: Type| {
+            parameters
+                .into_iter()
+                .rev()
+                .fold(result, |result, parameter| Type::Fun {
+                    param_tpe: Box::new(parameter),
+                    return_tpe: Box::new(result),
+                })
+        };
+        let tpe = match role {
+            canonical::DerivationRole::Matched => answer.clone(),
+            canonical::DerivationRole::Differed => {
+                function(vec![position_type(), position_type()], answer.clone())
+            }
+            canonical::DerivationRole::AtConstructor => {
+                function(vec![position_type()], answer.clone())
+            }
+            canonical::DerivationRole::Combine => {
+                function(vec![answer.clone(), answer.clone()], answer.clone())
+            }
+        };
+
+        let mut names: Vec<(TypeVariable, Name)> = variables
+            .iter()
+            .map(|(name, variable)| (variable.clone(), Name::new(name.clone())))
+            .collect();
+        names.sort_by(|left, right| left.1.cmp(&right.1));
+
+        let annotation = Annotation {
+            tpe,
+            span: derivation.span,
+            reason: Reason::DerivationBinding,
+            context: Vec::new(),
+            names,
+            member_variables: Vec::new(),
+            written: Written::Derivation,
+        };
+
+        if let Err(kind) = solve(term, Some(annotation), self.global, self.table) {
+            errors.push(Error {
+                kind,
+                span: value.span(),
+                declaration: name.clone(),
+                within: Within::Derivation(derivation.member.to_string()),
+                spellings: self.spellings.clone(),
+            });
+        }
     }
 }
 
@@ -1752,7 +1926,11 @@ impl<'a> Translation<'a> {
             unions.insert(module.name.qualify_name(name), union_type);
         }
 
-        let constructors = constructors_of(&unions);
+        let mut constructors = constructors_of(&unions);
+        // `Basics.Position`'s constructor is known whether or not an interface in reach
+        // carries it, since a derived instance builds one and no module exposes it.
+        let (position_name, position) = position_constructor();
+        constructors.entry(position_name).or_insert(position);
 
         let arities = module
             .values

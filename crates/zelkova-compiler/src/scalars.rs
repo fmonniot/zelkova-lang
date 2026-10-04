@@ -1,4 +1,4 @@
-//! The five type names the compiler knows.
+//! The five type names the compiler knows as scalars, and the one it knows beside them.
 //!
 //! `Int`, `Float`, `Bool`, `Char` and `String` are **scalar**: each is declared in
 //! Zelkova like any other type, and the compiler additionally knows the
@@ -100,6 +100,20 @@ pub const STRING: Scalar = Scalar {
     name: "String",
 };
 
+/// `Basics.Position`: the type a derivation hands `differed` and `atConstructor` for a
+/// constructor's place in its declaration.
+///
+/// Known by name for the reason a scalar is — the compiler has to give those parameters a
+/// type before any class has been read — and **not a scalar**: it is declared in Zelkova
+/// like any other type, has no representation the compiler knows, and is in neither
+/// [`SCALARS`] nor [`OPAQUE_SCALARS`]. Its one constructor, `Position`, holds the
+/// zero-based place as an `Int` and is exposed to no module, so a derived instance names
+/// it by this declaration ([`Scalar::qual_name`]) and never through scope.
+pub const POSITION: Scalar = Scalar {
+    module: "Basics",
+    name: "Position",
+};
+
 /// The five scalar types, in the order [*Scalar
 /// types*](../../docs/spec/types.md#scalar-types) lists them.
 pub const SCALARS: &[Scalar] = &[INT, FLOAT, BOOL, CHAR, STRING];
@@ -132,6 +146,17 @@ mod tests {
 
     fn qual(s: &str) -> QualName {
         QualName::parse(PackageName::core(), s).unwrap()
+    }
+
+    /// `Position` is known by name and is not a scalar: no list of scalars holds it, and
+    /// `scalar_of` does not answer it.
+    #[test]
+    fn position_is_known_by_name_and_is_not_a_scalar() {
+        assert!(POSITION.declares(&qual("Basics.Position")));
+        assert_eq!(POSITION.qual_name(), qual("Basics.Position"));
+        assert!(!SCALARS.contains(&POSITION));
+        assert!(!OPAQUE_SCALARS.contains(&POSITION));
+        assert_eq!(scalar_of(&qual("Basics.Position")), None);
     }
 
     #[test]

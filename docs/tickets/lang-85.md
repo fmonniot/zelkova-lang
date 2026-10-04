@@ -6,12 +6,13 @@ no instance to put it in.
 
 **Location:** `crates/zelkova-compiler/src/typer/` — the solver [`LANG-40`](README.md) adds,
 at the step that reads an obligation with the final substitution applied;
-`crates/zelkova-compiler/src/canonical/mod.rs` — the context inference
-[`LANG-83`](lang-83.md) adds for a `derived` instance; `crates/zelkova-compiler/src/ir/` — the
-specialisation pass [`GEN-24`](gen-24.md) adds. None of the three exists yet.
+`crates/zelkova-compiler/src/canonical/derivation.rs` — the context inference
+[`LANG-83`](README.md) added for a `derived` instance, whose `reduce` accepts a record with no
+requirement; `crates/zelkova-compiler/src/ir/` — the specialisation pass
+[`GEN-24`](gen-24.md) adds, which does not exist yet.
 
 **Depends on:** `LANG-51` (closed) for the record type; [`LANG-40`](README.md) and
-[`LANG-83`](lang-83.md) for obligations and for what a derivation is; [`GEN-24`](gen-24.md) and
+[`LANG-83`](README.md) for obligations and for what a derivation is; [`GEN-24`](gen-24.md) and
 `GEN-25` (closed) before a program using it runs. It is the one ticket that needs both
 *Active work* orders in [the index](README.md) finished.
 
@@ -26,8 +27,8 @@ walk is not an instance and `instance Eq { x : Int }` stays unwritable.
 **Not implemented:** neither program reaches a record. `LANG-40` discharges an obligation whose
 type is a declared type, a tuple or `()`, rejects one at a function, and resolves one at a
 variable; a record is none of those. `LANG-83` walks a union, a tuple and `()`, and infers a
-derived instance's context from each variant's arguments, with no case for an argument that is a
-record. So `r == s` on two records has no rule, and neither does `instance Eq Reading where
+derived instance's context from each variant's arguments, and asks nothing of an argument that is
+a record. So `r == s` on two records has no rule, and neither does `instance Eq Reading where
 derived` for `type Reading = Reading { taken : Celsius }`. `LANG-51` has landed,
 so `LANG-40` meets the gap first: it accepts an obligation at a record, asks nothing further of
 it and raises no error, so until this ticket `r == s` on two records is accepted without being

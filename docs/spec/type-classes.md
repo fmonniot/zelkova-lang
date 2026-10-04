@@ -21,9 +21,7 @@ class Comparable a where
   compare : a -> a -> Order
 ```
 
-**Not implemented:** a derivation and a `derived` instance are read and not checked, and nothing
-yet produces the members a derived instance stands for ([`LANG-83`](../tickets/lang-83.md)). A
-constraint required of a record type is accepted without being checked
+**Not implemented:** a constraint required of a record type is accepted without being checked
 ([`LANG-85`](../tickets/lang-85.md)). An annotation's type variables are not rigid
 ([`LANG-12`](../tickets/lang-12.md)), so a body that forces a constrained variable to a concrete
 type is accepted when that type has the instance, and the annotation's constraint is not held
@@ -280,10 +278,47 @@ Two member shapes therefore cannot carry a derivation at all, and the reasons di
   backwards and build a value from a description of the type's constructors. That description is
   the thing this design does not have.
 
+```zel expect=canonical-error:DerivationSignature
+module Example exposing (Number)
+
+class Number a where
+  add : a -> a -> a
+
+  derived add
+    matched = 0
+    differed _ _ = 0
+    combine x y =
+      x
+```
+
 A class is derivable when **every** member carries a derivation, and the two forms mix freely
 across one class: each member takes the form its own signature admits. Covering some members and
 not the rest is an error naming the ones left out: an instance of such a class could only be half
 derived and half written.
+
+```zel expect=canonical-error:DerivationIncomplete
+module Example exposing (Eq)
+
+class Eq a where
+  eq : a -> a -> Bool
+  neq : a -> a -> Bool
+
+  derived eq
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True ->
+          y
+
+        False ->
+          False
+```
+
+A derivation takes exactly the bindings its member's signature calls for. A binding left out, one
+written twice and one the signature does not call for are each an error naming the binding, and
+so is a derivation for a name the class does not declare as a member, or a second one for a member
+that has one.
 
 ### What a derived instance computes
 
@@ -314,14 +349,8 @@ arguments out to the answer, and `matched` makes a constructor with no arguments
 the positions they are declared at, so `Red` is less than `Green` in the `Colour` type above;
 two of the same constructor by their arguments, left to right, the first unequal pair deciding:
 
-```zel expect=ok
-module Example exposing (Comparable)
-
-type Order
-  = LT
-  | EQ
-  | GT
-
+```zel expect=fragment
+-- `Basics`' declaration of `Comparable`
 class Comparable a where
   compare : a -> a -> Order
 
@@ -344,7 +373,7 @@ class Comparable a where
 A derivation for a member at `a -> R` walks **one** value, and asks the class for two bindings
 rather than three.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Hashable)
 
 class Hashable a where
@@ -356,6 +385,14 @@ class Hashable a where
 
     combine x y =
       add x y
+
+positionIndex : Position -> Int
+positionIndex p =
+  0
+
+add : Int -> Int -> Int
+add x y =
+  x
 ```
 
 `atConstructor` is the answer for the constructor the value is of, and receives the position that
@@ -380,7 +417,23 @@ element's type, folded with `combine`. A two-value derivation walks the elements
 ends at `matched`; a one-value derivation walks them singly and starts at the first element's
 answer.
 
-```zel expect=fragment
+```zel expect=ok
+module Example exposing (Eq)
+
+class Eq a where
+  eq : a -> a -> Bool
+
+  derived eq
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True ->
+          y
+
+        False ->
+          False
+
 instance Eq (a, b) where
   derived
 ```
@@ -388,6 +441,23 @@ instance Eq (a, b) where
 `()` has no element. A two-value derivation answers `matched` for it; a one-value derivation has
 nothing for its fold to begin at, so `instance C () where derived` is an error for a class
 whose derivation walks one value.
+
+```zel expect=canonical-error:DerivedInstanceNoShape
+module Example exposing (Hashable)
+
+class Hashable a where
+  hash : a -> Int
+
+  derived hash
+    atConstructor _ =
+      1
+
+    combine x y =
+      x
+
+instance Hashable () where
+  derived
+```
 
 ### What a derivation cannot render
 
@@ -524,7 +594,7 @@ contents have one. A parameter no variant uses carries no constraint.
 Where the argument's type is concrete, the requirement is checked at the declaration, and an
 argument whose type has no instance is an error there, naming the variant and the type:
 
-```zel expect=ok
+```zel expect=canonical-error:DerivedInstanceRequires
 module Example exposing (Key, Entry)
 
 type Key
@@ -555,20 +625,88 @@ The instance is the claim that an `Entry` can be compared for equality, and the 
 where it is written. A variant holding a **function** is the case no instance can rescue, since a
 function type [has no useful equality at all](evaluation-semantics.md#functions-are-not-comparable).
 
-**Not implemented:** the block above is accepted. Nothing checks what a derived instance
-requires of its type's arguments ([`LANG-83`](../tickets/lang-83.md)).
-
 A superclass obligation is unchanged: a derived `Comparable Colour` is rejected unless an
-`Eq Colour` instance exists, derived in its turn or written out.
+`Eq Colour` instance exists, derived in its turn or written out. For a type with parameters the
+obligation is held to the context the derived instance was inferred, as a written instance's is: a
+derived `Comparable (Phantom a)` for `type Phantom a = Phantom Int` has no constraint on `a`, so it
+is an error beside `instance Eq a => Eq (Phantom a)`, which needs one.
 
 The type's constructors must be in scope where the instance is written, since the walk is read
 off them: a derived instance for a type imported [without its
-constructors](modules.md#the-exposing-list) is an error. And a [scalar
-type](types.md#scalar-types) has no shape for a walk to read, so its instances are written.
+constructors](modules.md#the-exposing-list) is an error.
+
+```zel expect=ok package=opaque
+module Colour exposing (Colour)
+
+type Colour
+  = Red
+  | Green
+```
+
+```zel expect=canonical-error:DerivedInstanceNoShape package=opaque
+module Example exposing (Eq)
+
+import Colour exposing (Colour)
+
+class Eq a where
+  eq : a -> a -> Bool
+
+  derived eq
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True ->
+          y
+
+        False ->
+          False
+
+instance Eq Colour where
+  derived
+```
+
+A [scalar type](types.md#scalar-types) has no shape for a walk to read either, so its instances
+are written.
+
+```zel expect=canonical-error:DerivedInstanceNoShape
+module Example exposing (Eq)
+
+class Eq a where
+  eq : a -> a -> Bool
+
+  derived eq
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True ->
+          y
+
+        False ->
+          False
+
+instance Eq Int where
+  derived
+```
 
 And the class must be one that says how it is derived. `derived` under a class whose declaration
 carries no derivation is an error naming the class — not because the compiler holds a list of the
 classes that do, but because the declaration the instance names has nothing in it to run.
+
+```zel expect=canonical-error:DerivedInstanceNotDerivable
+module Example exposing (Colour, Eq)
+
+type Colour
+  = Red
+  | Green
+
+class Eq a where
+  eq : a -> a -> Bool
+
+instance Eq Colour where
+  derived
+```
 
 ## Constraining an annotation
 

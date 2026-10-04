@@ -237,7 +237,7 @@ a `Bool`, a `Char`, a tuple or a union through them.
 ## 11 — Derivation is part of the series
 
 `LANG-38` parsed a derivation and `LANG-39` was to check one, and no ticket produced the members
-a derived instance stands for. [`LANG-83`](../tickets/lang-83.md) does, before `std/core` is
+a derived instance stands for. [`LANG-83`](../tickets/README.md) does, before `std/core` is
 rewritten: its test suites compare their own unions with `==`, and without `derived` each of
 those types needs a hand-written instance.
 

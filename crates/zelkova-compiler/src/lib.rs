@@ -335,8 +335,10 @@ pub struct Interface {
     /// interface in a test leaves out — is read as arity 0, the arity of a parameterless
     /// binding.
     pub arities: HashMap<Name, usize>,
-    /// Every class the module declares and exposes, by name, with its members. A member
-    /// is not in [`values`](Self::values): an importer reaches it through its class.
+    /// Every class the module declares and exposes, by name, with its members and the
+    /// derivations it carries, which are what an importer writes a `derived` instance's
+    /// members out of. A member is not in [`values`](Self::values): an importer reaches it
+    /// through its class.
     pub classes: HashMap<Name, canonical::ClassSignature>,
     /// Every instance in scope in the module: the ones it declares, and every one an
     /// import brought into it.
