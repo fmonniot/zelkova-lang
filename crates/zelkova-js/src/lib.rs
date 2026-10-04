@@ -84,7 +84,7 @@
 //! reading of that promise that covers it is a `SPEC-` ticket to file and not a design to
 //! change here.
 //!
-//! //! # Representations
+//! # Representations
 //!
 //! An `Int` literal is a `BigInt` (`1n`), since [`Int` is 64
 //! bits](../docs/spec/evaluation-semantics.md#numbers); a `Float` is a number, a
@@ -749,6 +749,9 @@ fn companion_alias(name: &str) -> String {
     format!("$companion${}", name)
 }
 
+/// How the name of an instance's member begins.
+const INSTANCE_PREFIX: &str = "$instance$";
+
 /// The name an instance's member is emitted under, and exported and imported by: `$instance$`,
 /// then the class — its package ([`package_segment`]), its module's segments and its own
 /// name — then the head, then the member's own name, all joined by `$`.
@@ -766,9 +769,6 @@ fn companion_alias(name: &str) -> String {
 /// is lowercase, and a hoisted constructor's second is a module's, uppercase — and no
 /// Zelkova name holds a `$`. [`imported`] gives it a second `$` in a row, which no other
 /// import has.
-/// How the name of an instance's member begins.
-const INSTANCE_PREFIX: &str = "$instance$";
-
 fn instance_member_name(class: &QualName, head: &HeadName, member: &Name) -> String {
     let head = match head {
         HeadName::Type(name) => format!(
