@@ -91,6 +91,22 @@ the obvious implementation breaks two of them.
 9. **The output is deterministic.** Two runs over one unchanged build write the same text, in
    the same order, under the same names.
 
+10. **A use of a class member gets its call shape from the instance that answers it.** The IR
+    cannot give one: `Translation::callee_arity` finds no arity for a member of the module
+    that declares its class (a member is not a value of that module) and reads one of another
+    module as 0, because no `Interface::arities` entry exists for it and `foreign_arity`'s
+    fallback is 0. Either way every application of a member is `Saturation::Partial` today,
+    and a `ReferenceKind::Foreign` to an imported member carries an arity of 0, which the
+    emitter reads as a parameterless binding and so never wraps in `$curry`, whatever the
+    instance's binding takes. A member's signature is no better a source: `eq : a -> a -> Bool`
+    has two arrows, and an instance may bind it with two parameters, with one, or with none
+    (`eq = sameColour`), so its arity is a fact about each instance's binding. The pass of
+    requirement 7 is where the instance is known, so it is where saturation is decided: a
+    saturated call of a member at a known instance is a direct call of that instance's
+    function, and no reference to a member keeps the arity 0 it has today. Whether the pass
+    rewrites `Saturation` in place or hands back a call shape beside the reference is this
+    ticket's to choose.
+
 **Approach:** a worklist. The roots are every declaration with no context, and every member of
 an instance with no context, in every module of the build. Reading a root's body, each reference
 that carries obligations is resolved: each obligation's type is ground there, so its instance is
@@ -102,7 +118,7 @@ declaration's own variable, which `LANG-40` discharged as given, into one at a g
 
 The pass hands back, per module, the specialisations it must emit and what each reference
 resolved to. How that is represented — new declarations in an `ir::Module`, a table beside the
-modules the way `Unions` is — is this ticket's to choose within the nine requirements above;
+modules the way `Unions` is — is this ticket's to choose within the ten requirements above;
 none of them is a field name. `compile` emits a second tree for a build that compiled its tests,
 and the pass has to cover both.
 
@@ -120,6 +136,9 @@ In `crates/zelkova-compiler/tests/ir.rs`, on the pass, each seen red:
   enclosing function is specialised, to the instance at that type.
 - A use through an instance with a context (`eq` at `Box Colour`) yields the member specialised
   at `Colour`. A use of a superclass's member through a subclass's constraint resolves.
+- A saturated application of a member, own or imported, at a known instance is `Saturated`
+  after the pass, whatever the instance's binding's parameter count (two parameters, one, none);
+  an application that supplies fewer arguments than that binding takes stays `Partial`.
 - A specialisation is assigned to the using module. Two modules using one key each get it.
 - `f x = f (Box x)` under a constraint is the limit's error, naming `f`. So is the same loop
   through two functions.

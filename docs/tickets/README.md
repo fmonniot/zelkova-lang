@@ -219,6 +219,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-46](bug-46.md) | bug | low | open | `Js.Utils.compareInt` and `compareFloat` declare an `Int` result their companion returns as a number |
 | [BUG-47](bug-47.md) | bug | low | open | A qualified name an imported module does not expose is reported as under the importing module |
 | [BUG-48](bug-48.md) | bug | medium | open | `Js.Utils`'s structural equality throws a `ReferenceError` on a value nested more than a hundred deep |
+| [BUG-49](bug-49.md) | bug | medium | open | A superclass of a superclass is not provided when no module the package can see declares the class between them |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -240,6 +241,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-20](err-20.md) | task | — | open | A body using a name a record pattern binds at the wrong type is reported at the pattern |
 | [ERR-21](err-21.md) | task | — | open | A four-element tuple type at the front of an annotation is reported as a missing `=>` |
 | [ERR-22](err-22.md) | task | — | open | A type error between a scalar and a same-named union spells both types alike |
+| [ERR-23](err-23.md) | task | — | open | A use at a type whose instance was rejected is reported as having no instance |
+| [ERR-24](err-24.md) | task | — | open | A type error between two classes of one bare name spells both alike |
+| [ERR-25](err-25.md) | task | — | open | A message about an instance binding writes a member's variable and the head's alike |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
