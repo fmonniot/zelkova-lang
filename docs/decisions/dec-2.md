@@ -153,8 +153,8 @@ with no exception carved out for arithmetic. The alternative both rule out is a 
 stands for a value in any type with a `Number` instance: that spelling puts a conversion member
 on every such instance, and a call to it under every literal in every program — machinery, and
 invisible work at runtime, spread across the whole language. The visible consequence is that
-[`LANG-41`](../tickets/lang-41.md) left the type-class ticket dependency order — with no
-obligation to discharge, it can land at any point.
+`LANG-41` stood outside the type-class ticket dependency order: with no
+obligation to discharge, it could land at any point, and did.
 
 **Decision 11 was overtaken, both halves of it.** `TEST-2` turned out not to gate the chapter:
 nothing about a class parses, so all eleven of the chapter's class-and-constraint blocks are

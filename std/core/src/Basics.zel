@@ -689,14 +689,10 @@ radians angleInRadians =
     degrees 180 == 3.141592653589793
 -}
 -- Calls `mul`, so it aborts on every call the same way `add` does on a `Float`: see
--- `add` above, and `BUG-44`. Independently, the `180` below is compiled as an `Int`
--- and `fdiv` cannot divide a `Float` by one — `LANG-41` is what makes a bare integer
--- literal `Int` rather than a `Number` that happens to unify with `Float`, and fixing
--- it means giving `180` a point. `mul`'s abort fires first today, so that second
--- defect stays invisible until both land.
+-- `add` above, and `BUG-44`.
 degrees : Float -> Float
 degrees angleInDegrees =
-  fdiv (mul angleInDegrees pi) 180
+  fdiv (mul angleInDegrees pi) 180.0
 
 
 {-| Convert turns to standard Elm angles (radians). One turn is equal to 360°.
@@ -705,7 +701,7 @@ degrees angleInDegrees =
 -}
 turns : Float -> Float
 turns angleInTurns =
-  mul (mul 2 pi) angleInTurns
+  mul (mul 2.0 pi) angleInTurns
 
 
 

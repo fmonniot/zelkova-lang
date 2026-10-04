@@ -1961,9 +1961,6 @@ pub enum TypeLiteral {
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum Type {
     Literal(TypeLiteral),
-    /// A numeric literal type: unifies with both `Int` and `Float` but not other types.
-    /// This models Elm's `number` constraint for integer literals used in numeric contexts.
-    Number,
     Variable(TypeVariable),
     Fun {
         param_tpe: Box<Type>,
@@ -2128,7 +2125,6 @@ impl std::fmt::Debug for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Literal(lit) => write!(f, "Lit({:?})", lit),
-            Type::Number => write!(f, "Number"),
             Type::Variable(TypeVariable { id }) => write!(f, "Var(#{})", id),
             Type::Fun {
                 param_tpe,
@@ -2171,7 +2167,7 @@ impl Type {
     /// name the rendering will contain, not only the one at the top.
     fn collect_adt_names<'a>(&'a self, out: &mut Vec<&'a QualName>) {
         match self {
-            Type::Literal(_) | Type::Number | Type::Variable(_) | Type::Unit => {}
+            Type::Literal(_) | Type::Variable(_) | Type::Unit => {}
             Type::Fun {
                 param_tpe,
                 return_tpe,
@@ -2222,7 +2218,6 @@ impl Type {
             Type::Literal(TypeLiteral::Char) => write!(f, "Char"),
             Type::Literal(TypeLiteral::Float) => write!(f, "Float"),
             Type::Literal(TypeLiteral::String) => write!(f, "String"),
-            Type::Number => write!(f, "number"),
             Type::Variable(TypeVariable { id }) => write!(f, "t{}", id),
             // The parameter of a function type is parenthesised when it is itself a
             // function, because `->` is right-associative: `(a -> b) -> c` and
@@ -2856,7 +2851,7 @@ impl Substitution {
 
     fn substitute(tpe: Type, tvar: &TypeVariable, replacement: &Type) -> Type {
         match tpe {
-            Type::Literal(_) | Type::Number | Type::Unit => tpe,
+            Type::Literal(_) | Type::Unit => tpe,
             Type::Fun {
                 param_tpe,
                 return_tpe,
@@ -3008,7 +3003,7 @@ impl Types {
     /// the same fresh one throughout.
     fn instantiate(&mut self, tpe: Type, fresh: &mut HashMap<TypeVariable, Type>) -> Type {
         match tpe {
-            Type::Literal(_) | Type::Number | Type::Unit => tpe,
+            Type::Literal(_) | Type::Unit => tpe,
             Type::Variable(tvar) => {
                 if let Some(replacement) = fresh.get(&tvar) {
                     return replacement.clone();
@@ -3180,7 +3175,6 @@ mod tests {
                 Type::Literal(TypeLiteral::Char) => "Char".to_owned(),
                 Type::Literal(TypeLiteral::Float) => "Float".to_owned(),
                 Type::Literal(TypeLiteral::String) => "String".to_owned(),
-                Type::Number => "number".to_owned(),
                 Type::Unit => "()".to_owned(),
                 Type::Variable(TypeVariable { id }) => {
                     if let Some(name) = self.known.get(&id) {
@@ -3292,10 +3286,10 @@ mod tests {
         let term = fun("pred", if_(apply(var("pred"), int(1)), int(2), int(3)));
         let infered = infer(term, global).unwrap();
 
-        // Integer literals infer as `number` (polymorphic: Int or Float)
+        // Integer literals infer as `Int`
         assert_eq!(
             Signature::of_type(infered),
-            "(number -> Bool) -> number".to_owned()
+            "(Int -> Bool) -> Int".to_owned()
         );
     }
 
@@ -3598,7 +3592,6 @@ mod tests {
             ),
             // Inference variables have no source syntax; Elm spells them `t{n}`.
             (Type::Variable(TypeVariable { id: 7 }), "t7"),
-            (Type::Number, "number"),
         ];
 
         for (tpe, expected) in cases {

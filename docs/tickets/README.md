@@ -103,8 +103,7 @@ type has always actually been.
 
 They get their own section because most tickets each close a complete, independently shippable
 gap on landing, while these are fragments of one mechanism that only works once the chain
-lands. `LANG-41` is the exception: it stands alone, and is in the order because `LANG-40` needs
-it gone first.
+lands. `LANG-41`, closed, stood alone and sits in the order because `LANG-40` needed it gone first.
 
 [`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
 read before picking any of these up: none of them re-argues a decision, and several would look
@@ -125,11 +124,8 @@ LANG-71  a context holds any number of constraints, as a list   ← closed
   │      ← first, because a class head and an instance head parse a
   │        context too, and LANG-38 is written against this shape
   │
-LANG-41  `Type::Number` retires; an integer literal is an `Int`
-  │      ← needs nothing and may land beside LANG-38 or LANG-39; it is
-  │        here because LANG-40 must not meet an obligation at a type
-  │        that is neither `Int` nor `Float`
-  │      ← closes ERR-13
+LANG-41  `Type::Number` retires; an integer literal is an `Int`   ← closed
+  │      ← closed ERR-13
   │
 LANG-38  `class` / `instance` parse, with a `where` block of members
   │      ← syntax only: canonicalization rejects each one, the way a
@@ -163,8 +159,8 @@ LANG-12  an annotation's variables are rigid
 ```
 
 Two tickets sit just outside it. [`LANG-4`](lang-4.md) wants prefix `-` to mean `negate`, and
-has a `Float`-capable `negate` to desugar to once `LANG-42` lands; between `LANG-41` and then,
-`-x` on a `Float` is a type error where it used to abort at run time.
+has a `Float`-capable `negate` to desugar to once `LANG-42` lands; until then `-x` on a
+`Float` is a type error.
 [`PERF-2`](perf-2.md) is narrowed by `LANG-42`, which rewrites most of the forwarding
 declarations it is about, and not closed by it.
 
@@ -234,7 +230,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-10](err-10.md) | task | — | open | Give a phase its first real warning: unused imports in canonicalization |
 | [ERR-11](err-11.md) | task | — | open | A `case` branch indented deeper than its siblings is absorbed, and the error names the wrong token |
 | [ERR-12](err-12.md) | task | — | open | Leading indentation before `module` is rejected only by accident, and the caret lands on an unrelated line |
-| [ERR-13](err-13.md) | task | — | open | A type error spells the numeric-literal type `number`, which the language reads as an ordinary type variable |
+| ERR-13 | task | — | closed 2026-10-03 | A type error spells the numeric-literal type `number`, which the language reads as an ordinary type variable |
 | [ERR-14](err-14.md) | task | — | open | A qualified name whose module is not imported is reported as a missing value |
 | [ERR-15](err-15.md) | task | — | open | `TypeNotFound` carries no "did you mean …?" suggestion |
 | [ERR-16](err-16.md) | task | — | open | `ModuleNameCollision` and `ReservedModuleName` have a file to point at and don't |
@@ -243,6 +239,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-19](err-19.md) | task | — | open | A module name used as a constructor is reported as a missing constructor of the current module |
 | [ERR-20](err-20.md) | task | — | open | A body using a name a record pattern binds at the wrong type is reported at the pattern |
 | [ERR-21](err-21.md) | task | — | open | A four-element tuple type at the front of an annotation is reported as a missing `=>` |
+| [ERR-22](err-22.md) | task | — | open | A type error between a scalar and a same-named union spells both types alike |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
@@ -321,7 +318,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-38](lang-38.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [LANG-39](lang-39.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
 | [LANG-40](lang-40.md) | task | — | open | Discharge class constraints in the type checker |
-| [LANG-41](lang-41.md) | task | — | open | Retire `Type::Number`: an integer literal is an `Int` |
+| LANG-41 | task | — | closed 2026-10-03 | Retire `Type::Number`: an integer literal is an `Int` |
 | [LANG-42](lang-42.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
 | LANG-43 | task | — | closed 2026-09-27 | A facade signature may name any type at all, including ones no runtime predicate can decide |
 | [LANG-44](lang-44.md) | task | — | open | There is no list-literal production, so `[1, 2]` does not parse |

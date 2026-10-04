@@ -877,7 +877,7 @@ fn a_wildcard_branch_is_a_leaf_with_no_bindings() {
 ///
 /// Mutation-checked twice: having `decision::lower`'s `Bind` arm build its binding at
 /// `occurrence.field(Step::TupleElement(0))` instead of `occurrence`, and having
-/// `decision::build` hand the root pattern a `Type::Number` instead of the scrutinee's
+/// `decision::build` hand the root pattern a `Type::Unit` instead of the scrutinee's
 /// type. Each turns the assertion red.
 #[test]
 fn a_variable_branch_is_a_leaf_that_binds_the_whole_scrutinee() {

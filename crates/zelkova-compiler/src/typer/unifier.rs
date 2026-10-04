@@ -23,14 +23,6 @@ use super::{
 use std::collections::HashSet;
 use zelkova_syntax::tuple::Tuple;
 
-/// Returns true if `tpe` is a numeric type (Int, Float, or Number).
-fn is_numeric(tpe: &Type) -> bool {
-    matches!(
-        tpe,
-        Type::Literal(TypeLiteral::Int) | Type::Literal(TypeLiteral::Float) | Type::Number
-    )
-}
-
 /// Solve the constraints in order, applying each solution to the ones still to come.
 ///
 /// The order is the caller's and it matters: it decides which of several
@@ -93,10 +85,6 @@ fn unify_one_constraint(constraint: &Constraint) -> Result<Substitution, ErrorKi
             constraint.component(*p1.clone(), *p2.clone()),
             constraint.component(*r1.clone(), *r2.clone()),
         ]),
-        // Number unifies with Int, Float, or another Number (but not Bool, Char, etc.)
-        (Type::Number, other) | (other, Type::Number) if is_numeric(other) => {
-            Ok(Substitution::empty())
-        }
         // Tuples: unify element-by-element. A `Two` against a `Three` matches
         // neither arm below and falls through to the mismatch arm at the
         // bottom, same as any other `Type` mismatch.
@@ -328,7 +316,7 @@ fn reach(
 /// Every type variable in `tpe`, added to `into`.
 fn free_variables(tpe: &Type, into: &mut HashSet<TypeVariable>) {
     match tpe {
-        Type::Literal(_) | Type::Number | Type::Unit => (),
+        Type::Literal(_) | Type::Unit => (),
         Type::Variable(tvar) => {
             into.insert(tvar.clone());
         }

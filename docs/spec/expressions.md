@@ -51,6 +51,13 @@ An annotation cannot change that: a declaration annotated `Float` whose body is 
 error, and the fix is to write `1.0`. Arithmetic between the two is an error for the same
 reason.
 
+```zel expect=type-error
+module Example exposing (ratio)
+
+ratio : Float
+ratio = 1
+```
+
 Because a literal carries no constraint, nothing in the language defaults: there is no fallback
 rule, and no class the compiler has to know by name.
 
@@ -70,10 +77,6 @@ double x =
 that declaration is an error: `2` is an `Int`, so `mul x 2` forces `a` to be `Int` and the
 annotation promises more than the body supports. `double x = add x x` is the way to write it,
 and a class that wants numeric constants declares them as members.
-
-**Known gap:** the type checker gives an integer literal an internal type that unifies with
-`Int` *and* `Float`, so a declaration annotated `Float` with a body of `1` is accepted today.
-[`LANG-41`](../tickets/lang-41.md) is the ticket. No block here holds it to account.
 
 ### There is no boolean literal
 

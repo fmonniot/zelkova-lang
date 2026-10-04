@@ -16,10 +16,8 @@ the environment every declaration is checked against; `Types`, `Types::by_name` 
 
 **Depends on:** [LANG-39](lang-39.md), for a class table and an instance table to discharge
 against; [LANG-70](lang-70.md), for an annotation's context on the canonical value and in the
-`Interface`; and [LANG-41](lang-41.md), so that an integer literal is an `Int` before anything
-asks for an instance at its type. With `Type::Number` still in the tree, `eq 1 2` raises an
-obligation at a type that is neither `Int` nor `Float` and has no instance, and this ticket
-would have to invent a rule for it that `LANG-41` then deletes.
+`Interface`; and nothing else: an integer literal is an `Int`, so no obligation is raised at a type that is
+neither `Int` nor `Float` and has no instance.
 
 **Not on [LANG-12](lang-12.md), which this ticket used to call a hard prerequisite.** The order
 was turned round ([`DEC-24` decision
@@ -41,10 +39,8 @@ error asking for the annotation
 **Problem:** the typer has no notion of an obligation. `Constraint` is a pair of types plus an
 `Origin`, `unify` solves each one on sight, and the environment `type_check_recovering` builds
 maps a name to a type and nothing else, so a constrained function is checked exactly as it would
-be without its constraint and a class member is not in the environment at all. The only thing
-resembling a class is `Type::Number` — a hard-coded case that unifies with `Int`, `Float` and
-itself and is never recorded, deferred, or reported as unsatisfiable. It is the degenerate
-ancestor of what this ticket builds, and [LANG-41](lang-41.md) retires it first.
+be without its constraint and a class member is not in the environment at all. Nothing in the
+solver resembles a class.
 
 **Approach:**
 
