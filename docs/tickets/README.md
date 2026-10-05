@@ -281,6 +281,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-37 | task | — | closed 2026-09-28 | How a `Task` is represented and run is undesigned, on either target |
 | [SPEC-38](spec-38.md) | task | — | open | `patterns.md` parenthesises every sub-pattern and also writes `Circle n :: rest` bare |
 | [SPEC-39](spec-39.md) | task | — | open | The chapter does not say what a context written on a `derived` instance means, or which constructors a `derived` instance needs in scope |
+| [SPEC-40](spec-40.md) | task | — | open | No chapter says how `Comparable` orders a `Char` or a `String` |
 | LANG-1 | task | — | closed 2026-10-01 | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
