@@ -40,9 +40,10 @@ A block holds a single module, and by default it is compiled alone, as a package
 block may also carry a second tag, `package=<label>`, beside its `expect=` — an info string
 reading ```` ```zel expect=ok package=alias ````.
 
-Either way, the package is compiled against one interface it did not write: a stand-in
-`Basics`, which is what lets a block name `Int`, `Float` or `Bool` without declaring or
-importing them. A package of one gets exactly the interface a `package=` group does.
+Either way, the package is compiled against one interface it did not write: `std/core`'s own
+`Basics`, with its operators taken out and with the modules it is built over in reach, which is
+what lets a block name `Int`, `Float` or `Bool` without declaring or importing them. A package of
+one gets exactly the interface a `package=` group does.
 
 A package whose modules name one of the eight [default
 imports](modules.md#the-default-imports) — `Basics` itself, or `List`, `Maybe`, `Result`,

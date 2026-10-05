@@ -21,7 +21,8 @@ class Comparable a where
   compare : a -> a -> Order
 ```
 
-**Not implemented:** a constraint required of a record type is accepted without being checked
+**Not implemented:** a constraint required of a record type is accepted without being checked,
+and the build then refuses a use of it, because no instance or derivation answers for a record
 ([`LANG-85`](../tickets/lang-85.md)). An annotation's type variables are not rigid
 ([`LANG-12`](../tickets/lang-12.md)), so a body that forces a constrained variable to a concrete
 type is accepted when that type has the instance, and the annotation's constraint is not held
@@ -370,7 +371,7 @@ two of the same constructor by their arguments, left to right, the first unequal
 
 ```zel expect=fragment
 -- `Basics`' declaration of `Comparable`
-class Comparable a where
+class Eq a => Comparable a where
   compare : a -> a -> Order
 
   derived compare
