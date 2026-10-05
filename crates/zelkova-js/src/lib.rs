@@ -21,12 +21,68 @@
 //!    ([*The boundary check*](#the-boundary-check)), in name order; then one `function`
 //!    per declaration that takes parameters, with exactly as many JavaScript parameters
 //!    as it was written with ([`DEC-18` decision
-//!    3](../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
+//!    3](../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)),
+//!    then the same for each member of an instance and each specialisation
+//!    ([*Classes, instances and specialisations*](#classes-instances-and-specialisations)).
+//!    A declaration whose annotation has a constraint has none.
 //! 4. **Parameterless bindings** — one `const` each, in
-//!    [`ir::Module::initialisation_order`], so each is initialised after every other one
-//!    it depends on — the ones it mentions, and the ones a function it mentions reaches —
-//!    and no `const` is read before it is initialised.
-//! 5. **Exports** — one `export { … }` naming each exported value by its Zelkova name.
+//!    [`ir::initialisation_items`]: the declarations in
+//!    [`ir::Module::initialisation_order`], the members of an instance that take no
+//!    parameter and the specialisations that take none among them, so that each is
+//!    initialised after every other one it depends on — the ones it mentions, and the ones a
+//!    function it mentions reaches — and no `const` is read before it is initialised.
+//! 5. **Exports** — one `export { … }`, in two runs each in name order. The first is
+//!    each value the module has to export, by its Zelkova name: what the `exposing` header
+//!    names, and what a copy of the module's code placed in another module mentions
+//!    ([*Exports*](#exports)). The second is the function of each instance member the
+//!    module declares.
+//!
+//! # Exports
+//!
+//! `exposing` is a rule about what another module's *source* may write, and canonicalization
+//! holds every module to it, whatever the emitted `export` lists. What that list holds is a
+//! JavaScript matter: it is what the header exposes, each instance member, and whatever a
+//! constrained declaration, an instance binding or a derivation's binding of the module
+//! mentions at top level ([`ir::mentioned_by_copies`]). A copy of such a body is placed in
+//! the module that uses it, which imports what it names from here, and a name the header does
+//! not expose has to be exported all the same for that import to link. A derivation's bindings
+//! are placed in the members of the instances that derive them, so they are among the bindings
+//! the rule reads. A constrained declaration has no function under its own name and is never
+//! exported, whatever the header says.
+//!
+//! # Classes, instances and specialisations
+//!
+//! A class has no code: its members are not values of any module, and every use of one is
+//! resolved to a function by [`ir::specialise`], which the caller runs over every module of the
+//! build before any is emitted. No dictionary is built or passed
+//! ([`DEC-2` decision 7](../docs/decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed)).
+//!
+//! - **An instance's member** is an ordinary function of the module that declares the
+//!   instance, emitted once, as a `const` when it takes no parameter, and exported. Its name
+//!   is built from the class, the head and the member and cannot be a name a source file
+//!   writes: `$instance$`, then the class's package, module segments and name, then the
+//!   head — a declared type written the same way, or `tuple2`, `tuple3` or `unit` — then the
+//!   member, joined by `$` (`instance_member_name`). A use of a member at a type whose
+//!   instance has no context is a direct reference to it, imported under that name from the
+//!   instance's module where that is another.
+//! - **A specialisation** is a function of the module that uses it, `$spec$`, its place in
+//!   [`ir::Module::specialisations`] and the declaration's name — `$spec$0$min`
+//!   (`specialisation_name`). It is emitted into the using module and not into the one that
+//!   declares the function, because the instance it calls may be declared by a module that
+//!   imports that one, and `Basics` could not import `App`. An instance with a context has
+//!   members that are specialised like any other function.
+//!
+//! The call rule does not change. A specialisation has the arity its declaration was written
+//! with, a saturated call of it is a direct call, and one used as a value is `$curry`'d; an
+//! instance's member is called the same way, at the arity its binding was written with.
+//!
+//! **Two modules that use one key each carry a copy.** For a function that is code written
+//! twice and nothing a program can observe. For a constrained binding with no parameters it is
+//! one evaluation for each module that uses it, where [the chapter says
+//! "once"](../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once);
+//! a Zelkova value has no identity, so what differs is the work done and never an answer. A
+//! reading of that promise that covers it is a `SPEC-` ticket to file and not a design to
+//! change here.
 //!
 //! # Representations
 //!
@@ -238,19 +294,19 @@
 //! with no IR ([`ir::Module::unchecked`]), for a facade declaration with no type signature,
 //! for a facade signature not marked `unsafe` whose result is not `Task (Result Failure a)`,
 //! for a facade with no companion for the target being built, for a facade result no
-//! predicate can decide, for a class, an instance, a declaration whose annotation has a
-//! constraint and a reference to a name that has one ([`Error::Constrained`],
-//! [`Error::Obligation`]) — none of which is emitted until specialisation
-//! ([`GEN-24`](../docs/tickets/gen-24.md)) — and for a construct it does not emit
-//! ([`Construct`]), a name that did not resolve among them.
+//! predicate can decide, for an instance the type checker rejected ([`Error::RejectedInstance`]),
+//! for a reference that still asks for an instance because [`ir::specialise`] did not
+//! resolve it ([`Error::Unspecialised`]), and for a construct it does not emit
+//! ([`Construct`]), a name that did not resolve among them. A class is not refused: it has no
+//! code. Neither is a constrained declaration, which is emitted where it is specialised.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 
-use zelkova_compiler::canonical::{self, ExportType, Exports, Value};
+use zelkova_compiler::canonical::{self, ExportType, Exports, HeadName, Value};
 use zelkova_compiler::ir::{
-    self, decision_tree, CaseForm, Decision, LiteralValue, Occurrence, Outcome, ReferenceKind,
-    Saturation, Step, TypedTerm, TypedTermKind,
+    self, decision_tree, CaseForm, Decision, Item, LiteralValue, Occurrence, Outcome,
+    ReferenceKind, Saturation, Step, TypedTerm, TypedTermKind,
 };
 use zelkova_compiler::name::{Name, QualName};
 use zelkova_compiler::typer::Type;
@@ -304,22 +360,19 @@ pub enum Error {
         found: Unpredicated,
         constructor: Option<QualName>,
     },
-    /// A `class` declaration. This backend emits no class, member or instance yet, and a
-    /// module emitted without them would be missing what its source declares.
-    Class { name: Name, span: NodeSpan },
-    /// An `instance` declaration of `class`, refused for the reason a class is.
-    Instance { class: Name, span: NodeSpan },
-    /// A declaration whose annotation has a constraint. A constrained function is
-    /// emitted as one ordinary function per type its constraint is discharged at, and this
-    /// backend does not specialise yet ([`GEN-24`](../docs/tickets/gen-24.md)).
-    Constrained { name: Name, span: NodeSpan },
-    /// A reference to a name whose type has a constraint — a class member, or a
-    /// constrained function — which asks an instance of `class` of the type it is used at.
-    /// It is refused for the reason [`Constrained`](Self::Constrained) is.
-    Obligation {
+    /// An `instance` declaration whose own check failed — a superclass it cannot prove at
+    /// its head. An error stands behind it, and a module emitted without it would be missing
+    /// what its source declares.
+    RejectedInstance { class: Name, span: NodeSpan },
+    /// A reference that still asks for an instance: it names a class member or a constrained
+    /// function, and `zelkova_compiler::ir::specialise` has not resolved it. Nothing is
+    /// emitted for a name that has no function under its own name, so the module has to
+    /// come out of that pass before it is emitted; `zelkova::compile_package` always runs it.
+    Unspecialised {
         /// The declaration the reference was written in.
         declaration: Name,
-        class: Name,
+        /// The name it asks an instance for.
+        name: Name,
         span: NodeSpan,
     },
     /// A construct this backend does not emit: one the front end does not accept yet,
@@ -413,24 +466,16 @@ impl PhaseError for Error {
                 "`{}` cannot be compiled to JavaScript, because the type checker could not check it",
                 name.as_str()
             ),
-            Error::Class { name, .. } => format!(
-                "the class `{}` cannot be compiled to JavaScript yet",
-                name.as_str()
-            ),
-            Error::Instance { class, .. } => format!(
-                "an instance of `{}` cannot be compiled to JavaScript yet",
+            Error::RejectedInstance { class, .. } => format!(
+                "an instance of `{}` cannot be compiled to JavaScript, because the type checker rejected it",
                 class.as_str()
             ),
-            Error::Constrained { name, .. } => format!(
-                "`{}` cannot be compiled to JavaScript yet: its annotation has a constraint",
-                name.as_str()
-            ),
-            Error::Obligation {
-                declaration, class, ..
+            Error::Unspecialised {
+                declaration, name, ..
             } => format!(
-                "`{}` cannot be compiled to JavaScript yet: it uses a name that requires an instance of `{}`",
+                "`{}` cannot be compiled to JavaScript: it uses `{}`, which asks for an instance that was never chosen",
                 declaration.as_str(),
-                class.as_str()
+                name.as_str()
             ),
             Error::NoPredicate {
                 name,
@@ -474,10 +519,8 @@ impl PhaseError for Error {
             Error::NotAnEffect { span, .. } => (span, "not marked `unsafe`"),
             Error::NoSignature { span, .. } => (span, "this declaration"),
             Error::Unchecked { span, .. } => (span, "this declaration"),
-            Error::Class { span, .. } => (span, "this class"),
-            Error::Instance { span, .. } => (span, "this instance"),
-            Error::Constrained { span, .. } => (span, "this declaration"),
-            Error::Obligation { span, .. } => (span, "this use requires an instance"),
+            Error::RejectedInstance { span, .. } => (span, "this instance"),
+            Error::Unspecialised { span, .. } => (span, "this use asks for an instance"),
             Error::NoPredicate { span, .. } => (span, "this signature"),
             Error::Unsupported { span, .. } => (span, "not supported by the JavaScript backend"),
         };
@@ -596,6 +639,12 @@ const RESERVED: &[&str] = &[
 /// - the facade's alias for its companion's export, [`companion_alias`]: `$companion$`
 ///   and the value's name, which holds no `$` — a `$`, a word not in [`RESERVED`], and
 ///   exactly one more `$`, so one segment fewer than any hoisted constructor;
+/// - an instance's member, [`instance_member_name`]: `$instance$` and the segments of the
+///   class, the head and the member. Its second segment is a package's, lowercase, where a
+///   hoisted constructor's is a module's, uppercase, and no other name here starts `$instance`;
+/// - a specialisation, [`specialisation_name`]: `$spec$`, a number and the declaration's name.
+///   Its second segment is a number, which no module's name is, so it is not a hoisted
+///   constructor, and it has more than one `$` after the first, so it is not a companion alias;
 /// - a wildcard parameter, [`wildcard`]: `$_` and a number, and `_0`, `_1`, … are not in
 ///   [`RESERVED`];
 /// - a parameter written as a pattern, [`ir::pattern_parameter`]: `$` and a number,
@@ -681,10 +730,78 @@ fn imported(package: &str, module: &str, name: &str) -> String {
     )
 }
 
+/// The local name an export `name` of `module`, a module of `package`, is imported under:
+/// [`imported`]'s, except for the function of an instance's member, which is imported under
+/// the name it is exported as. That name is built from the whole identity of the member
+/// ([`instance_member_name`]) and so is already unique in every module that imports it, where
+/// [`imported`] would only make it longer.
+fn import_alias(package: &str, module: &str, name: &str) -> String {
+    if name.starts_with(INSTANCE_PREFIX) {
+        name.to_string()
+    } else {
+        imported(package, module, name)
+    }
+}
+
 /// The local name a facade imports its companion's export `name` under:
 /// `$companion$<name>`.
 fn companion_alias(name: &str) -> String {
     format!("$companion${}", name)
+}
+
+/// How the name of an instance's member begins.
+const INSTANCE_PREFIX: &str = "$instance$";
+
+/// The name an instance's member is emitted under, and exported and imported by: `$instance$`,
+/// then the class — its package ([`package_segment`]), its module's segments and its own
+/// name — then the head, then the member's own name, all joined by `$`.
+///
+/// The head is the name at the front of the instance's head: a declared type is written like
+/// a class, package first, and a tuple of two, a tuple of three and `()` are `tuple2`,
+/// `tuple3` and `unit`. `Basics.Eq` at `app`'s `App.Colour` is
+/// `$instance$zelkova_core$Basics$Eq$app$App$Colour$eq`.
+///
+/// An instance is identified by its class and its head's name, and a class by its package,
+/// module and name, so two members that get one name are one member. It is built so that no
+/// other name an emitted module declares can be it, whatever a source file spells: it starts
+/// with `$instance$`, which is `$` and a word in no reserved list followed by a segment that
+/// no hoisted constructor, union predicate or companion alias has second — a package segment
+/// is lowercase, and a hoisted constructor's second is a module's, uppercase — and no
+/// Zelkova name holds a `$`. [`imported`] gives it a second `$` in a row, which no other
+/// import has.
+fn instance_member_name(class: &QualName, head: &HeadName, member: &Name) -> String {
+    let head = match head {
+        HeadName::Type(name) => format!(
+            "{}${}${}",
+            package_segment(name.package().as_str()),
+            name.module_name().as_str().replace('.', "$"),
+            name.unqualified_name().as_str()
+        ),
+        HeadName::TwoTuple => "tuple2".to_string(),
+        HeadName::ThreeTuple => "tuple3".to_string(),
+        HeadName::Unit => "unit".to_string(),
+    };
+
+    format!(
+        "{}{}${}${}${}${}",
+        INSTANCE_PREFIX,
+        package_segment(class.package().as_str()),
+        class.module_name().as_str().replace('.', "$"),
+        class.unqualified_name().as_str(),
+        head,
+        member.as_str()
+    )
+}
+
+/// The name this module's `index`th specialisation is emitted under: `$spec$`, its place in
+/// [`ir::Module::specialisations`], and the declaration's own name — `$spec$0$min`.
+///
+/// Every specialisation is in the module that uses it, so the place is what tells two copies
+/// of one declaration apart. A `$`, the word `spec`, and a number, where a hoisted
+/// constructor's second segment is a module's and no number is one, make it a name no other
+/// item here can be.
+fn specialisation_name(index: usize, declaration: &Name) -> String {
+    format!("$spec${}${}", index, declaration.as_str())
 }
 
 /// The name of the field a constructor's argument at `index` is stored in: `a`, `b`, …
@@ -974,6 +1091,11 @@ fn float_literal(f: f64) -> String {
 /// `unions` is where a facade's boundary checks read each union they reach off its
 /// declaration; see [`Unions`]. A module that is not a facade reads nothing from it.
 ///
+/// `module` has to have been through [`ir::specialise`] along with the rest of its build, or
+/// hold no name that asks for an instance: a reference that still does is
+/// [`Error::Unspecialised`]. The pass is what gives it the specialisations and the instance
+/// bindings this function emits.
+///
 /// See this module's documentation for the shape of the text.
 pub fn emit(
     module: &CheckedModule,
@@ -989,35 +1111,28 @@ pub fn emit(
         }]);
     }
 
-    // A class and an instance have no emitted form yet, so a module holding one is
-    // refused whole. Sorted by position, so the errors come out in source order.
-    let mut refused: Vec<Error> = module
-        .canonical
-        .classes
+    let mut errors: Vec<Error> = ir
+        .unchecked
         .iter()
-        .map(|(name, class)| Error::Class {
-            name: name.clone(),
-            span: class.signature.span,
+        .map(|unchecked| Error::Unchecked {
+            name: unchecked.name.clone(),
+            span: unchecked.span,
         })
-        .chain(
-            module
-                .canonical
-                .instances
-                .iter()
-                .map(|instance| Error::Instance {
-                    class: instance.signature.class.unqualified_name(),
-                    span: instance.signature.span,
-                }),
-        )
         .collect();
-    if !refused.is_empty() {
-        refused.sort_by_key(|error| match error {
-            Error::Class { span, .. } | Error::Instance { span, .. } => {
-                span.to_range().map(|r| r.start)
-            }
-            _ => None,
-        });
-        return Err(refused);
+
+    // An instance that did not check is missing a binding its source declares, or the
+    // instance itself; either way a module emitted without it would not be what was written.
+    for instance in &ir.instances {
+        if instance.rejected {
+            errors.push(Error::RejectedInstance {
+                class: instance.class.unqualified_name(),
+                span: instance.span,
+            });
+        }
+        errors.extend(instance.unchecked.iter().map(|unchecked| Error::Unchecked {
+            name: unchecked.name.clone(),
+            span: unchecked.span,
+        }));
     }
 
     let mut emitter = Emitter {
@@ -1026,35 +1141,40 @@ pub fn emit(
             .iter()
             .map(|declaration| (declaration.name.clone(), declaration.arity))
             .collect(),
+        specialisations: ir
+            .specialisations
+            .iter()
+            .enumerate()
+            .map(|(index, specialisation)| {
+                (
+                    specialisation_name(index, &specialisation.declaration.name),
+                    specialisation.declaration.arity,
+                )
+            })
+            .collect(),
         runtime: BTreeSet::new(),
         imports: BTreeMap::new(),
         module: ir.name.clone(),
         imported_constructors: BTreeMap::new(),
-        errors: ir
-            .unchecked
-            .iter()
-            .map(|unchecked| Error::Unchecked {
-                name: unchecked.name.clone(),
-                span: unchecked.span,
-            })
-            .collect(),
+        errors,
         declaration: None,
     };
 
     let mut functions = Vec::new();
-    let mut constants: HashMap<&Name, String> = HashMap::new();
+    let mut constants: HashMap<Item, String> = HashMap::new();
     let mut companion_imports: Vec<String> = Vec::new();
     let mut predicates = Predicates {
         unions,
         functions: BTreeMap::new(),
     };
 
-    for declaration in &ir.declarations {
+    for (index, declaration) in ir.declarations.iter().enumerate() {
         emitter.declaration = Some(declaration.name.clone());
 
         if ir.foreign {
             emitter.facade_declaration(
                 &module.canonical,
+                index,
                 declaration,
                 &mut predicates,
                 &mut functions,
@@ -1070,40 +1190,65 @@ pub fn emit(
             continue;
         };
 
-        // A constrained declaration has nothing to be emitted as until it is specialised.
+        // A constrained declaration has no function under its own name: each module that
+        // uses it holds a specialisation, which is what is emitted.
         if !declaration.context.is_empty() {
-            emitter.errors.push(Error::Constrained {
-                name: declaration.name.clone(),
-                span: declaration.span,
-            });
+            continue;
         }
 
-        let expression = emitter.expression(&body.expression);
-        let name = mangle(declaration.name.as_str());
+        emitter.binding(
+            Item::Declaration(index),
+            &mangle(declaration.name.as_str()),
+            body,
+            &mut functions,
+            &mut constants,
+        );
+    }
 
-        if body.parameters.is_empty() {
-            constants.insert(
-                &declaration.name,
-                format!("const {} = {};", name, expression),
+    // An instance's members are ordinary declarations of this module, emitted once under a
+    // name of their own. One of an instance with a context is a constrained function, and
+    // is emitted where it is specialised.
+    for (instance_index, instance) in ir.instances.iter().enumerate() {
+        if instance.rejected || !instance.context.is_empty() {
+            continue;
+        }
+
+        for (member_index, member) in instance.members.iter().enumerate() {
+            let Some(body) = &member.body else {
+                continue;
+            };
+            if !member.context.is_empty() {
+                continue;
+            }
+
+            emitter.declaration = Some(member.name.clone());
+            emitter.binding(
+                Item::InstanceMember {
+                    instance: instance_index,
+                    member: member_index,
+                },
+                &instance_member_name(&instance.class, &instance.head_name, &member.name),
+                body,
+                &mut functions,
+                &mut constants,
             );
-        } else {
-            let parameters: Vec<String> = body
-                .parameters
-                .iter()
-                .enumerate()
-                .map(|(position, parameter)| match parameter.name.as_str() {
-                    "_" => wildcard(position),
-                    other => mangle(other),
-                })
-                .collect();
-
-            functions.push(format!(
-                "function {}({}) {{\n  return {};\n}}",
-                name,
-                parameters.join(", "),
-                expression
-            ));
         }
+    }
+
+    for (index, specialisation) in ir.specialisations.iter().enumerate() {
+        let declaration = &specialisation.declaration;
+        let Some(body) = &declaration.body else {
+            continue;
+        };
+
+        emitter.declaration = Some(declaration.name.clone());
+        emitter.binding(
+            Item::Specialisation(index),
+            &specialisation_name(index, &declaration.name),
+            body,
+            &mut functions,
+            &mut constants,
+        );
     }
 
     if !emitter.errors.is_empty() {
@@ -1120,15 +1265,15 @@ pub fn emit(
 
     // The parameterless bindings, in the order they have to be initialised. Every one
     // of them is in that order; a binding that somehow was not would still be emitted,
-    // after the rest and in name order, rather than lost.
+    // after the rest and in the order the module holds them, rather than lost.
     let mut ordered = Vec::new();
-    for name in &ir.initialisation_order {
-        if let Some(constant) = constants.remove(name) {
+    for item in ir::initialisation_items(ir) {
+        if let Some(constant) = constants.remove(&item) {
             ordered.push(constant);
         }
     }
-    let mut leftover: Vec<(&Name, String)> = constants.into_iter().collect();
-    leftover.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
+    let mut leftover: Vec<(Item, String)> = constants.into_iter().collect();
+    leftover.sort_by_key(|(item, _)| *item);
     ordered.extend(leftover.into_iter().map(|(_, constant)| constant));
 
     let mut hoisted = hoisted_constructors(ir);
@@ -1160,7 +1305,10 @@ pub fn emit(
     for ((package, from), names) in &emitter.imports {
         let specifiers: Vec<String> = names
             .iter()
-            .map(|name| format!("{} as {}", name, imported(package, from, name)))
+            .map(|name| match import_alias(package, from, name) {
+                local if &local == name => local,
+                local => format!("{} as {}", name, local),
+            })
             .collect();
         imports.push(format!(
             "import {{ {} }} from \"{}\";",
@@ -1225,11 +1373,21 @@ fn hoisted_constructors(ir: &ir::Module) -> Vec<String> {
         .collect()
 }
 
-/// The export specifiers for the values `module` exposes, in name order: a value its
-/// `exposing` header names, or the function an exposed operator stands for.
+/// The export specifiers of `module`, in two runs, each in name order: the values it has to
+/// export, then the functions of its instances.
 ///
-/// Each is exported under its Zelkova name, so a renamed one reads `$class as class` —
-/// an export's name may be a reserved word where a binding's may not.
+/// The values are what the `exposing` header names — a value, or the function an exposed
+/// operator stands for — and what a copy of its code placed in another module names beside
+/// them ([`ir::mentioned_by_copies`]). The header is a rule about what another module's
+/// source may write, canonicalization holds every module to it whatever this lists, and a
+/// copy is code the compiler wrote: it can name a value the header leaves out, and the
+/// module it is in imports that value from here. A constrained declaration has no function
+/// under its own name and is never exported, whatever the header says.
+///
+/// Each is exported under its Zelkova name, so a renamed one reads `$class as class` — an
+/// export's name may be a reserved word where a binding's may not. An instance's function is
+/// exported under the name it is emitted as ([`instance_member_name`]), which is built so
+/// that no Zelkova name can be it.
 fn exports(module: &CheckedModule) -> Vec<String> {
     let exposed = |name: &Name| match &module.canonical.exports {
         Exports::Everything => true,
@@ -1245,12 +1403,14 @@ fn exports(module: &CheckedModule) -> Vec<String> {
                 })
         }
     };
+    let mentioned: BTreeSet<Name> = ir::mentioned_by_copies(&module.ir).into_iter().collect();
 
-    module
+    let mut values: Vec<String> = module
         .ir
         .declarations
         .iter()
-        .filter(|declaration| exposed(&declaration.name))
+        .filter(|declaration| declaration.context.is_empty())
+        .filter(|declaration| exposed(&declaration.name) || mentioned.contains(&declaration.name))
         .map(|declaration| {
             let local = mangle(declaration.name.as_str());
             if local == declaration.name.as_str() {
@@ -1259,7 +1419,23 @@ fn exports(module: &CheckedModule) -> Vec<String> {
                 format!("{} as {}", local, declaration.name.as_str())
             }
         })
-        .collect()
+        .collect();
+
+    let mut instances: Vec<String> = module
+        .ir
+        .instances
+        .iter()
+        .filter(|instance| !instance.rejected && instance.context.is_empty())
+        .flat_map(|instance| {
+            instance.members.iter().map(move |member| {
+                instance_member_name(&instance.class, &instance.head_name, &member.name)
+            })
+        })
+        .collect();
+    instances.sort();
+
+    values.extend(instances);
+    values
 }
 
 // ── The boundary check ────────────────────────────────────────────────────────
@@ -1533,6 +1709,9 @@ fn typer_result(tpe: &Type, arity: usize) -> &Type {
 struct Emitter {
     /// How many parameters each of this module's declarations takes.
     arities: HashMap<Name, usize>,
+    /// The name each of this module's specialisations is emitted under, with how many
+    /// parameters it takes, by its place in [`ir::Module::specialisations`].
+    specialisations: Vec<(String, usize)>,
     /// The runtime helpers the emitted text calls.
     runtime: BTreeSet<&'static str>,
     /// The values of other modules the emitted text mentions, by the package and the
@@ -1561,15 +1740,56 @@ impl Emitter {
         String::new()
     }
 
-    /// Refuse a reference that carries a context: an instance is asked of the type it was
-    /// used at, and nothing here says which function answers that.
-    fn refuse_obligations(&mut self, context: &[ir::Predicate], span: NodeSpan) {
-        for predicate in context {
-            self.errors.push(Error::Obligation {
-                declaration: self.declaration.clone().unwrap_or_else(|| Name::new("")),
-                class: predicate.class.unqualified_name(),
-                span,
-            });
+    /// Refuse a reference that still carries obligations: the pass that resolves them did
+    /// not reach it, and nothing here says which function answers.
+    fn refuse_obligations(
+        &mut self,
+        reference: &ir::Reference,
+        context: &[ir::Predicate],
+        span: NodeSpan,
+    ) {
+        if context.is_empty() {
+            return;
+        }
+        self.errors.push(Error::Unspecialised {
+            declaration: self.declaration.clone().unwrap_or_else(|| Name::new("")),
+            name: Name::new(reference.name.clone()),
+            span,
+        });
+    }
+
+    /// One declaration of this module — an ordinary one, an instance's member or a
+    /// specialisation — as the function or the constant it emits as, appended to `functions`
+    /// or to `constants` under `item`. `name` is what it is emitted under.
+    fn binding(
+        &mut self,
+        item: Item,
+        name: &str,
+        body: &ir::Body,
+        functions: &mut Vec<String>,
+        constants: &mut HashMap<Item, String>,
+    ) {
+        let expression = self.expression(&body.expression);
+
+        if body.parameters.is_empty() {
+            constants.insert(item, format!("const {} = {};", name, expression));
+        } else {
+            let parameters: Vec<String> = body
+                .parameters
+                .iter()
+                .enumerate()
+                .map(|(position, parameter)| match parameter.name.as_str() {
+                    "_" => wildcard(position),
+                    other => mangle(other),
+                })
+                .collect();
+
+            functions.push(format!(
+                "function {}({}) {{\n  return {};\n}}",
+                name,
+                parameters.join(", "),
+                expression
+            ));
         }
     }
 
@@ -1590,15 +1810,18 @@ impl Emitter {
     /// facade](../docs/spec/interop.md#an-effectful-facade)), and its forwarding
     /// code is the `Task` this module's *A facade* section describes. A result type no predicate decides
     /// pushes [`Error::NoPredicate`] and appends nothing.
-    fn facade_declaration<'a>(
+    #[allow(clippy::too_many_arguments)]
+    fn facade_declaration(
         &mut self,
         canonical: &canonical::Module,
-        declaration: &'a ir::Declaration,
+        index: usize,
+        declaration: &ir::Declaration,
         predicates: &mut Predicates,
         functions: &mut Vec<String>,
-        constants: &mut HashMap<&'a Name, String>,
+        constants: &mut HashMap<Item, String>,
         companion_imports: &mut Vec<String>,
     ) {
+        let item = Item::Declaration(index);
         let (signature, marked_unsafe) = match canonical.values.get(&declaration.name) {
             Some(Value::TypedValue {
                 marked_unsafe, tpe, ..
@@ -1678,7 +1901,7 @@ impl Emitter {
                 string_literal(&export)
             );
             if declaration.arity == 0 {
-                constants.insert(&declaration.name, format!("const {} = {};", local, task));
+                constants.insert(item, format!("const {} = {};", local, task));
             } else {
                 functions.push(format!(
                     "function {}({}) {{\n  return {};\n}}",
@@ -1692,7 +1915,7 @@ impl Emitter {
 
         let Some(test) = test else {
             if declaration.arity == 0 {
-                constants.insert(&declaration.name, format!("const {} = undefined;", local));
+                constants.insert(item, format!("const {} = undefined;", local));
             } else {
                 functions.push(format!(
                     "function {}({}) {{\n  {};\n  return undefined;\n}}",
@@ -1715,7 +1938,7 @@ impl Emitter {
 
         if declaration.arity == 0 {
             constants.insert(
-                &declaration.name,
+                item,
                 format!("const {} = (($returned) => {})({});", local, checked, alias),
             );
         } else {
@@ -1736,8 +1959,8 @@ impl Emitter {
             TypedTermKind::Char(c) => char_literal(*c),
             TypedTermKind::String(s) => string_literal(s),
             TypedTermKind::Identifier { reference, context } => {
-                self.refuse_obligations(context, term.span);
-                self.value(&reference.name, &reference.kind)
+                self.refuse_obligations(reference, context, term.span);
+                self.value(&reference.name, &reference.kind, term.span)
             }
             TypedTermKind::Apply { .. } => self.application(term),
             TypedTermKind::If {
@@ -1814,9 +2037,22 @@ impl Emitter {
     }
 
     /// A name used as a value rather than called.
-    fn value(&mut self, name: &str, kind: &ReferenceKind) -> String {
+    fn value(&mut self, name: &str, kind: &ReferenceKind, span: NodeSpan) -> String {
         match kind {
             ReferenceKind::Local => mangle(name),
+            ReferenceKind::Specialised(index) => match self.specialisation(*index) {
+                Some((local, arity)) if arity >= 2 => self.curry(&local, arity),
+                Some((local, _)) => local,
+                None => self.unspecialised(name, span),
+            },
+            ReferenceKind::InstanceMember(member) => {
+                let local = self.instance_member(member);
+                if member.arity >= 2 {
+                    self.curry(&local, member.arity)
+                } else {
+                    local
+                }
+            }
             ReferenceKind::TopLevel(qname) => {
                 let unqualified = qname.unqualified_name();
                 let local = mangle(unqualified.as_str());
@@ -1878,12 +2114,50 @@ impl Emitter {
     fn import(&mut self, qname: &QualName, package: &PackageName) -> String {
         let module = qname.module_name().as_str().to_string();
         let name = qname.unqualified_name().as_str().to_string();
-        let local = imported(package.as_str(), &module, &name);
+        self.import_export(package.as_str(), module, name)
+    }
+
+    /// The local name the export `name` of `module`, a module of `package`, is imported
+    /// under, recording the import.
+    fn import_export(&mut self, package: &str, module: String, name: String) -> String {
+        let local = import_alias(package, &module, &name);
         self.imports
-            .entry((package.as_str().to_string(), module))
+            .entry((package.to_string(), module))
             .or_default()
             .insert(name);
         local
+    }
+
+    /// The name the function of an instance's member is called by in this module: its own
+    /// when this module declares the instance, otherwise the import of the module that does.
+    fn instance_member(&mut self, member: &ir::InstanceMember) -> String {
+        let exported = instance_member_name(&member.class, &member.head, &member.member);
+
+        if member.module == self.module {
+            exported
+        } else {
+            self.import_export(
+                member.module.package().as_str(),
+                member.module.name().as_str().to_string(),
+                exported,
+            )
+        }
+    }
+
+    /// The name and the arity of this module's `index`th specialisation, when it has one.
+    fn specialisation(&self, index: usize) -> Option<(String, usize)> {
+        self.specialisations.get(index).cloned()
+    }
+
+    /// A reference to a specialisation this module does not hold: refused, like one that
+    /// was never resolved.
+    fn unspecialised(&mut self, name: &str, span: NodeSpan) -> String {
+        self.errors.push(Error::Unspecialised {
+            declaration: self.declaration.clone().unwrap_or_else(|| Name::new("")),
+            name: Name::new(name),
+            span,
+        });
+        String::new()
     }
 
     /// An application spine: a direct call up to the node the IR marks saturated, if
@@ -1909,8 +2183,29 @@ impl Emitter {
         // Evaluated in the order written: the function, then each argument.
         let (mut callee, rest) = match (&head.kind, saturated) {
             (TypedTermKind::Identifier { reference, context }, Some(last)) => {
-                self.refuse_obligations(context, head.span);
+                self.refuse_obligations(reference, context, head.span);
                 match &reference.kind {
+                    ReferenceKind::Specialised(index) => match self.specialisation(*index) {
+                        Some((local, _)) => {
+                            let supplied = self.arguments(&arguments[..=last]);
+                            (
+                                format!("{}({})", local, supplied.join(", ")),
+                                &arguments[last + 1..],
+                            )
+                        }
+                        None => (
+                            self.unspecialised(&reference.name, head.span),
+                            &arguments[..],
+                        ),
+                    },
+                    ReferenceKind::InstanceMember(member) => {
+                        let local = self.instance_member(member);
+                        let supplied = self.arguments(&arguments[..=last]);
+                        (
+                            format!("{}({})", local, supplied.join(", ")),
+                            &arguments[last + 1..],
+                        )
+                    }
                     ReferenceKind::TopLevel(qname) => {
                         let supplied = self.arguments(&arguments[..=last]);
                         (
@@ -2201,6 +2496,69 @@ mod tests {
                 &Name::new("Small")
             ),
             "$acme_widgets$Page$Size$Small"
+        );
+    }
+
+    fn class_in(package: &str, module: &str, name: &str) -> QualName {
+        QualName::in_module(
+            zelkova_compiler::PackageName::new(package).unwrap(),
+            module,
+            name,
+        )
+    }
+
+    /// An instance's member is named by its class, its head and its own name, in full, and
+    /// by nothing a source file can spell: two members of one class at two heads, of two classes
+    /// at one head, or at heads that differ only in package or in the segments of a module name
+    /// each get a name of their own, and a tuple's or `()`'s cannot be a declared type's.
+    ///
+    /// Mutation-checked by leaving the head's package out of `instance_member_name`: the two heads
+    /// that differ only in it are one name.
+    #[test]
+    fn an_instance_member_is_named_by_its_class_its_head_and_itself() {
+        let class = class_in("app", "Classes", "Eq");
+        let eq = Name::new("eq");
+
+        assert_eq!(
+            instance_member_name(
+                &class,
+                &HeadName::Type(class_in("app", "App.Colour", "Colour")),
+                &eq
+            ),
+            "$instance$app$Classes$Eq$app$App$Colour$Colour$eq"
+        );
+        assert_eq!(
+            instance_member_name(&class, &HeadName::TwoTuple, &eq),
+            "$instance$app$Classes$Eq$tuple2$eq"
+        );
+
+        let names: Vec<String> = vec![
+            instance_member_name(&class, &HeadName::TwoTuple, &eq),
+            instance_member_name(&class, &HeadName::ThreeTuple, &eq),
+            instance_member_name(&class, &HeadName::Unit, &eq),
+            instance_member_name(&class, &HeadName::Unit, &Name::new("other")),
+            instance_member_name(&class_in("app", "Classes", "Ord"), &HeadName::Unit, &eq),
+            // A package called `unit` and a head that is `()`.
+            instance_member_name(&class, &HeadName::Type(class_in("unit", "M", "T")), &eq),
+            instance_member_name(&class, &HeadName::Type(class_in("other", "M", "T")), &eq),
+            instance_member_name(&class, &HeadName::Type(class_in("other", "M.N", "T")), &eq),
+            instance_member_name(&class, &HeadName::Type(class_in("other", "M", "N")), &eq),
+        ];
+        let distinct: BTreeSet<&String> = names.iter().collect();
+        assert_eq!(distinct.len(), names.len(), "{:?}", names);
+        assert!(names.iter().all(|name| name.starts_with(INSTANCE_PREFIX)));
+    }
+
+    /// A specialisation is named for its place in the module and the declaration, and an
+    /// instance's function is imported under the name it is exported as, where any other value is
+    /// imported under one built from its package and module.
+    #[test]
+    fn a_specialisation_and_an_instances_function_are_named_apart_from_every_import() {
+        assert_eq!(specialisation_name(3, &Name::new("min")), "$spec$3$min");
+        assert_eq!(import_alias("app", "Lib", "helper"), "app$Lib$helper");
+        assert_eq!(
+            import_alias("app", "Lib", "$instance$app$Lib$Eq$unit$eq"),
+            "$instance$app$Lib$Eq$unit$eq"
         );
     }
 

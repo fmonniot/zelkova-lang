@@ -245,9 +245,10 @@ those types needs a hand-written instance.
 
 [DEC-2 decision 7](dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed) was
 recorded as a constraint the first code-generation ticket would inherit, because code generation
-had not started. It has now shipped, and emits no class. [`GEN-24`](../tickets/gen-24.md) is the
+had not started. It has now shipped, and emits no class. [`GEN-24`](../tickets/README.md) is the
 ticket, following [the rule that a construct landing after the backend gets its own emitter
-ticket](dec-18.md#7--the-program-covers-the-language-the-front-end-accepts-today).
+ticket](dec-18.md#7--the-program-covers-the-language-the-front-end-accepts-today). It has since
+landed, as `crates/zelkova-compiler/src/ir/specialise.rs`.
 
 ## What the session settled without asking
 

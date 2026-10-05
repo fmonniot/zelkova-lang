@@ -2220,3 +2220,1062 @@ fn an_instance_derived_beside_its_type_calls_the_members_of_a_class_it_imports()
         members[0]
     );
 }
+
+// ── GEN-24: which instance a use is, and which copy a use needs ──
+
+/// `Classes`: a class and its instances at `Int`, `Bool` and a box of anything, a class that
+/// needs the first, and the constrained functions the tests below use — one that calls
+/// another at its own variable and one that reaches the superclass's member through the
+/// subclass's constraint.
+const SPECIALISED_CLASSES: &str = indoc! {r#"
+    module Classes exposing (..)
+
+    type Box a
+      = Box a
+
+    class Eq a where
+      eq : a -> a -> Bool
+
+    class Eq a => Ord a where
+      lt : a -> a -> Bool
+
+    instance Eq Int where
+      eq a b =
+        True
+
+    instance Eq Bool where
+      eq a b =
+        True
+
+    instance Eq a => Eq (Box a) where
+      eq (Box left) (Box right) =
+        eq left right
+
+    instance Ord Int where
+      lt a b =
+        True
+
+    same : Eq a => a -> a -> Bool
+    same x y =
+      eq x y
+
+    both : Eq a => a -> a -> Bool
+    both x y =
+      same x y
+
+    sameOrLess : Ord a => a -> a -> Bool
+    sameOrLess x y =
+      eq x y
+"#};
+
+/// A module using `Classes`: `uses` is the body of the one declaration it holds, `use`.
+fn using_classes(module: &str, uses: &str) -> String {
+    format!(
+        "module {}\n\nimport Classes exposing (..)\n\nuse : Bool\nuse =\n  {}\n",
+        module, uses
+    )
+}
+
+/// What a name resolved to, as a test reads it: `spec 2`, `Eq@Int.eq`, or the name.
+fn resolution(reference: &Reference) -> String {
+    let head = |head: &zelkova_compiler::canonical::HeadName| match head {
+        zelkova_compiler::canonical::HeadName::Type(name) => {
+            name.unqualified_name().as_str().to_string()
+        }
+        other => other.describe(),
+    };
+
+    match &reference.kind {
+        ReferenceKind::Specialised(index) => format!("spec {}", index),
+        ReferenceKind::InstanceMember(member) => format!(
+            "{}@{}.{} of {}",
+            member.class.unqualified_name(),
+            head(&member.head),
+            member.member,
+            member.module.name()
+        ),
+        _ => reference.name.clone(),
+    }
+}
+
+/// Every name in `term` that is not a local, as [`resolution`] writes it, in the order a reader
+/// meets them.
+fn resolutions(term: &TypedTerm) -> Vec<String> {
+    let mut terms = Vec::new();
+    walk(term, &mut terms);
+    terms
+        .into_iter()
+        .filter_map(|term| match &term.kind {
+            TypedTermKind::Identifier { reference, .. }
+                if !matches!(reference.kind, ReferenceKind::Local) =>
+            {
+                Some(resolution(reference))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// What a specialisation is a copy of, and the types it is at: `same [Int]`.
+fn spec_text(specialisation: &ir::Specialisation) -> String {
+    let of = match &specialisation.of {
+        ir::Subject::Declaration(name) => name.unqualified_name().as_str().to_string(),
+        ir::Subject::InstanceMember {
+            class,
+            head,
+            member,
+        } => format!(
+            "{}@{}.{}",
+            class.unqualified_name(),
+            match head {
+                zelkova_compiler::canonical::HeadName::Type(name) =>
+                    name.unqualified_name().as_str().to_string(),
+                other => other.describe(),
+            },
+            member
+        ),
+    };
+    let key: Vec<String> = specialisation.key.iter().map(|t| t.to_string()).collect();
+    format!("{} [{}]", of, key.join(", "))
+}
+
+fn specs(modules: &[zelkova_compiler::CheckedModule], name: &str) -> Vec<String> {
+    module_named(modules, name)
+        .ir
+        .specialisations
+        .iter()
+        .map(spec_text)
+        .collect()
+}
+
+/// A constrained function used at two types in one module is two specialisations of that
+/// module, and one used twice at one type is one. The copies carry the ground type, not a
+/// variable, and nothing but the constrained variable is in the key.
+///
+/// Mutation-checked twice: dropping the `table` lookup in `Reader::specialise` makes the
+/// second use of `Int` a third specialisation; making the key empty makes the two types one.
+#[test]
+fn a_constrained_function_at_two_types_is_two_specialisations_and_at_one_type_is_one() {
+    let main = format!(
+        "{}\n\nsecond : Bool\nsecond =\n  same 3 4\n\nthird : Bool\nthird =\n  same True False\n",
+        using_classes("Main exposing (..)", "same 1 2")
+    );
+    let modules = specialised_package(&[SPECIALISED_CLASSES, &main]);
+
+    // `Classes` is used by no one inside itself, and holds a copy of nothing.
+    assert_eq!(specs(&modules, "Classes"), Vec::<String>::new());
+    assert_eq!(
+        specs(&modules, "Main"),
+        vec!["same [Int]".to_string(), "same [Bool]".to_string()]
+    );
+
+    // Each copy is an ordinary declaration at the ground type, with the declaration's own
+    // name and arity and no context left.
+    let main = module_named(&modules, "Main");
+    let spec = &main.ir.specialisations[0];
+    assert_eq!(spec.declaration.name, Name::new("same"));
+    assert_eq!(spec.declaration.arity, 2);
+    assert_eq!(spec.declaration.context, vec![]);
+    assert_eq!(
+        format!("{}", spec.declaration.tpe),
+        "Int -> Int -> Bool",
+        "the key is applied to the declaration's type"
+    );
+    assert_eq!(
+        spec.of,
+        ir::Subject::Declaration(test_qual("Classes.same")),
+        "a copy says which declaration it is of"
+    );
+}
+
+/// A use inside a constrained function, at that function's own variable, is resolved once the
+/// function is specialised: the `eq` in `same`, asked at `a`, is the instance's member at
+/// `Int` in the copy at `Int`. The declaration itself is not touched, so another module's
+/// copy at another type resolves it differently; and `both`, which calls `same` at its own
+/// variable, is a copy that calls the copy of `same`.
+///
+/// Mutation-checked by applying no assignment to a reference's context in `Reader::identifier`:
+/// the obligation is on a variable, and the build reports it as not a type yet.
+#[test]
+fn a_use_at_the_functions_own_variable_is_resolved_in_the_copy() {
+    let ints = using_classes("Ints exposing (..)", "both 1 2");
+    let bools = using_classes("Bools exposing (..)", "same True False");
+    let modules = specialised_package(&[SPECIALISED_CLASSES, &ints, &bools]);
+
+    // `both` at `Int` is found first, and reads `same` at `Int`, which is new.
+    assert_eq!(
+        specs(&modules, "Ints"),
+        vec!["both [Int]".to_string(), "same [Int]".to_string()]
+    );
+    let ints = module_named(&modules, "Ints");
+    let [both, same] = ints.ir.specialisations.as_slice() else {
+        panic!("expected two specialisations");
+    };
+    assert_eq!(
+        resolutions(&both.declaration.body.as_ref().unwrap().expression),
+        vec!["spec 1".to_string()]
+    );
+    assert_eq!(
+        resolutions(&same.declaration.body.as_ref().unwrap().expression),
+        vec!["Eq@Int.eq of Classes".to_string()]
+    );
+
+    // Another module's copy of `same`, at `Bool`, resolves the same `eq` to the other instance.
+    let bools = module_named(&modules, "Bools");
+    assert_eq!(
+        resolutions(
+            &bools.ir.specialisations[0]
+                .declaration
+                .body
+                .as_ref()
+                .unwrap()
+                .expression
+        ),
+        vec!["Eq@Bool.eq of Classes".to_string()]
+    );
+
+    // The declaration still asks: nothing about it was changed.
+    let classes = module_named(&modules, "Classes");
+    let same = declaration(&classes.ir, "same");
+    assert_eq!(use_context(body(same, "same")), same.context.as_slice());
+}
+
+/// A use through an instance with a context asks for the member at the type the instance's
+/// variable is at: `eq` at `Box Colour` is a specialisation of the `Box` instance's member
+/// at `Colour`, placed in the module that uses it, and its `eq` at the box's contents is
+/// `Colour`'s own instance member — declared in the using module, which the declaring
+/// one could not have named. Nested boxes ask the same of each layer.
+///
+/// Mutation-checked by resolving a member whose instance has a context as a direct reference
+/// in `Reader::resolve_member`: the specialisations are empty and the first assertion goes red.
+#[test]
+fn a_use_through_an_instance_with_a_context_is_the_member_specialised_at_its_argument() {
+    let main = indoc! {r#"
+        module Main exposing (..)
+
+        import Classes exposing (..)
+
+        type Colour
+          = Red
+
+        instance Eq Colour where
+          eq a b =
+            True
+
+        use : Bool
+        use =
+          eq (Box Red) (Box Red)
+
+        nested : Bool
+        nested =
+          eq (Box (Box Red)) (Box (Box Red))
+    "#};
+    let modules = specialised_package(&[SPECIALISED_CLASSES, main]);
+
+    // Roots are read in name order, so `nested` is found before `use`.
+    assert_eq!(
+        specs(&modules, "Main"),
+        vec![
+            "Eq@Box.eq [Box Colour]".to_string(),
+            "Eq@Box.eq [Colour]".to_string(),
+        ]
+    );
+
+    let main = module_named(&modules, "Main");
+    let [nested, colour] = main.ir.specialisations.as_slice() else {
+        panic!("expected two specialisations");
+    };
+    // The copy at `Colour` calls `Colour`'s member, which `Main` declares.
+    assert_eq!(
+        resolutions(&colour.declaration.body.as_ref().unwrap().expression),
+        vec!["Eq@Colour.eq of Main".to_string()]
+    );
+    // The copy at `Box Colour` calls the copy at `Colour`: both are specialisations of the
+    // same member, at a key each.
+    assert_eq!(
+        resolutions(&nested.declaration.body.as_ref().unwrap().expression),
+        vec!["spec 1".to_string()]
+    );
+    assert_eq!(colour.declaration.arity, 2);
+}
+
+/// A use of a superclass's member through a subclass's constraint resolves like any other:
+/// in the copy of `sameOrLess` at `Int`, `eq` is asked at `Int`, whose instance exists because
+/// `instance Ord Int` could not have been declared without it.
+///
+/// Mutation-checked by looking the instance up under the class of the enclosing function's
+/// first constraint, `Ord`, instead of the member's own class, in `Reader::resolve_member`: the
+/// `Ord Int` instance has no member named `eq`, and the build does not specialise.
+#[test]
+fn a_superclass_member_through_the_subclass_constraint_resolves() {
+    let main = using_classes("Main exposing (..)", "sameOrLess 1 2");
+    let modules = specialised_package(&[SPECIALISED_CLASSES, &main]);
+
+    assert_eq!(
+        specs(&modules, "Main"),
+        vec!["sameOrLess [Int]".to_string()]
+    );
+    let main = module_named(&modules, "Main");
+    assert_eq!(
+        resolutions(
+            &main.ir.specialisations[0]
+                .declaration
+                .body
+                .as_ref()
+                .unwrap()
+                .expression
+        ),
+        vec!["Eq@Int.eq of Classes".to_string()]
+    );
+}
+
+/// A specialisation belongs to the module that uses it, and two modules that use one key
+/// each hold a copy: the declaring module holds none, and does not come to import anything
+/// its users declare.
+///
+/// Mutation-checked by pushing every specialisation onto the module that declares the
+/// function in `World::read_module`: `Classes` then holds both and `Left` and `Right` none.
+#[test]
+fn a_specialisation_is_assigned_to_the_module_that_uses_it() {
+    let left = using_classes("Left exposing (..)", "same 1 2");
+    let right = using_classes("Right exposing (..)", "same 3 4");
+    let modules = specialised_package(&[SPECIALISED_CLASSES, &left, &right]);
+
+    assert_eq!(specs(&modules, "Classes"), Vec::<String>::new());
+    assert_eq!(specs(&modules, "Left"), vec!["same [Int]".to_string()]);
+    assert_eq!(specs(&modules, "Right"), vec!["same [Int]".to_string()]);
+
+    // Each copy is its own declaration: a different module's, not a shared one.
+    let [left, right] = [
+        &module_named(&modules, "Left").ir.specialisations[0],
+        &module_named(&modules, "Right").ir.specialisations[0],
+    ];
+    assert_eq!(left.of, right.of);
+    assert_eq!(left.key, right.key);
+}
+
+/// A copy of a body written in one module, in another, names what the first declared as an
+/// import of it, with the arity it was written with; and a reference of the declaring module
+/// to the using module, which it imports, is the using module's own.
+///
+/// Mutation-checked by returning the reference unchanged from `Reader::rebase`: `helper`
+/// is then a `TopLevel` name of a module that is not the one the copy is in.
+#[test]
+fn a_copy_names_what_its_declaring_module_declared_as_an_import() {
+    let classes = indoc! {r#"
+        module Lib exposing (..)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        instance Eq Int where
+          eq a b =
+            True
+
+        helper : Int -> Int -> Int
+        helper a b =
+          a
+
+        same : Eq a => a -> a -> Int
+        same x y =
+          helper 1 2
+    "#};
+    let main = indoc! {r#"
+        module Main exposing (..)
+
+        import Lib exposing (..)
+
+        use : Int
+        use =
+          same 1 2
+    "#};
+    let modules = specialised_package(&[classes, main]);
+
+    let main = module_named(&modules, "Main");
+    let expression = &main.ir.specialisations[0]
+        .declaration
+        .body
+        .as_ref()
+        .unwrap()
+        .expression;
+    let names = resolutions(expression);
+    assert_eq!(names.len(), 1, "got {:?}", names);
+    assert!(names[0].ends_with("helper"), "{}", names[0]);
+
+    let mut terms = Vec::new();
+    walk(expression, &mut terms);
+    let helper = terms
+        .iter()
+        .find_map(|term| match &term.kind {
+            TypedTermKind::Identifier { reference, .. } => Some(reference),
+            _ => None,
+        })
+        .expect("a reference to helper");
+    assert!(
+        matches!(&helper.kind, ReferenceKind::Foreign(name, _, 2) if *name == test_qual("Lib.helper")),
+        "{:?}",
+        helper
+    );
+}
+
+/// What a class member's application is saturated at is the member's arity, once its instance
+/// is known: the type checker could not say, a member being no declaration of any module, so
+/// the pass does. The node that supplies the second argument of a two-parameter instance
+/// binding is the direct call, and the one before it is a partial application.
+///
+/// Mutation-checked by leaving the flags the type checker gave in `Reader::application`:
+/// both are `Partial` and the outer assertion goes red.
+#[test]
+fn a_member_applied_to_all_its_arguments_is_saturated_once_its_instance_is_known() {
+    let main = using_classes("Main exposing (..)", "eq 1 2");
+    let modules = specialised_package(&[SPECIALISED_CLASSES, &main]);
+
+    let main = module_named(&modules, "Main");
+    let expression = body(declaration(&main.ir, "use"), "use");
+    let TypedTermKind::Apply {
+        fun,
+        saturation: outer,
+        ..
+    } = &expression.kind
+    else {
+        panic!("expected an application, got {:?}", expression.kind);
+    };
+    let TypedTermKind::Apply {
+        saturation: inner, ..
+    } = &fun.kind
+    else {
+        panic!("expected a partial application beneath it");
+    };
+    assert_eq!(*outer, Saturation::Saturated);
+    assert_eq!(*inner, Saturation::Partial);
+
+    // The head is a direct reference to the instance's member, which takes two parameters.
+    let ReferenceKind::InstanceMember(member) = &reference(head_of(expression)).kind else {
+        panic!("expected an instance member");
+    };
+    assert_eq!(member.arity, 2);
+    assert_eq!(member.module.name().as_str(), "Classes");
+}
+
+/// A constrained function that asks for itself at an ever larger type is the limit's error,
+/// naming the function and the type it had reached, and it is the same error when the chain
+/// runs through two functions. Nothing is changed in a build that has one.
+///
+/// Mutation-checked by raising `SPECIALISATION_LIMIT` to `usize::MAX`: the pass does not
+/// return, since the chain has no end, which is what the limit exists to stop.
+#[test]
+fn a_function_that_needs_itself_at_a_larger_type_is_the_limits_error() {
+    let direct = indoc! {r#"
+        module Loop exposing (..)
+
+        type Box a
+          = Box a
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        instance Eq Int where
+          eq a b =
+            True
+
+        instance Eq a => Eq (Box a) where
+          eq (Box left) (Box right) =
+            eq left right
+
+        f : Eq a => a -> Bool
+        f x =
+          f (Box x)
+
+        use : Bool
+        use =
+          f 1
+    "#};
+    let through_two = direct.replace(
+        "f : Eq a => a -> Bool\nf x =\n  f (Box x)\n",
+        "f : Eq a => a -> Bool\nf x =\n  g x\n\ng : Eq a => a -> Bool\ng y =\n  f (Box y)\n",
+    );
+    assert_ne!(direct, through_two, "the second source has to differ");
+
+    for source in [direct.to_string(), through_two] {
+        let mut modules = check_package_modules(&[&source]);
+        let Err(failures) = specialise_all(&mut modules) else {
+            panic!("expected the limit's error");
+        };
+
+        let [failure] = failures.as_slice() else {
+            panic!("expected one module's errors, got {:?}", failures);
+        };
+        assert_eq!(failure.module.name().as_str(), "Loop");
+        let [ir::SpecialiseError::Unbounded {
+            declaration,
+            types,
+            span,
+            ..
+        }] = failure.errors.as_slice()
+        else {
+            panic!("expected one limit error, got {:?}", failure.errors);
+        };
+        assert_eq!(declaration, &Name::new("f"));
+
+        // The type that kept growing is a box around a box, as many deep as the limit.
+        let [tpe] = types.as_slice() else {
+            panic!("expected one type, got {:?}", types);
+        };
+        assert_eq!(
+            format!("{}", tpe).matches("Box").count(),
+            ir::SPECIALISATION_LIMIT
+        );
+
+        // The caret is on `f`'s declaration.
+        let start = source.find("f : Eq a").expect("f is declared");
+        assert_eq!(span.to_range().map(|range| range.start), Some(start));
+
+        // The message names the declaration and says what the limit is.
+        let message = zelkova_compiler::PhaseError::message(&failure.errors[0]);
+        assert!(message.contains("`f`"), "{}", message);
+        let notes = zelkova_compiler::PhaseError::notes(&failure.errors[0]);
+        assert!(
+            notes[0].contains(&ir::SPECIALISATION_LIMIT.to_string()),
+            "{:?}",
+            notes
+        );
+
+        // Nothing was changed: the module still has none of what the pass would have made.
+        assert!(module_named(&modules, "Loop").ir.specialisations.is_empty());
+    }
+}
+
+/// Run the whole of `check_package_modules` and `specialise_all` on `sources` on a thread of its
+/// own, and give back what each error of the pass says, or the modules' specialisations when it
+/// found none. A pass that never returns is a failure of this test and not of the whole suite:
+/// the thread is left behind and the test panics after `seconds`.
+///
+/// Only text crosses the thread, because a `CheckedModule` is not sent anywhere.
+fn specialise_within(sources: &[&str], seconds: u64) -> Vec<Result<Vec<String>, Vec<String>>> {
+    let sources: Vec<String> = sources.iter().map(|source| source.to_string()).collect();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let sources: Vec<&str> = sources.iter().map(String::as_str).collect();
+        let mut modules = check_package_modules(&sources);
+        let outcome = match specialise_all(&mut modules) {
+            Ok(()) => Ok(modules
+                .iter()
+                .flat_map(|module| module.ir.specialisations.iter().map(spec_text))
+                .collect()),
+            Err(failures) => Err(failures
+                .iter()
+                .flat_map(|failure| &failure.errors)
+                .map(zelkova_compiler::PhaseError::message)
+                .collect()),
+        };
+        let _ = sender.send(outcome);
+    });
+
+    match receiver.recv_timeout(std::time::Duration::from_secs(seconds)) {
+        Ok(outcome) => vec![outcome],
+        Err(_) => panic!(
+            "the pass had not returned after {} seconds: it does not stop at its limit",
+            seconds
+        ),
+    }
+}
+
+/// A loop that grows at two different types is a tree of specialisations with a leaf for each
+/// way down, about 2^32 of them. Reaching the limit once stops the pass: it returns at once with
+/// the one error, and a declaration that two modules each use at the limit is still the one
+/// error.
+///
+/// Mutation-checked twice. Dropping `self.used.pending.clear()` and the `stopped` test in
+/// `Reader::specialise` leaves the limit's error in place and keeps reading every sibling: the
+/// first assertion's call never returns and the test panics after its twenty seconds. Dropping
+/// the `reported` test there makes the error be pushed again by each using module and by each
+/// reference left in the body being read, and the count below is more than one.
+#[test]
+fn reaching_the_limit_stops_the_pass_and_a_declaration_is_reported_once() {
+    let lib = indoc! {r#"
+        module Lib exposing (..)
+
+        class Same a where
+          same : a -> a -> Bool
+
+        instance Same Int where
+          same a b =
+            True
+
+        type Left a
+          = Left a
+
+        type Right a
+          = Right a
+
+        instance Same a => Same (Left a) where
+          same (Left x) (Left y) =
+            same x y
+
+        instance Same a => Same (Right a) where
+          same (Right x) (Right y) =
+            same x y
+
+        grow : Same a => Bool -> a -> Bool
+        grow stop x =
+          case stop of
+            True ->
+              same x x
+
+            False ->
+              case grow True (Left x) of
+                True ->
+                  grow True (Right x)
+
+                False ->
+                  False
+    "#};
+    let first = "module First exposing (..)\n\nimport Lib exposing (..)\n\nstart : Bool\nstart =\n  grow False 1\n";
+    let second = "module Second exposing (..)\n\nimport Lib exposing (..)\n\nstart : Bool\nstart =\n  grow False 2\n";
+
+    let outcome = specialise_within(&[lib, first, second], 20);
+    let [Err(messages)] = outcome.as_slice() else {
+        panic!("expected the limit's error, got {:?}", outcome);
+    };
+    assert_eq!(
+        messages.len(),
+        1,
+        "one declaration is one error, got {:?}",
+        messages
+    );
+    assert!(messages[0].contains("`grow`"), "{:?}", messages);
+}
+
+/// An instance is found by the name at the front of the type, so a use at a type that holds a
+/// variable nobody can make ground — `Phantom b` — is the instance of `Phantom` all the same,
+/// and a variable no constraint is on is not in any key. A module of the standard library's
+/// shape: a derived instance of a type with a phantom parameter gets no context.
+///
+/// Mutation-checked by putting back the whole-type test in `Reader::identifier` (every
+/// predicate of a use must be ground before it is resolved): the build is `NotGround` and
+/// `specialised_package` panics with the message.
+#[test]
+fn a_use_at_a_type_with_a_phantom_variable_is_the_instance_all_the_same() {
+    let source = indoc! {r#"
+        module Phantoms exposing (..)
+
+        class Same a where
+          same : a -> a -> Bool
+
+        type Phantom a
+          = Phantom
+
+        type Pair a b
+          = Pair a b
+
+        instance Same Int where
+          same a b =
+            True
+
+        instance Same (Phantom a) where
+          same _ _ =
+            True
+
+        instance Same a => Same (Pair a b) where
+          same (Pair x _) (Pair y _) =
+            same x y
+
+        alwaysSame : Phantom b -> Bool
+        alwaysSame p =
+          same p p
+
+        ambiguous : Bool
+        ambiguous =
+          same Phantom Phantom
+
+        pairAtAVariable : Pair Int c -> Bool
+        pairAtAVariable p =
+          same p p
+    "#};
+    let modules = specialised_package(&[source]);
+    let module = module_named(&modules, "Phantoms");
+
+    let resolved = |name: &str| {
+        let declaration = module
+            .ir
+            .declarations
+            .iter()
+            .find(|declaration| declaration.name == Name::new(name))
+            .expect("the declaration exists");
+        resolutions(&declaration.body.as_ref().unwrap().expression)
+    };
+    assert_eq!(
+        resolved("alwaysSame"),
+        vec!["Same@Phantom.same of Phantoms".to_string()]
+    );
+    // The two `Phantom` constructors are the other names `ambiguous` mentions.
+    assert_eq!(
+        resolved("ambiguous").first(),
+        Some(&"Same@Phantom.same of Phantoms".to_string())
+    );
+    // The instance with a context is specialised at what its context constrains, `a`, which
+    // the use made `Int`; `b` has no constraint and is not asked for.
+    assert_eq!(resolved("pairAtAVariable"), vec!["spec 0".to_string()]);
+    assert_eq!(specs(&modules, "Phantoms"), vec!["Same@Pair.same [Int]"]);
+}
+
+/// A constrained variable that is still a variable has no key to copy at, and the message says
+/// so in the vocabulary of the source: the variable is a letter and not the typer's `t10122`.
+///
+/// Mutation-checked by making `Reader::bind` accept a non-ground type: the pass returns `Ok`
+/// and the first assertion goes red.
+#[test]
+fn a_constrained_variable_that_is_still_a_variable_says_so_without_a_typer_name() {
+    let source = indoc! {r#"
+        module Open exposing (..)
+
+        class Same a where
+          same : a -> a -> Bool
+
+        type Phantom a
+          = Phantom
+
+        instance Same (Phantom a) where
+          same _ _ =
+            True
+
+        both : Same a => a -> a -> Bool
+        both x y =
+          same x y
+
+        open : Phantom b -> Bool
+        open p =
+          both p p
+    "#};
+    let outcome = specialise_within(&[source], 20);
+    let [Err(messages)] = outcome.as_slice() else {
+        panic!("expected the pass to refuse the use, got {:?}", outcome);
+    };
+    let [message] = messages.as_slice() else {
+        panic!("expected one error, got {:?}", messages);
+    };
+    assert!(
+        message.contains("is at `Phantom a`"),
+        "the type is written with a letter: {}",
+        message
+    );
+    assert!(
+        !message.contains("`t"),
+        "no inference variable in the message: {}",
+        message
+    );
+}
+
+/// A member of an instance with a context that is bound point-free is over the variables its own
+/// inference gave it, which need not be the head's. What it is specialised at is read from its
+/// own type against the type of the use, so `same = sameWrap` is `sameWrap` at `Int`, and the
+/// same member written with parameters agrees with it.
+///
+/// Mutation-checked by reading the member's variables from the instance's head again, as the
+/// code before this did, in `Reader::resolve_member`: the key is empty, the copy cannot resolve
+/// its `same` at a variable, and `specialised_package` panics with the `NotGround` message.
+#[test]
+fn a_point_free_member_of_an_instance_with_a_context_is_specialised_at_its_own_variables() {
+    let source = indoc! {r#"
+        module PointFree exposing (..)
+
+        class Same a where
+          same : a -> a -> Bool
+
+        type Wrap a
+          = Wrap a
+
+        instance Same Int where
+          same a b =
+            True
+
+        instance Same a => Same (Wrap a) where
+          same =
+            sameWrap
+
+        sameWrap : Same a => Wrap a -> Wrap a -> Bool
+        sameWrap (Wrap x) (Wrap y) =
+          same x y
+
+        use : Bool
+        use =
+          same (Wrap 3) (Wrap 3)
+    "#};
+    let modules = specialised_package(&[source]);
+
+    assert_eq!(
+        specs(&modules, "PointFree"),
+        vec!["Same@Wrap.same [Int]", "sameWrap [Int]"]
+    );
+}
+
+/// A chain through many different functions is a finite set and is not the limit's error: the
+/// count is of one declaration in one chain.
+///
+/// Mutation-checked by counting every specialisation of a chain and not one declaration's, in
+/// `Reader::specialise`: a hundred functions then hit the limit and the build does not
+/// specialise.
+#[test]
+fn a_long_chain_of_different_functions_is_not_the_limit() {
+    let mut source = String::from(indoc! {r#"
+        module Chain exposing (..)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        instance Eq Int where
+          eq a b =
+            True
+
+    "#});
+    let count = ir::SPECIALISATION_LIMIT * 3;
+    for index in 0..count {
+        let call = if index + 1 == count {
+            "eq x x".to_string()
+        } else {
+            format!("f{} x", index + 1)
+        };
+        source.push_str(&format!(
+            "f{index} : Eq a => a -> Bool\nf{index} x =\n  {call}\n\n"
+        ));
+    }
+    source.push_str("use : Bool\nuse =\n  f0 1\n");
+
+    let modules = specialised_package(&[&source]);
+    assert_eq!(
+        module_named(&modules, "Chain").ir.specialisations.len(),
+        count
+    );
+}
+
+/// The result for one build is the same however often it is asked for: the same
+/// specialisations in the same order, with the same bodies. The three roots below find three
+/// different keys, so an order that depended on anything but the source would show.
+///
+/// Mutation-checked by reading the roots of a module in the order of a `HashMap` in
+/// `World::read_module` (the `declarations` index, which is unordered): the numbering differs
+/// between two of the eight runs.
+#[test]
+fn the_result_for_one_build_is_the_same_on_every_run() {
+    let main = indoc! {r#"
+        module Main exposing (..)
+
+        import Classes exposing (..)
+
+        type Colour
+          = Red
+
+        instance Eq Colour where
+          eq a b =
+            True
+
+        a : Bool
+        a =
+          same 1 2
+
+        b : Bool
+        b =
+          same True False
+
+        c : Bool
+        c =
+          same (Box Red) (Box Red)
+
+        d : Bool
+        d =
+          both 1 2
+
+        e : Bool
+        e =
+          sameOrLess 1 2
+    "#};
+
+    let summary = || {
+        let modules = specialised_package(&[SPECIALISED_CLASSES, main]);
+        modules
+            .iter()
+            .map(|module| format!("{:?}", module.ir))
+            .collect::<Vec<_>>()
+    };
+
+    let first = summary();
+    for run in 1..8 {
+        assert_eq!(summary(), first, "run {} differs from the first", run);
+    }
+}
+
+/// A class at a record type is accepted by the type checker, which looks no instance up for
+/// one, and has no instance to be resolved to: the pass says so, naming the class and the
+/// record, and points at the ticket that implements it.
+///
+/// Mutation-checked by treating a record as resolved with no instance in `Reader::resolve_member`:
+/// the pass returns `Ok` and the first assertion goes red.
+#[test]
+fn a_class_at_a_record_type_has_no_instance_to_resolve_to() {
+    let source = indoc! {r#"
+        module Rec exposing (..)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        same : { x : Int } -> Bool
+        same r =
+          eq r r
+    "#};
+    let mut modules = check_package_modules(&[source]);
+    let Err(failures) = specialise_all(&mut modules) else {
+        panic!("expected an error for a class at a record");
+    };
+
+    let [ir::SpecialiseError::NoInstance {
+        class, tpe, within, ..
+    }] = failures[0].errors.as_slice()
+    else {
+        panic!(
+            "expected one missing instance, got {:?}",
+            failures[0].errors
+        );
+    };
+    assert_eq!(class, &Name::new("Eq"));
+    assert!(matches!(tpe, Type::Record(_)), "{:?}", tpe);
+    assert_eq!(within, &Name::new("same"));
+
+    let notes = zelkova_compiler::PhaseError::notes(&failures[0].errors[0]);
+    assert!(
+        notes.iter().any(|note| note.contains("LANG-85")),
+        "{:?}",
+        notes
+    );
+}
+
+/// The members of an instance with no context are ordinary declarations of its module, and
+/// what a copy elsewhere names of the module's private values is what the module has to hand
+/// over: the declarations its constrained functions and its instances' bindings mention, and
+/// no constrained one, since none has a function under its own name.
+///
+/// Mutation-checked by returning an empty list from `mentioned_by_copies`: the first assertion
+/// goes red.
+#[test]
+fn what_a_copy_names_is_what_the_declaring_module_has_to_hand_over() {
+    let source = indoc! {r#"
+        module Lib exposing (Eq, same)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        instance Eq Int where
+          eq a b =
+            private a b
+
+        same : Eq a => a -> a -> Bool
+        same x y =
+          helper (eq x y)
+
+        helper : Bool -> Bool
+        helper b =
+          b
+
+        private : Int -> Int -> Bool
+        private a b =
+          True
+
+        unrelated : Int
+        unrelated =
+          1
+
+        constrained : Eq a => a -> a -> Bool
+        constrained x y =
+          same x y
+    "#};
+    let modules = check_package_modules(&[source]);
+    let lib = &module_named(&modules, "Lib").ir;
+
+    assert_eq!(
+        zelkova_compiler::ir::mentioned_by_copies(lib),
+        vec![Name::new("helper"), Name::new("private")]
+    );
+}
+
+/// An instance member with no parameters is a parameterless item of its module, and is
+/// initialised after what it mentions and before what mentions it. The declaration it
+/// mentions comes first in the order canonicalization worked out, and the one that mentions
+/// the member too, so the member lands between them.
+///
+/// Mutation-checked by returning `module.initialisation_order` as items, ignoring the instance
+/// members, in `initialisation_items`: the member is last and the assertion goes red.
+#[test]
+fn an_instance_member_that_takes_no_parameter_is_initialised_between_its_neighbours() {
+    let source = indoc! {r#"
+        module Defaults exposing (..)
+
+        class Default a where
+          def : a
+
+        instance Default Int where
+          def =
+            base
+
+        base : Int
+        base =
+          3
+
+        value : Int
+        value =
+          def
+    "#};
+    let modules = specialised_package(&[source]);
+    let module = &module_named(&modules, "Defaults").ir;
+
+    let items = ir::initialisation_items(module);
+    let names: Vec<String> = items
+        .iter()
+        .map(|item| match item {
+            ir::Item::Declaration(index) => module.declarations[*index].name.to_string(),
+            ir::Item::InstanceMember { instance, member } => format!(
+                "instance {}",
+                module.instances[*instance].members[*member].name
+            ),
+            ir::Item::Specialisation(index) => format!("spec {}", index),
+        })
+        .collect();
+    assert_eq!(names, vec!["base", "instance def", "value"]);
+}
+
+/// The initialisation order of a module with no instance member and no specialisation is the
+/// order canonicalization gave it, whole.
+///
+/// Mutation-checked by reordering the sequence `initialisation_items` starts from: the two
+/// independent bindings, which are in name order, swap.
+#[test]
+fn a_module_without_either_keeps_the_order_canonicalization_gave_it() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (..)
+
+        b : Int
+        b =
+          1
+
+        a : Int
+        a =
+          2
+
+        c : Int
+        c =
+          b
+    "#});
+
+    let names: Vec<String> = ir::initialisation_items(&module)
+        .iter()
+        .map(|item| match item {
+            ir::Item::Declaration(index) => module.declarations[*index].name.to_string(),
+            other => panic!("expected only declarations, got {:?}", other),
+        })
+        .collect();
+    let expected: Vec<String> = module
+        .initialisation_order
+        .iter()
+        .map(|name| name.to_string())
+        .collect();
+    assert_eq!(names, expected);
+    assert_eq!(names, vec!["a", "b", "c"]);
+}

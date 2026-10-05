@@ -53,7 +53,7 @@ min x y =
 ```
 
 lets the body solve `a := Int`, proves `Comparable Int`, and publishes `Comparable a` — and
-[GEN-24](gen-24.md) then specialises `min` at `Colour` out of a body that only ever worked for
+[GEN-24](README.md) then specialises `min` at `Colour` out of a body that only ever worked for
 `Int`. `LANG-40` carries a test that pins this as accepted, with a comment naming this ticket.
 
 **Approach:** the annotation's variables have to be **rigid** — universally quantified by the

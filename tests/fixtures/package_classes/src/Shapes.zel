@@ -1,0 +1,47 @@
+module Shapes exposing (..)
+
+{-| Types whose instances are derived, each holding what a derivation has to walk: a union
+with arguments, and a recursive list-like type.
+-}
+
+import Classes exposing (Same, Ranked)
+
+
+type Shape
+  = Circle Int
+  | Rect Int Int
+  | Dot
+
+
+instance Same Shape where
+  derived
+
+
+instance Ranked Shape where
+  derived
+
+
+-- A list of `Int`s that is its own recursive type.
+type Chain
+  = End
+  | Link Int Chain
+
+
+instance Same Chain where
+  derived
+
+
+instance Ranked Chain where
+  derived
+
+
+-- `count` links of `7`, the last holding `last` instead: two chains built with the same
+-- `count` and different `last`s differ only in their final element.
+chain : Int -> Int -> Chain
+chain count last =
+  case count == 1 of
+    True ->
+      Link last End
+
+    False ->
+      Link 7 (chain (count - 1) last)

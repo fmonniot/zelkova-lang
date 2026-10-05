@@ -1,0 +1,42 @@
+module Tags exposing (Wrapped(..), Tagged(..), sameTagged)
+
+{-| Two more instances, each in the module of its type.
+
+`Wrapped` has an instance with a context whose member is bound point-free, so the member's
+variables are the ones `sameWrapped` was written over and not the instance head's. `Tagged`
+carries a type parameter that no value mentions, so its instance has no context and a use at
+`Tagged b` is the instance all the same.
+-}
+
+import Classes exposing (Same)
+
+
+type Wrapped a
+  = Wrapped a
+
+
+-- Not exposed, but the instance below names it, and a copy of the instance's `same` in
+-- another module has to reach it.
+sameWrapped : Same a => Wrapped a -> Wrapped a -> Bool
+sameWrapped (Wrapped x) (Wrapped y) =
+  same x y
+
+
+instance Same a => Same (Wrapped a) where
+  same =
+    sameWrapped
+
+
+type Tagged a
+  = Tagged Int
+
+
+instance Same (Tagged a) where
+  same (Tagged x) (Tagged y) =
+    x == y
+
+
+-- A use at a type that holds a variable nobody can make ground.
+sameTagged : Tagged b -> Tagged b -> Bool
+sameTagged x y =
+  same x y

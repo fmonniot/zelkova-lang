@@ -87,18 +87,27 @@
 //! in this module is a JavaScript decision, and a change that makes one of the facts
 //! above unavailable is a change that closes that ticket's options.
 //!
+//! # What specialisation adds
+//!
+//! [`build`] knows one module and leaves each reference that carried obligations as the typer
+//! solved it. [`specialise`] reads every module of a build, resolves each of them to the
+//! instance's member or to a [`Specialisation`] of the module that uses it, and changes the
+//! modules in place: a [`ReferenceKind::InstanceMember`] or a [`ReferenceKind::Specialised`]
+//! replaces the name and its obligations, and [`Module::specialisations`] holds the copies. A
+//! constrained [`Declaration`] and the members of an instance that has a context stay as they
+//! were written: they are what is copied, and nothing emits them as they stand.
+//! [`initialisation_items`] is the order of the parameterless items once those are among
+//! them. The module doc comment of `specialise` is the account, and
+//! [`GEN-15`](../../docs/tickets/gen-15.md) needs the same pass for a reason of its own.
+//!
 //! # What is not here yet
 //!
-//! Two tickets add to this shape and are deliberately not written into it yet. Nothing
-//! here says which instance a [`Predicate`] is discharged by, or which of a constrained
-//! function's specialisations a call is: both are what specialisation works out from the
-//! predicates alone ([`GEN-24`](../../docs/tickets/gen-24.md)), and the shape gives it
-//! the instances and the contexts to read them from. The other is a self tail call
-//! ([`GEN-6`](../../docs/tickets/gen-6.md)). [`Module`] holds its
+//! One ticket adds to this shape and is deliberately not written into it yet: a self tail
+//! call ([`GEN-6`](../../docs/tickets/gen-6.md)). [`Module`] holds its
 //! declarations in a `Vec` sorted by name, which is a deterministic order and not an
 //! evaluation order; [`Module::initialisation_order`] is the evaluation order, over the
-//! parameterless ones alone, and `zelkova_js::emit`
-//! emits them in it.
+//! parameterless declarations alone, and [`initialisation_items`] extends it to the items
+//! specialisation adds; `zelkova_js::emit` emits them in it.
 //!
 //! A `case`'s branches keep [`TypedTermKind::Case`]'s own flat shape rather than
 //! growing a tree in place: the typer still wants a flat list, since every branch is
@@ -110,7 +119,7 @@
 
 use std::collections::HashMap;
 
-use super::canonical;
+use super::canonical::{self, HeadName};
 use super::name::{Name, QualName};
 use super::typer::Type;
 use super::{ModuleName, PackageName};
@@ -119,6 +128,12 @@ use zelkova_syntax::tuple::Tuple;
 
 mod decision;
 pub use decision::{build as decision_tree, Binding, Decision, Occurrence, Outcome, Step};
+
+mod specialise;
+pub use specialise::{
+    initialisation_items, mentioned_by_copies, specialise, Error as SpecialiseError, Item,
+    ModuleErrors, SPECIALISATION_LIMIT,
+};
 
 // ── A module ──────────────────────────────────────────────────────────────────
 
@@ -187,6 +202,14 @@ pub struct Module {
     /// `zelkova_js::emit` is what emits declarations
     /// in this order — this only computes it.
     pub initialisation_order: Vec<Name>,
+    /// The copies of constrained declarations and of instance members with a context that
+    /// this module needs, each at one assignment of ground types to its constrained
+    /// variables, in the order [`specialise`] found them.
+    ///
+    /// Empty until [`specialise`] has run over the build: `build` knows one module and a
+    /// specialisation is a fact about the whole of them. A reference to one is
+    /// [`ReferenceKind::Specialised`], and its number is a place in this list.
+    pub specialisations: Vec<Specialisation>,
 }
 
 /// A union declaration: the type a constructor builds, and the constructors that build
@@ -249,6 +272,10 @@ pub struct Instance {
     /// parameter, a tuple of distinct variables, or `()`
     /// ([the head rule](../../docs/spec/type-classes.md#what-an-instance-is-declared-for)).
     pub head: Type,
+    /// The name at the front of [`head`](Self::head), which with the class identifies the
+    /// instance: two instances of one class whose heads share it are one instance declared
+    /// twice, and a use of a member is answered by the one that matches.
+    pub head_name: HeadName,
     /// What the instance needs of the head's variables, in the order written.
     pub context: Vec<Predicate>,
     /// The bindings that checked, one for each member of the class, sorted by name. Each
@@ -351,6 +378,86 @@ pub struct Unchecked {
     pub reported: bool,
 }
 
+// ── Specialisation ────────────────────────────────────────────────────────────
+
+/// A constrained declaration, or a member of an instance with a context, at one assignment
+/// of ground types to its constrained variables: an ordinary declaration of the module that
+/// uses it.
+///
+/// [`specialise`] makes these. The body is a copy of the declaring module's code with the
+/// assignment applied to every type in it, and with each reference that carried obligations
+/// resolved at the types they are now at, so nothing in it asks which instance is meant and
+/// nothing is passed at run time to say
+/// ([`DEC-2` decision 7](../../docs/decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed)).
+/// It is placed in the module that uses it and not in the module that declares the function,
+/// because the instance a copy calls may be declared by a module that imports the
+/// declaring one: emitted beside `min`, a copy that called the `compare` of an `App` that
+/// imports `Basics` would make `Basics` import `App`.
+///
+/// Two uses at one key in one module are one specialisation, and two modules that use
+/// one key each hold a copy. For a function that is code written twice and nothing a program
+/// can observe. For a binding with no parameters it is one evaluation for each module that
+/// uses it where [the chapter says
+/// "once"](../../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once),
+/// and a Zelkova value has no identity, so what differs is the work done and never an answer.
+#[derive(Debug)]
+pub struct Specialisation {
+    /// What this is a copy of.
+    pub of: Subject,
+    /// The ground type each constrained variable of the declaration is at, in the order
+    /// the variables first occur in its [`context`](Declaration::context).
+    ///
+    /// Only the variables a constraint is on are in it: nothing a JavaScript module emits
+    /// depends on any other, so a variable with no constraint needs no copy. A target whose
+    /// code does depend on one reads its type off the nodes of
+    /// [`declaration`](Self::declaration), where it is left a variable.
+    pub key: Vec<Type>,
+    /// The copy: the declaring declaration's name and parameters, its type and every type in
+    /// its body with the key applied, an empty [`context`](Declaration::context), and
+    /// [`Declaration::arity`] and [`Declaration::span`] as it was written.
+    pub declaration: Declaration,
+}
+
+/// What a [`Specialisation`] is a copy of.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Subject {
+    /// A declaration whose annotation has a constraint, named in full.
+    Declaration(QualName),
+    /// A member of an instance that has a context, which is itself a constrained function:
+    /// what it asks of the head's variables is what the instance's context asks.
+    ///
+    /// An instance is identified by its class and the name at the front of its head
+    /// ([`HeadName`]), so those and the member are the whole of the identity.
+    InstanceMember {
+        class: QualName,
+        head: HeadName,
+        member: Name,
+    },
+}
+
+/// A member of an instance that has no context, which is an ordinary declaration of the
+/// module that declares the instance, emitted once.
+///
+/// A use of a class member at a type that has such an instance is a direct reference to
+/// this, and no other module needs a copy. The function's name is built from the three
+/// things that identify it and from nothing a source file spells: `zelkova_js` writes
+/// `$instance$…`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InstanceMember {
+    /// The module that declares the instance, which is where the function is.
+    pub module: ModuleName,
+    /// The class, named by the package and module that declared it.
+    pub class: QualName,
+    /// The name at the front of the instance's head.
+    pub head: HeadName,
+    /// The member's own name.
+    pub member: Name,
+    /// How many arguments a call has to supply to be a direct call: the number of
+    /// parameters the instance's binding was written with, as [`Declaration::arity`] counts
+    /// them.
+    pub arity: usize,
+}
+
 // ── Names ─────────────────────────────────────────────────────────────────────
 
 /// A reference to a name, and what kind of name it is.
@@ -384,7 +491,10 @@ impl Reference {
     }
 }
 
-/// Which of the four things a [`Reference`] names.
+/// Which of the things a [`Reference`] names: a name bound in the declaration, a
+/// declaration of this module, one of another, or a constructor — and, once [`specialise`]
+/// has run, a specialisation or an instance's member, which are what a name that
+/// asked for an instance becomes.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ReferenceKind {
     /// A parameter of the enclosing declaration, or a name one of its patterns bound.
@@ -408,6 +518,16 @@ pub enum ReferenceKind {
     Foreign(QualName, PackageName, usize),
     /// A union constructor: it builds a tagged value rather than reading a binding.
     Constructor(Constructor),
+    /// A [`Specialisation`] of this module: a place in [`Module::specialisations`]. What
+    /// [`specialise`] makes of a reference to a constrained declaration, and of a class
+    /// member whose instance has a context.
+    Specialised(usize),
+    /// A member of an instance that has no context ([`InstanceMember`]). What
+    /// [`specialise`] makes of a class member used at a type that has one.
+    ///
+    /// Boxed: it names a class, a head and a module in full, and would make every other kind
+    /// of reference as large.
+    InstanceMember(Box<InstanceMember>),
 }
 
 /// A constructor, and its place in the declaration that declares it.
@@ -1036,6 +1156,7 @@ pub fn build(
         unchecked,
         instances,
         initialisation_order,
+        specialisations: Vec::new(),
     }
 }
 
@@ -1147,6 +1268,7 @@ fn build_instance(
     Instance {
         class: signature.class.clone(),
         head,
+        head_name: signature.head.name(),
         context,
         members,
         unchecked,

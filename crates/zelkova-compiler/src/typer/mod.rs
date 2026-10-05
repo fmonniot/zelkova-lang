@@ -2755,7 +2755,7 @@ mod classes;
 mod constraint;
 mod unifier;
 
-pub(crate) use classes::instance_head_type;
+pub(crate) use classes::{head_of, instance_head_type};
 
 // TODO Copy ?
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -2983,6 +2983,19 @@ impl std::fmt::Display for Type {
 }
 
 impl Type {
+    /// The type as a message writes one that has variables of no source's naming: each
+    /// variable is a letter, `a` to `z` and on, in the order it first appears, where
+    /// [`Display`](std::fmt::Display) writes the inference variable (`t10122`) that no
+    /// source mentions. A type with no variable reads the same either way.
+    pub(crate) fn written_with_letters(&self) -> String {
+        let names: VariableNames = free_variables_in_order(self)
+            .into_iter()
+            .enumerate()
+            .map(|(position, variable)| (variable, classes::letter(position)))
+            .collect();
+        WithNames(self, &names).to_string()
+    }
+
     /// Every union named anywhere in this type, outermost first, appended to `out`.
     ///
     /// A union's arguments are types in their own right and may name unions of their

@@ -410,7 +410,7 @@ fn entail(
 /// The name at the front of `tpe` an instance is looked up by, and the types that name is
 /// applied to — the ones an instance's head variables stand for. `None` for a type no
 /// instance can be declared for.
-fn head_of(tpe: &Type) -> Option<(HeadName, Vec<Type>)> {
+pub(crate) fn head_of(tpe: &Type) -> Option<(HeadName, Vec<Type>)> {
     match tpe {
         Type::Literal(literal) => {
             let scalar = match literal {
@@ -473,7 +473,7 @@ fn names_for(
 }
 
 /// The `n`th variable name: `a` to `z`, then `a1`, `b1`, and on.
-fn letter(n: usize) -> String {
+pub(super) fn letter(n: usize) -> String {
     let letter = char::from(b'a' + (n % 26) as u8);
     match n / 26 {
         0 => letter.to_string(),

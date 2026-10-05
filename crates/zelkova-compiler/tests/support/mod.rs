@@ -466,3 +466,75 @@ pub fn check_package_module(
 
     result.unwrap_or_else(|| panic!("no module named `{}` came back", name))
 }
+
+/// Every module of a package of `sources`, each one module, in dependency order, each checked
+/// with the real checker. A module that does not check is a panic naming its errors: a test
+/// that wants one that fails reads it with [`check_package_module`].
+pub fn check_package_modules(sources: &[&str]) -> Vec<CheckedModule> {
+    let modules: Vec<_> = sources.iter().map(|source| parse_source(source)).collect();
+    let package = test_package();
+    let module_files = HashMap::new();
+    let walker = ModuleWalker::new(&modules, &module_files, &package).expect("no import cycle");
+    let mut interfaces = HashMap::from([basics_interface(), char_interface()]);
+
+    let mut checked = Vec::new();
+    for outcome in walker.check_in_order(
+        &package,
+        &mut interfaces,
+        &module_files,
+        check_module_recovering,
+    ) {
+        match outcome {
+            Outcome::Module(module, errors) if errors.is_empty() => checked.push(module),
+            Outcome::Module(module, errors) => panic!(
+                "expected `{}` to check, got {:?}",
+                module.canonical.name.name(),
+                errors
+            ),
+            Outcome::Failed(error) => panic!("a module failed outright: {:?}", error),
+        }
+    }
+    checked
+}
+
+/// `zelkova_compiler::ir::specialise` over `modules`, which it changes in place.
+pub fn specialise_all(
+    modules: &mut [CheckedModule],
+) -> Result<(), Vec<zelkova_compiler::ir::ModuleErrors>> {
+    let mut references: Vec<&mut CheckedModule> = modules.iter_mut().collect();
+    zelkova_compiler::ir::specialise(&mut references)
+}
+
+/// [`check_package_modules`], then [`specialise_all`], insisting that it finds every
+/// specialisation.
+pub fn specialised_package(sources: &[&str]) -> Vec<CheckedModule> {
+    let mut modules = check_package_modules(sources);
+    specialise_all(&mut modules).unwrap_or_else(|errors| {
+        panic!(
+            "expected the build to specialise, got {:?}",
+            errors
+                .iter()
+                .flat_map(|module| &module.errors)
+                .map(zelkova_compiler::PhaseError::message)
+                .collect::<Vec<_>>()
+        )
+    });
+    modules
+}
+
+/// The module of `modules` named `name`, or a panic naming the ones there are.
+pub fn module_named<'a>(modules: &'a [CheckedModule], name: &str) -> &'a CheckedModule {
+    modules
+        .iter()
+        .find(|module| module.canonical.name.name().as_str() == name)
+        .unwrap_or_else(|| {
+            panic!(
+                "no module named `{}`; the build has {:?}",
+                name,
+                modules
+                    .iter()
+                    .map(|module| module.canonical.name.name().as_str())
+                    .collect::<Vec<_>>()
+            )
+        })
+}
