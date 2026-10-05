@@ -247,7 +247,7 @@
 //! found by `Object.hasOwn`, which looks at the value's own properties and so never finds
 //! the `toString` every object inherits. `Object.keys(v).length` is asked to equal the
 //! number of labels too, so every label is an enumerable own property: the update's
-//! spread copies only those, and so does the walk `==` makes. A field of type `()` is present, holding
+//! spread copies only those. A field of type `()` is present, holding
 //! `undefined`: `Object.hasOwn` is what tells it from one that is missing, which
 //! `v.f === undefined` could not ([`DEC-21`](../docs/decisions/dec-21.md)). Nothing else
 //! is asked of the object: one with a prototype of its own or one that is frozen is
@@ -1527,10 +1527,9 @@ impl Predicates<'_> {
                 // object inherits, `toString`, is not mistaken for a field. With the count
                 // equal to the number of labels and each label found, the own keys are the
                 // labels and no others. `Object.keys` counting the same number then makes
-                // every one of them enumerable, which the update's spread and the equality
-                // walk (`for (var key in x)`) rely on: a label that is a non-enumerable own
-                // property would be found by `hasOwn`, read by an access, and lost by the
-                // next update. A field of type `()` is told from a missing one by `hasOwn`,
+                // every one of them enumerable, which the update's spread relies on: a
+                // label that is a non-enumerable own property would be found by `hasOwn`,
+                // read by an access, and lost by the next update. A field of type `()` is told from a missing one by `hasOwn`,
                 // which `=== undefined` could not do.
                 let mut tests = vec![
                     format!("typeof {} === \"object\"", value),

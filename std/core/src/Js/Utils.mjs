@@ -91,9 +91,8 @@ function _Utils_lessByCodePoint(x, y) {
     return x.length < y.length;
 }
 
-// `Basics.zel` writes every other comparison over these and the equalities above, so
-// a `Float` that is `nan` is unordered against everything for free: `<` is false
-// whichever side it is on.
+// `Basics.zel` writes every other comparison over these and the equalities above;
+// how a `nan` is ordered is decided there, on `Comparable`.
 export const ltInt = _Utils_binary('ltInt', 'Int', _Utils_isInt, function (x, y) { return x < y; });
 export const ltFloat = _Utils_binary('ltFloat', 'Float', _Utils_isFloat, function (x, y) { return x < y; });
 export const ltChar = _Utils_binary('ltChar', 'Char', _Utils_isChar, _Utils_lessByCodePoint);

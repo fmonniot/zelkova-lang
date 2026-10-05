@@ -25,9 +25,9 @@ unsafe equalFloat : Float -> Float -> Bool
 unsafe equalChar : Char -> Char -> Bool
 unsafe equalString : String -> String -> Bool
 
--- `Comparable`'s instances are written over these and `equal*`: `a < b` is a call
--- to one of them and nothing else, which is also how a `nan` is unordered against
--- everything. A `Char` and a `String` are ordered by code point.
+-- `Comparable`'s instances are written over these and `equal*`; how a `nan` is
+-- ordered is decided in `Basics.zel`, on `Comparable`. A `Char` and a `String` are
+-- ordered by code point.
 unsafe ltInt : Int -> Int -> Bool
 unsafe ltFloat : Float -> Float -> Bool
 unsafe ltChar : Char -> Char -> Bool

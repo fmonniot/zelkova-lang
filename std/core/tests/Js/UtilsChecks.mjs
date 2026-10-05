@@ -12,9 +12,10 @@
 // Js.Utils is a set of primitives, one per scalar type, that the instances of
 // `Eq`, `Comparable` and `Appendable` in Basics.zel forward to. What an
 // instance computes over a whole value is checked where it is written, in the
-// Zelkova tests beside these (ClassTests.zel and its neighbours); what is
-// checked here is each primitive on its own type, and that each one refuses a
-// value that is not of it, because the facades are the package's boundary.
+// Zelkova tests beside these (EqTests.zel, ComparableTests.zel, NumberTests.zel,
+// AppendableTests.zel and DerivedTests.zel); what is checked here is each
+// primitive on its own type, and that each one refuses a value that is not of
+// it, because the facades are the package's boundary.
 //
 // Values are shaped the way docs/spec/interop.md says they cross to JavaScript.
 // Utils.mjs is imported as a module of the target rather than reached through
