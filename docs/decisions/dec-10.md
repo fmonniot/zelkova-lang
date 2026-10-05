@@ -57,7 +57,7 @@ from `R` ([which signatures may carry
 one](../spec/type-classes.md#a-class-says-how-it-is-derived)), so where `R` is a union of nullary
 constructors its values enumerate — `Bool` has two, `Order` three — and the three equations
 become a fixed, small number of closed evaluations. That is exactly the two classes `std/core`
-derives ([`LANG-42`](../tickets/lang-42.md)), and it reaches nothing whose `R` is `Int`, `Float`,
+derives ([`LANG-42`](../tickets/README.md)), and it reaches nothing whose `R` is `Int`, `Float`,
 or any type taking arguments.
 
 Two things sink it. It needs an evaluator for whatever fragment of the language a derivation's

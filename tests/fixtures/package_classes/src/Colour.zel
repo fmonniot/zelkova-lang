@@ -25,6 +25,10 @@ index colour =
       2
 
 
+instance Eq Colour where
+  derived
+
+
 instance Same Colour where
   same a b =
     same (index a) (index b)

@@ -24,6 +24,14 @@ type Light
   | On
 
 
+instance Eq Shape where
+  derived
+
+
+instance Eq Light where
+  derived
+
+
 measure : Shape -> Int
 measure shape =
   case shape of

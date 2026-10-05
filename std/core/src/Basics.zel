@@ -2,11 +2,11 @@ module Basics exposing
   ( Int, Float
   , (+), (-), (*), (/), (//), (^)
   , toFloat, round, floor, ceiling, truncate
-  , (==), (/=)
-  , (<), (>), (<=), (>=), max, min, compare, Order(..)
+  , Eq, (==), (/=)
+  , Comparable, (<), (>), (<=), (>=), max, min, Order(..), Position, positionIndex
   , Bool(..), not, (&&), (||), xor
-  , (++)
-  , modBy, remainderBy, negate, abs, clamp, sqrt, logBase, e
+  , Appendable, (++)
+  , Number, modBy, remainderBy, clamp, sqrt, logBase, e
   , pi, cos, sin, tan, acos, asin, atan, atan2
   , degrees, radians, turns
   , toPolar, fromPolar
@@ -17,32 +17,31 @@ module Basics exposing
 {-| Tons of useful functions that get imported by default.
 
 # Math
-@docs Int, Float, (+), (-), (*), (/), (//), (^)
+@docs Int, Float, Number, (+), (-), (*), (/), (//), (^)
 
 # Int to Float / Float to Int
 @docs toFloat, round, floor, ceiling, truncate
 
 # Equality
-@docs (==), (/=)
+@docs Eq, (==), (/=)
 
 # Comparison
 
-These functions are *intended* for comparable types only — numbers,
-characters, strings, lists of comparable things, and tuples of comparable
-things. The language cannot say so yet: their type variables are ordinary
-ones, so the signatures accept anything at all. See
-`docs/spec/type-classes.md`.
+These functions take any type that has a `Comparable` instance — numbers,
+characters, strings, and tuples of comparable things — and nothing else. A
+type of your own joins by declaring an instance, which it may ask the compiler
+to derive. See `docs/spec/type-classes.md`.
 
-@docs (<), (>), (<=), (>=), max, min, compare, Order
+@docs Comparable, (<), (>), (<=), (>=), max, min, Order, Position, positionIndex
 
 # Booleans
 @docs Bool, not, (&&), (||), xor
 
 # Append Strings and Lists
-@docs (++)
+@docs Appendable, (++)
 
 # Fancier Math
-@docs modBy, remainderBy, negate, abs, clamp, sqrt, logBase, e
+@docs modBy, remainderBy, clamp, sqrt, logBase, e
 
 # Angles
 @docs degrees, radians, turns
@@ -146,18 +145,34 @@ compatible with any widely-used assembly language.
 type Float = Float -- NOTE: The compiler provides the real implementation.
 
 
-{-| Add two numbers. This is *intended* to specialize to `Int -> Int -> Int`
-or to `Float -> Float -> Float`, and to nothing else. The `a` in its signature
-is an ordinary type variable and says no such thing: nothing stops the
-function being applied to two values that are not numbers at all. Zelkova has
-no way to write that restriction, and type classes are the answer —
-see `docs/spec/type-classes.md`. Until then the annotation is
-honest about what the compiler enforces rather than about what is meant.
+{-| The numeric types: `Int` and `Float`, and nothing else. A function that does
+arithmetic over a type it does not know says so with this class, the way
+`Comparable a => ..` says a type is ordered.
 
+`add`, `sub`, `mul` and `pow` are the operators `(+)`, `(-)`, `(*)` and `(^)`.
+`Int` arithmetic wraps at 64 bits and a `Float` has IEEE's answers throughout.
 So you can do things like this:
 
     3002 + 4004 == 7006  -- all ints
     3.14 + 3.14 == 6.28  -- all floats
+    4 - 3 == 1
+    2 * 3 == 6
+    3^2 == 9
+    3^3 == 27
+
+`negate` and `abs` are members, and not functions over the other four, because
+neither can be written without a zero, and [a literal is never of this
+class](docs/spec/type-classes.md#numeric-literals): `1` is an `Int` and `1.5` a
+`Float`.
+
+    negate 42 == -42
+    negate -42 == 42
+    negate 0 == 0
+
+    abs 16   == 16
+    abs -4   == 4
+    abs -8.5 == 8.5
+    abs 3.14 == 3.14
 
 You _cannot_ add an `Int` and a `Float` directly though. Use functions like
 [toFloat](#toFloat) or [round](#round) to convert both values to the same type.
@@ -173,39 +188,57 @@ exactly what type of number you are dealing with. When you try to _infer_ these
 conversions (as Scala does) it can be even more confusing. Elm has opted for a
 design that makes all conversions explicit.
 -}
--- `Js.Basics` names `addInt` and `addFloat` rather than one facade over `a`
--- (`LANG-43`), since a facade signature may not name a type variable. `add`
--- itself keeps its `a -> a -> a` annotation — the language still has no way
--- to write the real restriction — and every *use* of `add` is checked
--- against that annotation. It forwards to `addInt` whatever `a` is, so on two
--- `Float`s `addInt`'s boundary check is handed a JavaScript number where its
--- signature declares an `Int`, and aborts the program. That is `BUG-44`,
--- which a `Number` class picking the facade per instantiation closes.
-add : a -> a -> a
-add =
-  Js.Basics.addInt
+-- A facade signature may not name a type variable or carry a constraint, so
+-- `Js.Basics` declares each operation once per type, and each instance below
+-- forwards to the facade at its own type. Every binding is written with its
+-- parameters, so a use is a direct call.
+class Number a where
+  add : a -> a -> a
+  sub : a -> a -> a
+  mul : a -> a -> a
+  pow : a -> a -> a
+  negate : a -> a
+  abs : a -> a
 
 
-{-| Subtract numbers like `4 - 3 == 1`.
+instance Number Int where
+  add a b =
+    Js.Basics.addInt a b
 
-See [`(+)`](#+) for why `a` is not the restriction it looks like.
--}
--- Forwards to `subInt` whatever `a` is, so a `Float` subtraction aborts at
--- `subInt`'s boundary check: see `add` above, and `BUG-44`.
-sub : a -> a -> a
-sub =
-  Js.Basics.subInt
+  sub a b =
+    Js.Basics.subInt a b
+
+  mul a b =
+    Js.Basics.mulInt a b
+
+  pow a b =
+    Js.Basics.powInt a b
+
+  negate a =
+    Js.Basics.negateInt a
+
+  abs a =
+    Js.Basics.absInt a
 
 
-{-| Multiply numbers like `2 * 3 == 6`.
+instance Number Float where
+  add a b =
+    Js.Basics.addFloat a b
 
-See [`(+)`](#+) for why `a` is not the restriction it looks like.
--}
--- Forwards to `mulInt` whatever `a` is, so a `Float` multiplication aborts at
--- `mulInt`'s boundary check: see `add` above, and `BUG-44`.
-mul : a -> a -> a
-mul =
-  Js.Basics.mulInt
+  sub a b =
+    Js.Basics.subFloat a b
+
+  mul a b =
+    Js.Basics.mulFloat a b
+
+  pow a b =
+    Js.Basics.powFloat a b
+
+  negate a =
+    Js.Basics.negateFloat a
+
+  abs a =
+    Js.Basics.absFloat a
 
 
 {-| Floating-point division:
@@ -245,18 +278,6 @@ function.
 idiv : Int -> Int -> Int
 idiv =
   Js.Basics.idiv
-
-
-{-| Exponentiation
-
-    3^2 == 9
-    3^3 == 27
--}
--- Forwards to `powInt` whatever `a` is, so a `Float` exponentiation aborts at
--- `powInt`'s boundary check: see `add` above, and `BUG-44`.
-pow : a -> a -> a
-pow =
-  Js.Basics.powInt
 
 
 
@@ -344,76 +365,241 @@ truncate =
 -- EQUALITY
 
 
-{-| Check if values are &ldquo;the same&rdquo;.
+{-| Types whose values can be checked for being &ldquo;the same&rdquo;. `Int`,
+`Float`, `Char`, `String`, `Bool`, `Order`, `Position`, tuples of two and three
+and `()` have an instance here; `Maybe`, `Result` and `Failure` have one
+beside their types. A function type has none, so `f == g` is a type error.
 
-**Note:** Elm uses structural equality on tuples, records, and user-defined
-union types. This means the values `(3, 4)` and `(3, 4)` are definitely equal.
-This is not true in languages like JavaScript that use reference equality on
-objects.
+Every instance `std/core` declares is *structural*: two values of a union type
+are the same when they are the same constructor holding arguments that are the
+same, and two tuples when their elements are pairwise the same. A `Float` is
+compared the way IEEE 754 compares it, which is the one place that is not so:
+`nan` is the same as nothing, itself included, and `0.0` is the same as `-0.0`.
 
-**Note:** Do not use `(==)` with functions, JSON values from `elm/json`, or
-regular expressions from `elm/regex`. It does not work. It will crash if
-possible. With JSON values, decode to Elm values before doing any equality
-checks!
+A type of your own asks for the structural definition by declaring an instance
+whose body is `derived`, beside the type:
 
-Why is it like this? Equality in the Elm sense can be difficult or impossible
-to compute. Proving that functions are the same is [undecidable][], and JSON
-values can come in through ports and have functions, cycles, and new JS data
-types that interact weirdly with our equality implementation. In a future
-release, the compiler will detect when `(==)` is used with problematic types
-and provide a helpful error message at compile time. This will require some
-pretty serious infrastructure work, so the stopgap is to crash as quickly as
-possible.
+    type Colour = Red | Green
 
-[undecidable]: https://en.wikipedia.org/wiki/Undecidable_problem
+    instance Eq Colour where
+      derived
+
+What `derived` computes is the definition written out under `derived eq` below,
+which stops at the first pair of arguments that differ. Another definition —
+equality up to a normal form, say — is written out as the instance's `eq`.
 -}
--- `Js.Utils` names `equalInt` and `equalFloat` rather than one facade over
--- `a` (`LANG-43`); see `add` in the MATHEMATICS section above for why `eq`
--- keeps its own `a -> a -> Bool`-shaped annotation and picking `equalInt` here
--- makes no difference to how `eq` type-checks or is used.
-eq : a -> a -> Bool
-eq =
-  Js.Utils.equalInt
+class Eq a where
+  eq : a -> a -> Bool
+
+  derived eq
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True ->
+          y
+
+        False ->
+          False
+
+
+instance Eq Int where
+  eq a b =
+    Js.Utils.equalInt a b
+
+
+instance Eq Float where
+  eq a b =
+    Js.Utils.equalFloat a b
+
+
+instance Eq Char where
+  eq a b =
+    Js.Utils.equalChar a b
+
+
+instance Eq String where
+  eq a b =
+    Js.Utils.equalString a b
+
+
+-- `Bool` is a scalar, so it has no shape for a derivation to walk; its instance is
+-- written, over `case` rather than a facade since nothing needs a primitive to read it.
+instance Eq Bool where
+  eq a b =
+    case a of
+      True ->
+        b
+
+      False ->
+        not b
+
+
+instance Eq Order where
+  derived
+
+
+instance Eq Position where
+  derived
+
+
+instance Eq (a, b) where
+  derived
+
+
+instance Eq (a, b, c) where
+  derived
+
+
+instance Eq () where
+  derived
 
 
 {-| Check if values are not &ldquo;the same&rdquo;.
 
 So `(a /= b)` is the same as `(not (a == b))`.
 -}
--- See `eq` above for why `notEqualInt` is picked over `notEqualFloat`.
-neq : a -> a -> Bool
-neq =
-  Js.Utils.notEqualInt
+neq : Eq a => a -> a -> Bool
+neq a b =
+  not (eq a b)
 
 
 
 -- COMPARISONS
 
 
--- See `eq` above for why the `Int` facade is picked over the `Float` one,
--- for `lt`, `gt`, `le` and `ge` alike.
-{-|-}
-lt : a -> a -> Bool
-lt =
-  Js.Utils.ltInt
+{-| Types whose values are ordered: `Int`, `Float`, `Char`, `String`,
+`Position`, and tuples of two and three comparable things. `Char`s and
+`String`s are ordered by code point.
+
+An ordering is a refinement of equality, so every `Comparable` type is `Eq`.
+A type of your own joins by declaring both, and may derive both:
+
+    type Colour = Red | Green
+
+    instance Eq Colour where
+      derived
+
+    instance Comparable Colour where
+      derived
+
+What `derived` computes is a lexicographic ordering. Two values of different
+constructors are ordered by where the constructors are declared, so `Red` is
+less than `Green` here and reordering the variants changes the answer. Two
+values of the same constructor are ordered by their arguments, left to right,
+the first pair that differs deciding.
+
+    compare 3 4 == LT
+    compare 4 4 == EQ
+    compare 5 4 == GT
+
+**`nan`:** a `Float` that is `nan` is ordered against nothing, so `<`, `<=`,
+`>` and `>=` answer `False` whichever side it is on. `compare` answers `GT`
+for it, which is the one answer all four operators read as `False`: `lt` and
+`le` ask for `LT` (and `EQ`) of `compare a b`, and `gt` and `ge` ask the same of
+`compare b a`.
+-}
+class Eq a => Comparable a where
+  compare : a -> a -> Order
+
+  derived compare
+    matched = EQ
+    differed i j =
+      compare i j
+
+    combine x y =
+      case x of
+        EQ ->
+          y
+
+        _ ->
+          x
+
+
+instance Comparable Int where
+  compare a b =
+    if Js.Utils.ltInt a b then
+      LT
+    else if Js.Utils.equalInt a b then
+      EQ
+    else
+      GT
+
+
+instance Comparable Float where
+  compare a b =
+    if Js.Utils.ltFloat a b then
+      LT
+    else if Js.Utils.equalFloat a b then
+      EQ
+    else
+      GT
+
+
+instance Comparable Char where
+  compare a b =
+    if Js.Utils.ltChar a b then
+      LT
+    else if Js.Utils.equalChar a b then
+      EQ
+    else
+      GT
+
+
+instance Comparable String where
+  compare a b =
+    if Js.Utils.ltString a b then
+      LT
+    else if Js.Utils.equalString a b then
+      EQ
+    else
+      GT
+
+
+instance Comparable Position where
+  derived
+
+
+instance Comparable (a, b) where
+  derived
+
+
+instance Comparable (a, b, c) where
+  derived
 
 
 {-|-}
-gt : a -> a -> Bool
-gt =
-  Js.Utils.gtInt
+lt : Comparable a => a -> a -> Bool
+lt a b =
+  case compare a b of
+    LT ->
+      True
+
+    _ ->
+      False
 
 
 {-|-}
-le : a -> a -> Bool
-le =
-  Js.Utils.leInt
+gt : Comparable a => a -> a -> Bool
+gt a b =
+  lt b a
 
 
 {-|-}
-ge : a -> a -> Bool
-ge =
-  Js.Utils.geInt
+le : Comparable a => a -> a -> Bool
+le a b =
+  case compare a b of
+    GT ->
+      False
+
+    _ ->
+      True
+
+
+{-|-}
+ge : Comparable a => a -> a -> Bool
+ge a b =
+  le b a
 
 
 {-| Find the smaller of two comparables.
@@ -421,7 +607,7 @@ ge =
     min 42 12345678 == 42
     min "abc" "xyz" == "abc"
 -}
-min : a -> a -> a
+min : Comparable a => a -> a -> a
 min x y =
   if lt x y then x else y
 
@@ -431,28 +617,30 @@ min x y =
     max 42 12345678 == 12345678
     max "abc" "xyz" == "xyz"
 -}
-max : a -> a -> a
+max : Comparable a => a -> a -> a
 max x y =
   if gt x y then x else y
 
 
-{-| Compare any two comparable values. Comparable values are meant to be
-`String`, `Char`, `Int`, `Float`, or a list or tuple containing comparable
-values, and those are also the only values meant to work as `Dict` keys or
-`Set` members. The signature does not enforce it — see [`(+)`](#+).
+{-| Where a constructor is declared in its type, counting from zero. A derived
+member is handed one for each constructor it is asked about
+(`docs/spec/type-classes.md#a-class-says-how-it-is-derived`), and it is a type
+of its own so that a class can order two constructors, with `compare`, or
+compute with them, with `positionIndex`, and do nothing else with them. There
+is no way to build one.
 
-    compare 3 4 == LT
-    compare 4 4 == EQ
-    compare 5 4 == GT
+The compiler knows this type by name, because it has to give a derivation's
+parameters a type before any class has been read.
 -}
-compare : a -> a -> Order
-compare a b =
-  EQ
--- TODO Uncomment that one as soon as we have let expression in the parser
---  let
---    n = Js.Utils.compareInt a b
---  in
---  if n < 0 then LT else (if n == 0 then EQ else GT)
+type Position = Position Int
+
+
+{-| The `Int` a [`Position`](#Position) stands for: `0` for the first
+constructor of a type, `1` for the second.
+-}
+positionIndex : Position -> Int
+positionIndex (Position index) =
+  index
 
 
 {-| Represents the relative ordering of two things.
@@ -537,20 +725,22 @@ xor =
 -- APPEND
 
 
-{-| Put two appendable things together. This is meant to be strings and
-lists only; the signature does not enforce it — see [`(+)`](#+).
+{-| Types two of whose values can be put together: `String` has an instance
+here, and lists will.
 
     "hello" ++ "world" == "helloworld"
     [1,1,2] ++ [3,5,8] == [1,1,2,3,5,8]
+
+A member that returns the class's own type cannot be derived, so a type of
+your own writes its `append`.
 -}
--- `Js.Utils` names `appendInt` and `appendFloat` rather than one facade over
--- `a` (`LANG-43`), but its companion still only concatenates two Strings —
--- Zelkova has no `String` type yet to name here for real, so both throw for
--- every value either admits today. Narrowing that gap is `BUG-20`'s, not this
--- one's; see `Js/Utils.mjs`.
-append : a -> a -> a
-append =
-  Js.Utils.appendInt
+class Appendable a where
+  append : a -> a -> a
+
+
+instance Appendable String where
+  append a b =
+    Js.Utils.appendString a b
 
 
 
@@ -598,31 +788,6 @@ remainderBy =
   Js.Basics.remainderBy
 
 
-{-| Negate a number.
-
-    negate 42 == -42
-    negate -42 == 42
-    negate 0 == 0
--}
-negate : a -> a
-negate n =
-  -n
-
-
-{-| Get the [absolute value][abs] of a number.
-
-    abs 16   == 16
-    abs -4   == 4
-    abs -8.5 == 8.5
-    abs 3.14 == 3.14
-
-[abs]: https://en.wikipedia.org/wiki/Absolute_value
--}
-abs : a -> a
-abs n =
-  if lt n 0 then -n else n
-
-
 {-| Clamps a number within a given range. With the expression
 `clamp 100 200 x` the results are as follows:
 
@@ -630,7 +795,7 @@ abs n =
      x      if 100 <= x < 200
     200     if 200 <= x
 -}
-clamp : a -> a -> a -> a
+clamp : Comparable a => a -> a -> a -> a
 clamp low high number =
   if lt number low then
     low
@@ -688,8 +853,6 @@ radians angleInRadians =
 
     degrees 180 == 3.141592653589793
 -}
--- Calls `mul`, so it aborts on every call the same way `add` does on a `Float`: see
--- `add` above, and `BUG-44`.
 degrees : Float -> Float
 degrees angleInDegrees =
   fdiv (mul angleInDegrees pi) 180.0
@@ -819,8 +982,6 @@ atan2 =
 
     fromPolar (sqrt 2, degrees 45) == (1, 1)
 -}
--- Calls `mul` twice, so it aborts on every call the same way `add` does on a `Float`,
--- even though nothing here names `a`: see `add` above, and `BUG-44`.
 fromPolar : (Float,Float) -> (Float,Float)
 fromPolar (radius, theta) =
   ( mul radius (cos theta)
@@ -833,8 +994,6 @@ fromPolar (radius, theta) =
     toPolar (3, 4) == ( 5, 0.9272952180016122)
     toPolar (5,12) == (13, 1.1760052070951352)
 -}
--- Calls `mul` and `add`, so it aborts on every call the same way `add` does on a
--- `Float`, even though nothing here names `a`: see `add` above, and `BUG-44`.
 toPolar : (Float,Float) -> (Float,Float)
 toPolar ( x, y ) =
   ( sqrt (add (mul x x) (mul y y))

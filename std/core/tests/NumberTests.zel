@@ -1,0 +1,120 @@
+-- `Number` at its two instances, `Int` and `Float`: each member at each type, an `Int`
+-- wrapping at 64 bits where a `Float` keeps IEEE's answer, and a function constrained
+-- by the class used at both. A literal is an `Int` or a `Float` by its spelling, so
+-- `double` below is written over `add` and not over a literal.
+module NumberTests exposing
+  ( addSubAndMulOnInts
+  , addSubAndMulOnFloats
+  , powOnInts
+  , powOnFloats
+  , negateOnInts
+  , negateOnFloats
+  , absOnInts
+  , absOnFloats
+  , negateKeepsTheSignOfAFloatZero
+  , absOfAnIntWrapsAtTheSmallest
+  , intArithmeticWrapsAtSixtyFourBits
+  , floatArithmeticIsIEEE
+  , aFunctionConstrainedByNumberWorksAtBothTypes
+  , operatorsAreTheMembers
+  , degreesAndTurnsAreFloatArithmetic
+  )
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+smallestInt : Int
+smallestInt =
+  0 - 9223372036854775807 - 1
+
+
+addSubAndMulOnInts : Test
+addSubAndMulOnInts =
+  Test.check ((add 40 2 == 42) && (sub 40 2 == 38) && (mul 6 7 == 42))
+
+
+addSubAndMulOnFloats : Test
+addSubAndMulOnFloats =
+  Test.check ((add 1.5 2.25 == 3.75) && (sub 1.5 2.25 == 0.0 - 0.75) && (mul 1.5 2.0 == 3.0))
+
+
+powOnInts : Test
+powOnInts =
+  Test.check ((pow 3 2 == 9) && (pow 3 3 == 27) && (pow 2 10 == 1024))
+
+
+powOnFloats : Test
+powOnFloats =
+  Test.check ((pow 2.0 3.0 == 8.0) && (pow 2.0 0.5 == sqrt 2.0))
+
+
+negateOnInts : Test
+negateOnInts =
+  Test.check ((negate 42 == 0 - 42) && (negate (negate 42) == 42) && (negate 0 == 0))
+
+
+negateOnFloats : Test
+negateOnFloats =
+  Test.check ((negate 1.5 == 0.0 - 1.5) && (negate (negate 1.5) == 1.5) && (negate 0.0 == 0.0))
+
+
+absOnInts : Test
+absOnInts =
+  Test.check ((abs 16 == 16) && (abs (negate 4) == 4) && (abs 0 == 0))
+
+
+absOnFloats : Test
+absOnFloats =
+  Test.check ((abs 3.14 == 3.14) && (abs (negate 8.5) == 8.5) && (abs 0.0 == 0.0))
+
+
+-- Dividing by a zero tells the two zeros apart, which `==` does not.
+negateKeepsTheSignOfAFloatZero : Test
+negateKeepsTheSignOfAFloatZero =
+  Test.check ((1.0 / negate 0.0 == negate (1.0 / 0.0)) && (1.0 / abs (negate 0.0) == 1.0 / 0.0))
+
+
+absOfAnIntWrapsAtTheSmallest : Test
+absOfAnIntWrapsAtTheSmallest =
+  Test.check ((abs smallestInt == smallestInt) && (negate smallestInt == smallestInt))
+
+
+intArithmeticWrapsAtSixtyFourBits : Test
+intArithmeticWrapsAtSixtyFourBits =
+  Test.check
+    ((add 9223372036854775807 1 == smallestInt)
+      && (sub smallestInt 1 == 9223372036854775807)
+      && (mul 9223372036854775807 2 == 0 - 2))
+
+
+floatArithmeticIsIEEE : Test
+floatArithmeticIsIEEE =
+  Test.check
+    ((0.1 + 0.2 > 0.3) && (10.0 ^ 308.0 * 10.0 == 1.0 / 0.0) && isNaN (0.0 / 0.0 + 1.0))
+
+
+double : Number a => a -> a
+double x =
+  add x x
+
+
+aFunctionConstrainedByNumberWorksAtBothTypes : Test
+aFunctionConstrainedByNumberWorksAtBothTypes =
+  Test.check ((double 21 == 42) && (double 1.25 == 2.5))
+
+
+operatorsAreTheMembers : Test
+operatorsAreTheMembers =
+  Test.check
+    ((40 + 2 == add 40 2) && (40 - 2 == sub 40 2) && (6 * 7 == mul 6 7) && (3 ^ 2 == pow 3 2)
+      && (1.5 + 2.25 == add 1.5 2.25) && (2.0 ^ 3.0 == pow 2.0 3.0))
+
+
+-- `degrees` and `turns` multiply two `Float`s, and `toPolar` and `fromPolar` add and
+-- multiply them: each aborted on every call while arithmetic went through the `Int` facade.
+degreesAndTurnsAreFloatArithmetic : Test
+degreesAndTurnsAreFloatArithmetic =
+  Test.check
+    ((degrees 180.0 == pi) && (turns 0.5 == pi) && (toPolar (3.0, 4.0) == (5.0, atan2 4.0 3.0))
+      && (fromPolar (0.0, 1.0) == (0.0, 0.0)))

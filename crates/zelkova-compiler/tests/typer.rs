@@ -1834,10 +1834,11 @@ fn a_nested_constructor_of_the_wrong_type_is_a_type_error() {
 fn interfaces_with_task() -> HashMap<Name, zelkova_compiler::Interface> {
     let source = include_str!("../../../std/core/src/Task.zel");
     let core = zelkova_compiler::PackageName::new("zelkova-core").unwrap();
-    let task = check_module(&core, &HashMap::new(), &parse_source(source))
+    let mut interfaces = core_basics_interfaces();
+    let task = check_module(&core, &interfaces, &parse_source(source))
         .unwrap_or_else(|error| panic!("expected Task.zel to check, got {:?}", error));
 
-    let mut interfaces = HashMap::from([basics_interface(), char_interface()]);
+    interfaces.insert(char_interface().0, char_interface().1);
     interfaces.insert(task.canonical.name.name().clone(), task.to_interface(None));
     interfaces
 }

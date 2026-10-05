@@ -3,7 +3,8 @@
 **Sizing:** small — three doc comments in one file, and no code changes.
 
 **Location:** `std/core/src/Basics.zel` — the doc comments on `(&&)`/`and`, on `(||)`/`or`, on
-`type Int`, and on `(==)`/`eq`.
+`type Int`, and on `(==)`/`eq`. `LANG-42` replaced the last when `eq` became a member of
+`Eq`, and the comment on `Eq` says what the language does, so two of the three remain.
 
 **Decided ([`docs/spec/evaluation-semantics.md`](../spec/evaluation-semantics.md)):** three
 rules, each contradicted by one of those comments.
@@ -48,11 +49,9 @@ at the chapter rather than restating the reasoning —
 `docs/spec/evaluation-semantics.md` is the normative record and two records of one decision means
 the unmaintained one is what someone eventually reads.
 
-Two neighbours are already correct and should not be swept in. `eq`'s *first* note — that
-equality is structural on tuples and user-defined union types — is what the language says
-structural instances compute, so it stays. And the `(+)`-family comments about `a` not being the
-restriction it looks like are [`BUG-20`](bug-20.md)'s and
-[`docs/spec/type-classes.md`](../spec/type-classes.md)'s subject, not this ticket's.
+One neighbour is already correct and should not be swept in: the note on `Eq` that equality is
+structural on tuples and user-defined union types is what the language says structural instances
+compute, so it stays.
 
 **Note — this ticket has no red test behind it.** Every claim it corrects is in a doc comment,
 which nothing in the test suite reads, and the chapter's own `**Known gap:**` for the

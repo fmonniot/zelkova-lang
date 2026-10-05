@@ -1,5 +1,6 @@
 module foreign Js.Basics exposing
   ( addInt, addFloat, subInt, subFloat, fdiv, idiv, mulInt, mulFloat, powInt, powFloat
+  , negateInt, negateFloat, absInt, absFloat
   , toFloat, round, floor, ceiling, truncate
   , not, and, or, xor
   , modBy, remainderBy, sqrt, log, e
@@ -15,12 +16,11 @@ will contains the actual implementation of this module.
 -}
 
 
--- `add`, `sub`, `mul` and `pow` used to be declared over a bare `a`, which
--- reads as the numeric type class the language does not have yet
--- (`docs/spec/type-classes.md`). A `module foreign` facade signature may not
--- name a type variable at all (`docs/spec/interop.md#what-a-facade-signature-may-not-name`,
--- `LANG-43`), so each is one monomorphic facade per type its companion really
--- handles — `Basics.zel` picks between the two.
+-- `Number`'s members, one facade per type that has an instance. A `module foreign`
+-- facade signature may not name a type variable or carry a constraint
+-- (`docs/spec/interop.md#what-a-facade-signature-may-not-name`), so the class and
+-- its two instances live in `Basics.zel` and each instance forwards to the facade
+-- at its own type.
 unsafe addInt : Int -> Int -> Int
 unsafe addFloat : Float -> Float -> Float
 unsafe subInt : Int -> Int -> Int
@@ -31,6 +31,10 @@ unsafe fdiv : Float -> Float -> Float
 unsafe idiv : Int -> Int -> Int
 unsafe powInt : Int -> Int -> Int
 unsafe powFloat : Float -> Float -> Float
+unsafe negateInt : Int -> Int
+unsafe negateFloat : Float -> Float
+unsafe absInt : Int -> Int
+unsafe absFloat : Float -> Float
 
 unsafe toFloat : Int -> Float
 unsafe round : Float -> Int

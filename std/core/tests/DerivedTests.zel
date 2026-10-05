@@ -1,0 +1,139 @@
+-- Instances `derived` beside a type, used from a module that is neither the one
+-- declaring the class nor the one declaring the type (`Shade`'s is the second, `Basics`
+-- the first), and a class of this module's own whose derivation reads `Position`. Each
+-- test would fail to check, not only to pass, were the instance not in scope here.
+module DerivedTests exposing
+  ( shadesAreEqualByConstructorAndArguments
+  , shadesAreOrderedByWhereTheirConstructorsAreDeclared
+  , shadesWithTheSameConstructorAreOrderedByArguments
+  , minAndMaxWorkOnADerivedType
+  , aTupleOfDerivedTypesIsOrdered
+  , aPositionIsTheIndexOfItsConstructor
+  , aDerivedOrderRespectsTheOrderOfTheVariants
+  , aDeeplyNestedValueIsComparedToItsLeaf
+  )
+
+import Basics exposing (..)
+import Shade exposing (Shade(..), lightness)
+import Test exposing (Test)
+
+
+shadesAreEqualByConstructorAndArguments : Test
+shadesAreEqualByConstructorAndArguments =
+  Test.check
+    ((Dark == Dark) && (Mid 1 == Mid 1) && (Light 1 2 == Light 1 2)
+      && not (Mid 1 == Mid 2) && not (Light 1 2 == Light 2 1) && not (Dark == Mid 0))
+
+
+-- `Dark` is declared first and `Light` last.
+shadesAreOrderedByWhereTheirConstructorsAreDeclared : Test
+shadesAreOrderedByWhereTheirConstructorsAreDeclared =
+  Test.check
+    ((compare Dark (Mid 9) == LT) && (compare (Mid 9) Dark == GT) && (compare (Mid 9) (Light 0 0) == LT)
+      && (compare (Light 0 0) Dark == GT) && (compare Dark Dark == EQ))
+
+
+-- The first argument that differs decides, not the sum `lightness` would give.
+shadesWithTheSameConstructorAreOrderedByArguments : Test
+shadesWithTheSameConstructorAreOrderedByArguments =
+  Test.check
+    ((compare (Mid 1) (Mid 2) == LT) && (compare (Mid 2) (Mid 2) == EQ)
+      && (compare (Light 1 9) (Light 2 0) == LT) && (compare (Light 1 2) (Light 1 3) == LT)
+      && (lightness (Light 1 9) > lightness (Light 2 0)))
+
+
+minAndMaxWorkOnADerivedType : Test
+minAndMaxWorkOnADerivedType =
+  Test.check
+    ((min (Mid 3) Dark == Dark) && (max (Mid 3) Dark == Mid 3) && (max (Mid 3) (Light 0 0) == Light 0 0)
+      && (Mid 1 < Mid 2) && (Light 0 0 >= Mid 9))
+
+
+aTupleOfDerivedTypesIsOrdered : Test
+aTupleOfDerivedTypesIsOrdered =
+  Test.check
+    ((compare (Dark, 1) (Dark, 2) == LT) && (compare (Mid 1, 0) (Dark, 9) == GT)
+      && ((Dark, Mid 1) == (Dark, Mid 1)))
+
+
+type Tag
+  = First
+  | Second
+  | Third Tag
+
+
+-- A derivation over one value: each constructor answers its own position, and the
+-- answers of the arguments are added on.
+class Numbered a where
+  numbered : a -> Int
+
+  derived numbered
+    atConstructor p =
+      positionIndex p
+
+    combine x y =
+      add x y
+
+
+instance Numbered Tag where
+  derived
+
+
+aPositionIsTheIndexOfItsConstructor : Test
+aPositionIsTheIndexOfItsConstructor =
+  Test.check
+    ((numbered First == 0) && (numbered Second == 1) && (numbered (Third First) == 2)
+      && (numbered (Third (Third Second)) == 5))
+
+
+type Rank
+  = Low
+  | High
+
+
+instance Eq Rank where
+  derived
+
+
+instance Comparable Rank where
+  derived
+
+
+-- Reordering a type's variants changes what a derived `compare` answers, which is what
+-- `Rank` and `Tag` differ by here: `Low` is declared before `High`.
+aDerivedOrderRespectsTheOrderOfTheVariants : Test
+aDerivedOrderRespectsTheOrderOfTheVariants =
+  Test.check ((Low < High) && (High > Low) && (compare Low High == LT) && (compare High Low == GT))
+
+
+type Chain
+  = End
+  | Link Int Chain
+
+
+instance Eq Chain where
+  derived
+
+
+instance Comparable Chain where
+  derived
+
+
+-- `count` links of `7`, the last holding `last` instead: two chains built with the same
+-- `count` and different `last`s differ only at the innermost value.
+chain : Int -> Int -> Chain
+chain count last =
+  if count == 1 then
+    Link last End
+  else
+    Link 7 (chain (count - 1) last)
+
+
+-- The walk is the instance's own code, so a value is as deep as the stack allows and no
+-- deeper than the walk itself says: a hundred and fifty links is past where a companion
+-- that walked an object's keys with a recursion limit of a hundred used to give up.
+aDeeplyNestedValueIsComparedToItsLeaf : Test
+aDeeplyNestedValueIsComparedToItsLeaf =
+  Test.check
+    ((chain 150 1 == chain 150 1) && not (chain 150 1 == chain 150 2)
+      && (compare (chain 150 1) (chain 150 2) == LT) && (compare (chain 150 2) (chain 150 1) == GT))

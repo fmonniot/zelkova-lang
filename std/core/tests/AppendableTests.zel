@@ -1,0 +1,48 @@
+-- `Appendable` at its one instance, `String`, and `++`, which is its member. `List`
+-- joins it when lists exist.
+module AppendableTests exposing
+  ( appendJoinsTwoStrings
+  , appendKeepsTheOrderOfItsArguments
+  , anEmptyStringIsAnIdentity
+  , theOperatorIsTheMember
+  , appendAssociates
+  , aFunctionConstrainedByAppendableWorksAtString
+  )
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+appendJoinsTwoStrings : Test
+appendJoinsTwoStrings =
+  Test.equal (append "hello" "world") "helloworld"
+
+
+appendKeepsTheOrderOfItsArguments : Test
+appendKeepsTheOrderOfItsArguments =
+  Test.check (("ab" ++ "cd" == "abcd") && not ("ab" ++ "cd" == "cdab"))
+
+
+anEmptyStringIsAnIdentity : Test
+anEmptyStringIsAnIdentity =
+  Test.check (("" ++ "a" == "a") && ("a" ++ "" == "a") && ("" ++ "" == ""))
+
+
+theOperatorIsTheMember : Test
+theOperatorIsTheMember =
+  Test.equal ("x" ++ "y") (append "x" "y")
+
+
+appendAssociates : Test
+appendAssociates =
+  Test.equal (("a" ++ "b") ++ "c") ("a" ++ ("b" ++ "c"))
+
+
+twice : Appendable a => a -> a
+twice x =
+  append x x
+
+
+aFunctionConstrainedByAppendableWorksAtString : Test
+aFunctionConstrainedByAppendableWorksAtString =
+  Test.equal (twice "ab") "abab"

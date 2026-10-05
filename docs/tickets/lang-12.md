@@ -11,7 +11,7 @@ annotation into one ordinary `Constraint` against the body's inferred type;
 source becomes a fresh **unification** variable; and the discharge of a class obligation
 [LANG-40](README.md) added, whose *given* constraints are on those same variables.
 
-**Depends on:** [LANG-42](lang-42.md). **This ticket closes [the type-class
+**Depends on:** [LANG-42](README.md). **This ticket closes [the type-class
 order](README.md#active-work-type-classes)**, where it used to open it
 ([`DEC-24` decision 10](../decisions/dec-24.md#10--lang-12-closes-the-order-instead-of-opening-it)).
 Until `LANG-42`, `std/core`'s `Basics` holds thirteen declarations this ticket rejects —
@@ -112,12 +112,11 @@ Two things must keep checking, and are the real test of the change:
   `f : a -> a` with a body of `Small` — goes red by itself: it is `expect=ok`, and that means
   the block type checks. Retag it `expect=type-error:` with the kind the new error carries, and
   delete the `**Known gap:**` paragraph beside it.
-- The `double` block in [`docs/spec/expressions.md`](../spec/expressions.md) **will not go
-  red**, and [SPEC-36](spec-36.md) is the ticket about why. With this ticket landed the failure
-  its paragraph describes is finally available: give the block a class with a `mul` member and
-  an `Int` instance, and `mul x 2` under `Number a => a -> a` is the error the paragraph
-  claims. Retag it `expect=type-error:` with the same kind, delete the paragraph's
-  `**Not implemented:**` half, and close `SPEC-36` with this ticket.
+- The `double` block in [`docs/spec/expressions.md`](../spec/expressions.md) goes red by itself:
+  `std/core` declares `Number` and `mul`, so it is `expect=ok` under a `**Known gap:**`
+  paragraph, and `mul x 2` under `Number a => a -> a` is the error that paragraph says it
+  should be. Retag it `expect=type-error:` with the kind the new error carries, delete the
+  paragraph, and close [SPEC-36](spec-36.md) with this ticket.
 - [`docs/spec/type-classes.md`](../spec/type-classes.md), *Numeric literals*, makes the same
   claim in prose and needs no change.
 

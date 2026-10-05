@@ -21,7 +21,7 @@ would have reached this failure next.
 and that once [LANG-40](README.md) did, the declaration would be an error because `mul x 2` forces
 `a` to be `Int`. `LANG-40` has landed and the declaration is still accepted: the paragraph now
 names [LANG-12](lang-12.md), whose rigid variables are what make `a := Int` an error, and
-[LANG-42](lang-42.md), which declares `Number`. The tag exists so the block goes red the day that
+`LANG-42`, which declares `Number`. The tag exists so the block goes red the day that
 is true. It fails today for a different reason. `cargo test --test spec -- --nocapture` prints
 
 ```
@@ -45,6 +45,13 @@ implemented now".
    that would have told whoever lands `LANG-40` to revisit the paragraph.
 3. **Give the stand-in `Basics` a `mul`**, so the block reaches the type checker. That is not
    enough by itself for the reason above, and it widens a helper every chapter compiles against.
+
+**Status:** `LANG-42` took the third option by a different road: the stand-in `Basics` is now
+`std/core`'s own, less its operators, so `mul` and `Number` resolve and the block reaches the type
+checker. It compiles cleanly, as the second paragraph of **Problem** predicted, so it is
+`expect=ok` under a **Known gap:** paragraph that names `LANG-12` and says the declaration should
+be an error. It goes red the day `LANG-12` lands, which is what the tag was for. What is left is
+`LANG-12`'s retag, which its acceptance already carries.
 
 **Acceptance:** the block's tag and the paragraph agree about why it does not hold today.
 `cargo test --test spec -- --nocapture` names, for that block, the failure the paragraph gives (or

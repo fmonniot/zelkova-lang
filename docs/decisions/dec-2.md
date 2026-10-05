@@ -123,7 +123,7 @@ The second half survives — nothing defaults, and the compiler knows no class b
 
 `Eq`, `Comparable` (with `Eq` as its superclass), `Number`, `Appendable`. `Eq` is in the set
 because it is the one whose runtime genuinely crashes today: `_Utils_eqHelp` calls
-`__Debug_crash(5)` on a function value. [`LANG-42`](../tickets/lang-42.md) is the ticket.
+`__Debug_crash(5)` on a function value. [`LANG-42`](../tickets/README.md) is the ticket.
 
 ## 10 — `std/core` keeps `SPEC-11`'s rewrite to `a`
 

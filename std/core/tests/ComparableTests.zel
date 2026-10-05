@@ -1,0 +1,157 @@
+-- `Comparable` at each type `std/core` declares an instance for, the functions built
+-- over `compare`, and a `nan`. `Position` is left out: nothing outside `Basics` builds
+-- one, and `DerivedTests` reaches its instance through a type that derives `Comparable`.
+module ComparableTests exposing
+  ( intsAreOrdered
+  , floatsAreOrdered
+  , charsAreOrderedByCodePoint
+  , stringsAreOrderedByCodePoint
+  , stringsAreOrderedLexicographically
+  , pairsAreOrderedElementWise
+  , triplesAreOrderedElementWise
+  , nanIsOrderedAgainstNothing
+  , compareAnswersGreaterForNan
+  , nanInAPairDecidesWhereItSits
+  , lessAndGreaterAreFlippedOnEachOther
+  , atMostAndAtLeastHoldOnEqualValues
+  , minAndMaxPickAnInt
+  , minAndMaxPickAString
+  , minAndMaxPickAFloat
+  , minAndMaxOfEqualValuesAreThatValue
+  , clampKeepsAValueWithinItsBounds
+  , orderingIsAnInstanceOfEq
+  )
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+nan : Float
+nan =
+  0.0 / 0.0
+
+
+intsAreOrdered : Test
+intsAreOrdered =
+  Test.check
+    ((compare 3 4 == LT) && (compare 4 4 == EQ) && (compare 5 4 == GT)
+      && (compare 9223372036854775807 (0 - 9223372036854775807 - 1) == GT))
+
+
+floatsAreOrdered : Test
+floatsAreOrdered =
+  Test.check
+    ((compare 1.5 2.5 == LT) && (compare 2.5 2.5 == EQ) && (compare 3.5 2.5 == GT)
+      && (compare (0.0 - 1.0 / 0.0) (1.0 / 0.0) == LT))
+
+
+-- U+E000 is one UTF-16 unit and U+10000 is two, both below it, so ordering by unit
+-- puts them the wrong way round. A character literal has no escape sequence yet, so
+-- each is written as itself.
+charsAreOrderedByCodePoint : Test
+charsAreOrderedByCodePoint =
+  Test.check
+    ((compare 'a' 'b' == LT) && (compare 'b' 'b' == EQ) && (compare 'c' 'b' == GT)
+      && (compare '' '𐀀' == LT) && (compare '😀' '𐀀' == GT))
+
+
+stringsAreOrderedByCodePoint : Test
+stringsAreOrderedByCodePoint =
+  Test.check
+    ((compare "a\u{E000}" "a\u{10000}" == LT) && (compare "a\u{10000}" "a\u{E000}" == GT))
+
+
+stringsAreOrderedLexicographically : Test
+stringsAreOrderedLexicographically =
+  Test.check
+    ((compare "abc" "abd" == LT) && (compare "abc" "abc" == EQ) && (compare "abd" "abc" == GT)
+      && (compare "ab" "abc" == LT) && (compare "" "a" == LT))
+
+
+-- The first pair that differs decides, whatever the pairs after it say.
+pairsAreOrderedElementWise : Test
+pairsAreOrderedElementWise =
+  Test.check
+    ((compare (1, 2) (1, 3) == LT) && (compare (1, 2) (1, 2) == EQ) && (compare (2, 0) (1, 9) == GT)
+      && (compare (1, "b") (1, "a") == GT) && (compare (0, 9) (1, 0) == LT))
+
+
+triplesAreOrderedElementWise : Test
+triplesAreOrderedElementWise =
+  Test.check
+    ((compare (1, 2, 3) (1, 2, 4) == LT) && (compare (1, 2, 3) (1, 2, 3) == EQ)
+      && (compare (1, 3, 0) (1, 2, 9) == GT) && (compare (0, 9, 9) (1, 0, 0) == LT))
+
+
+-- A `nan` is unordered against everything, itself included, whichever side it is on:
+-- all four operators answer `False`.
+nanIsOrderedAgainstNothing : Test
+nanIsOrderedAgainstNothing =
+  Test.check
+    (not (nan < 1.5) && not (nan <= 1.5) && not (nan > 1.5) && not (nan >= 1.5)
+      && not (1.5 < nan) && not (1.5 <= nan) && not (1.5 > nan) && not (1.5 >= nan)
+      && not (nan < nan) && not (nan <= nan) && not (nan > nan) && not (nan >= nan))
+
+
+compareAnswersGreaterForNan : Test
+compareAnswersGreaterForNan =
+  Test.check ((compare nan 1.5 == GT) && (compare 1.5 nan == GT) && (compare nan nan == GT))
+
+
+nanInAPairDecidesWhereItSits : Test
+nanInAPairDecidesWhereItSits =
+  Test.check
+    (not ((nan, 1) < (nan, 2)) && not ((1.0, nan) >= (1.0, nan)) && ((1.0, nan) < (2.0, nan)))
+
+
+lessAndGreaterAreFlippedOnEachOther : Test
+lessAndGreaterAreFlippedOnEachOther =
+  Test.check
+    ((1 < 2) && not (2 < 1) && (2 > 1) && not (1 > 2) && not (1 < 1) && not (1 > 1)
+      && ("a" < "b") && ("b" > "a"))
+
+
+atMostAndAtLeastHoldOnEqualValues : Test
+atMostAndAtLeastHoldOnEqualValues =
+  Test.check
+    ((1 <= 1) && (1 <= 2) && not (2 <= 1) && (1 >= 1) && (2 >= 1) && not (1 >= 2)
+      && ('a' <= 'a') && ((1, 2) >= (1, 2)))
+
+
+minAndMaxPickAnInt : Test
+minAndMaxPickAnInt =
+  Test.check ((min 42 12345678 == 42) && (max 42 12345678 == 12345678) && (min 7 3 == 3) && (max 7 3 == 7))
+
+
+minAndMaxPickAString : Test
+minAndMaxPickAString =
+  Test.check ((min "abc" "xyz" == "abc") && (max "abc" "xyz" == "xyz"))
+
+
+minAndMaxPickAFloat : Test
+minAndMaxPickAFloat =
+  Test.check ((min 1.5 2.5 == 1.5) && (max 1.5 2.5 == 2.5) && (min nan 1.5 == 1.5) && (max nan 1.5 == 1.5))
+
+
+minAndMaxOfEqualValuesAreThatValue : Test
+minAndMaxOfEqualValuesAreThatValue =
+  Test.check ((min 1 1 == 1) && (max 1 1 == 1) && (min "a" "a" == "a"))
+
+
+clampKeepsAValueWithinItsBounds : Test
+clampKeepsAValueWithinItsBounds =
+  Test.check
+    ((clamp 100 200 50 == 100) && (clamp 100 200 150 == 150) && (clamp 100 200 250 == 200)
+      && (clamp 1.5 2.5 3.5 == 2.5))
+
+
+-- `Comparable` has `Eq` as its superclass, so a function constrained by the one reaches
+-- the other's member.
+orderingIsAnInstanceOfEq : Test
+orderingIsAnInstanceOfEq =
+  Test.check (sameWhenOrdered 3 3 && not (sameWhenOrdered "a" "b"))
+
+
+sameWhenOrdered : Comparable a => a -> a -> Bool
+sameWhenOrdered x y =
+  eq x y

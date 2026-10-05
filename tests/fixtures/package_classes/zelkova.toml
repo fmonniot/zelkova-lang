@@ -1,5 +1,5 @@
 # The fixture `tests/js/ClassChecks.mjs` compiles, loads and runs `zelkova test` against: a program
-# that declares its own classes and uses them, since `std/core` has none until `LANG-42`.
+# that declares its own classes and uses them, beside the ones `std/core` declares.
 # `src/Classes.zel` declares the classes `Same` and `Ranked`, an instance of each for the scalars
 # and the tuples, and the constrained functions that use them; `src/Colour.zel` declares a type
 # and its instances, in a module of its own; `src/Tags.zel` an instance with a point-free member and

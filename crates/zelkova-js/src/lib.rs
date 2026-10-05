@@ -129,9 +129,10 @@
 //!   is.
 //!
 //! [Equality is structural](../docs/spec/evaluation-semantics.md#what-structural-equality-computes),
-//! and until `LANG-42` replaces the forwarding it is `Js.Utils`'s companion walking an
-//! object's keys, so two records of this representation compare field by field, whatever
-//! order their fields were written in.
+//! and `==` is `Eq`'s member, which a derived instance computes by walking a union's
+//! arguments and a tuple's elements. A record has no instance yet, so `ir::specialise`
+//! refuses an `Eq` obligation at one and no `==` over a record is emitted
+//! ([`LANG-85`](../docs/tickets/lang-85.md)).
 //!
 //! A constructor is not exported. An importer that builds one builds its own object of
 //! the same shape, and hoists its own constant for one of no arguments. [Equality is

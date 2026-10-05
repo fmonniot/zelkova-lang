@@ -81,7 +81,7 @@
 //! `package=` is a package of one.
 //!
 //! Either way the package is compiled against one interface it did not write —
-//! [`stdlib_interfaces`]'s stand-in `Basics`, which is what puts the scalar type
+//! [`stdlib_interfaces`]'s `Basics`, which is what puts the scalar type
 //! names in a chapter's reach — and as the package [`package_of`] names: `zelkova-core`
 //! for one declaring a module the default imports name, whose `Basics` is then where
 //! the scalars are declared, and an ordinary package otherwise.
@@ -129,6 +129,7 @@
 //! already caught a drift.
 
 use std::path::Path;
+use std::sync::OnceLock;
 
 use std::collections::{HashMap, HashSet};
 
@@ -198,26 +199,41 @@ fn block_interfaces(module: &parser::Module) -> HashMap<Name, Interface> {
     stdlib_interfaces(std::slice::from_ref(&module.name))
 }
 
-/// `Basics` as a stand-in [`Interface`], so a chapter may name `Int`, `Float` or
-/// `Bool` the way one is named in a real module.
+/// `std/core`'s `Basics`, with the modules it is built over, as the one standard-library
+/// interface a block is compiled against — so a chapter may name `Int`, `Float` or `Bool` the way
+/// one is named in a real module, and the classes, `Position` and the functions `Basics`
+/// declares are in reach too.
 ///
-/// A block is compiled against the interfaces of its own `package=` group and
-/// nothing else, so without this the standard library does not exist for it and
-/// [the default imports](../docs/spec/modules.md#the-default-imports) have
-/// nothing to bring in. `Basics` is the only one needed: it declares three of the
-/// five [scalar types](../docs/spec/types.md#scalar-types), and the other two
-/// reach a block declaring one of the eight through the seeding that block's own
-/// package gets.
+/// A block is compiled against the interfaces of its own `package=` group and nothing else, so
+/// without this the standard library does not exist for it and [the default
+/// imports](../docs/spec/modules.md#the-default-imports) have nothing to bring in. `Basics` is
+/// the only one needed: it declares three of the five [scalar
+/// types](../docs/spec/types.md#scalar-types), and the other two reach a block declaring one of
+/// the eight through the seeding that block's own package gets.
+///
+/// It is the real module with one thing taken out, its operators. Several chapters show what a
+/// module does with an operator no `infix` declaration binds — `a + b` is an unresolved name,
+/// and `exposing ((+))` an export with nothing behind it — and neither claim has an example once
+/// `Basics` brings `+` into scope. A block that wants an operator declares it, as those blocks do.
 ///
 /// `declared` is every module the block or group declares. A group writing its
 /// own `Basics` is the package the eight default imports belong to, so it gets
 /// neither the implicit imports nor a stand-in for the module it declares
 /// itself.
 fn stdlib_interfaces(declared: &[Name]) -> HashMap<Name, Interface> {
-    vec![support::basics_interface()]
-        .into_iter()
-        .filter(|(name, _)| !declared.contains(name))
-        .collect()
+    static CORE: OnceLock<HashMap<Name, Interface>> = OnceLock::new();
+    CORE.get_or_init(|| {
+        let mut interfaces = support::core_basics_interfaces();
+        if let Some(basics) = interfaces.get_mut(&Name::from("Basics")) {
+            basics.infixes.clear();
+            basics.infix_functions.clear();
+        }
+        interfaces
+    })
+    .iter()
+    .filter(|(name, _)| !declared.contains(name))
+    .map(|(name, interface)| (name.clone(), interface.clone()))
+    .collect()
 }
 
 /// The phases are called one at a time rather than through

@@ -13,6 +13,10 @@ type Flag
   | Off
 
 
+instance Eq Flag where
+  derived
+
+
 always : () -> Flag
 always () =
   On

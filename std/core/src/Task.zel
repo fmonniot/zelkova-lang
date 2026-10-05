@@ -21,6 +21,9 @@ the facades that declare an effect.
 -}
 
 
+import Basics exposing (Eq)
+
+
 {-| Work that produces an `a` when it is run. It holds a function that is handed a
 continuation and calls it with the result, now or later.
 -}
@@ -55,6 +58,10 @@ of the export that returned the bad value.
 type Failure
   = Threw String
   | Malformed String
+
+
+instance Eq Failure where
+  derived
 
 
 {-| A `Task` that produces the given value as soon as it is run. -}

@@ -1,8 +1,7 @@
 module foreign Js.Utils exposing
-  ( equalInt, equalFloat, notEqualInt, notEqualFloat
-  , ltInt, ltFloat, leInt, leFloat, gtInt, gtFloat, geInt, geFloat
-  , compareInt, compareFloat
-  , appendInt, appendFloat
+  ( equalInt, equalFloat, equalChar, equalString
+  , ltInt, ltFloat, ltChar, ltString
+  , appendString
   )
 
 {-| Interop module between Zelkova and Javascript.
@@ -10,30 +9,28 @@ module foreign Js.Utils exposing
 A `Utils.mjs` file should be defined next to this file. It
 will contains the actual implementation of this module.
 
+Each facade here handles one type, and `Basics.zel` is where the classes `Eq`,
+`Comparable` and `Appendable` choose between them: an instance forwards each of its
+members to the facade at its own type. A facade signature may not name a type
+variable or carry a constraint
+(`docs/spec/interop.md#what-a-facade-signature-may-not-name`), so there is no
+facade that serves several types.
 -}
 
 
--- Every signature here used to be declared over a bare `a`, which is exactly
--- what `docs/spec/interop.md#what-a-facade-signature-may-not-name` rejects: a
--- facade signature may not name a type variable, because no target has a
--- predicate or a WIT spelling for one (`LANG-43`, `BUG-20`). Each becomes one
--- monomorphic facade per type its companion really handles; `Basics.zel`
--- picks between the two.
+-- `Eq`'s members, one per scalar type. A `Float` is compared the way IEEE 754
+-- compares it: `nan` equals nothing, itself included, and `0.0` equals `-0.0`.
 unsafe equalInt : Int -> Int -> Bool
 unsafe equalFloat : Float -> Float -> Bool
-unsafe notEqualInt : Int -> Int -> Bool
-unsafe notEqualFloat : Float -> Float -> Bool
+unsafe equalChar : Char -> Char -> Bool
+unsafe equalString : String -> String -> Bool
 
-unsafe ltInt: Int -> Int -> Bool
-unsafe ltFloat: Float -> Float -> Bool
-unsafe leInt: Int -> Int -> Bool
-unsafe leFloat: Float -> Float -> Bool
-unsafe gtInt: Int -> Int -> Bool
-unsafe gtFloat: Float -> Float -> Bool
-unsafe geInt: Int -> Int -> Bool
-unsafe geFloat: Float -> Float -> Bool
-unsafe compareInt: Int -> Int -> Int
-unsafe compareFloat: Float -> Float -> Int
+-- `Comparable`'s instances are written over these and `equal*`: `a < b` is a call
+-- to one of them and nothing else, which is also how a `nan` is unordered against
+-- everything. A `Char` and a `String` are ordered by code point.
+unsafe ltInt : Int -> Int -> Bool
+unsafe ltFloat : Float -> Float -> Bool
+unsafe ltChar : Char -> Char -> Bool
+unsafe ltString : String -> String -> Bool
 
-unsafe appendInt : Int -> Int -> Int
-unsafe appendFloat : Float -> Float -> Float
+unsafe appendString : String -> String -> String

@@ -1,0 +1,34 @@
+-- A type declared apart from the tests that compare it, with its `Eq` and `Comparable`
+-- instances derived beside it. `DerivedTests` imports it and uses both without naming
+-- either instance: an instance reaches every module that imports the one declaring it.
+-- It exposes no `Test`, so the runner finds nothing here to run.
+module Shade exposing (Shade(..), lightness)
+
+import Basics exposing (..)
+
+
+type Shade
+  = Dark
+  | Mid Int
+  | Light Int Int
+
+
+instance Eq Shade where
+  derived
+
+
+instance Comparable Shade where
+  derived
+
+
+lightness : Shade -> Int
+lightness shade =
+  case shade of
+    Dark ->
+      0
+
+    Mid n ->
+      n
+
+    Light a b ->
+      a + b

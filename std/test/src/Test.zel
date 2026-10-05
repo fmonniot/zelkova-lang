@@ -35,10 +35,10 @@ type Test
 
     equal (1 + 2) 3
 
-`==` compares structurally at run time even though its type, `a -> a -> Bool`, does
-not say so yet.
+The two arguments are compared with `==`, so their type has to have an `Eq` instance:
+a union type of your own declares one, usually `derived`, beside the type.
 -}
-equal : a -> a -> Test
+equal : Eq a => a -> a -> Test
 equal expected actual =
   check (expected == actual)
 

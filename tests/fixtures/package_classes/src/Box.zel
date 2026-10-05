@@ -30,6 +30,10 @@ confirmed verdict =
       False
 
 
+instance Eq (Box a) where
+  derived
+
+
 instance Same a => Same (Box a) where
   same (Box x) (Box y) =
     confirmed (same x y)
