@@ -1133,8 +1133,11 @@ fn a_char_pattern_is_tested_by_equality() {
 ///
 /// Mutation-checked by removing the `Float` arm from `typer::translate_pattern`: the
 /// module then has no IR and `emitted` panics on the refusal. Having `test_condition`'s
-/// `Float` arm write the value as `{}` instead of through `float_literal` turns the `1.0`
-/// and `1e300` assertions red.
+/// `Float` arm write the value as `{}` instead of through `float_literal` turns the `1e23`
+/// and `Infinity` assertions red (`{}` prints `100000000000000000000000` and `inf`). The
+/// `0.1` and `2.0` assertions pin the text only: `{}` prints `2` for `2.0`, the same
+/// JavaScript number. That the printed value is the one Rust parsed is checked at runtime by
+/// `tests/js/LiteralPatternChecks.mjs`.
 #[test]
 fn a_float_pattern_is_tested_by_equality() {
     // Exponents are not tokenized, so a literal too large for binary64 is written out.

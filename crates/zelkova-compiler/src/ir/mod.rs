@@ -840,8 +840,8 @@ impl TermPattern {
 /// type, and only this says which value the scrutinee has to equal. A `Float` is equal
 /// to a scrutinee as IEEE 754 compares them ([What structural equality
 /// computes](../../../docs/spec/evaluation-semantics.md#what-structural-equality-computes)),
-/// so `0.0` equals `-0.0`; a literal is never `nan` or negative, so no pattern holds
-/// either, and a `nan` scrutinee equals none. A `Bool` is tested
+/// so `0.0` equals `-0.0`. The compiler accepts no negative pattern literal, so no
+/// pattern holds `-0.0`; no literal is `nan`, so a `nan` scrutinee equals none. A `Bool` is tested
 /// by its value too: `Basics`' own `True`/`False` constructors arrive here as a
 /// `Bool(..)`, never as a [`TermPatternKind::Constructor`] (`typer::translate_pattern`
 /// does the normalising).
