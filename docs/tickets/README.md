@@ -172,6 +172,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-20](err-20.md) | task | — | open | A body using a name a record pattern binds at the wrong type is reported at the pattern |
 | [ERR-21](err-21.md) | task | — | open | A four-element tuple type at the front of an annotation is reported as a missing `=>` |
 | [ERR-22](err-22.md) | task | — | open | A type error between a scalar and a same-named union spells both types alike |
+| [ERR-23](err-23.md) | task | — | open | An unknown constructor in a pattern is underlined with its arguments |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |

@@ -4,7 +4,7 @@
 one-file change* applies, though no new `PatternKind` is needed: `(Just x, y)` is a
 `PatternKind::Tuple` holding a `PatternKind::Constructor`, both of which exist. What could make
 it bigger is a conflict LALRPOP reports once `"(" … ")"` and the tuple alternatives all open on
-the same tier, and the span question in step 3.
+the same tier.
 
 **Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `Pattern`, `PatternField` and
 `CasePattern`, and the comment above `Pattern`, which cites *Patterns nest* for a rule that
@@ -42,12 +42,17 @@ error: unexpected token: `Comma`
    `Pattern*` take atoms. A tuple's elements, `PatternField`'s value, the inside of `"(" … ")"`
    and a `case` branch take whole patterns. `CasePattern` then has no alternative of its own
    left and goes.
-3. Decide what the `"(" QualTypeIdent Pattern+ ")"` alternative becomes. It is subsumed by a
-   parenthesised whole pattern, but its span covers the parentheses, which its comment says is
-   the extent `canonical::Error::VariantNotFound`'s caret sits under, while the plain
-   parenthesised alternative keeps the inner pattern's span. Either keep it as its own
-   alternative, if LALRPOP accepts the overlap, or let the caret move inside the parentheses
-   and update the tests that pin it. The ticket does not choose.
+3. Drop the `"(" QualTypeIdent Pattern+ ")"` alternative. A parenthesised whole pattern
+   subsumes it, and grouping builds no node, as in `AtomicExpr`: `(Circle n)` keeps the inner
+   pattern's span, `Circle n`, the span the bare form and `(Dot)` already have. The caret
+   `canonical::Error::VariantNotFound` draws for a parenthesised applied constructor therefore
+   moves inside the parentheses. Three tests in `crates/zelkova-syntax/tests/parser/patterns.rs`
+   pin the wider span and say so in their doc comments —
+   `an_applied_constructor_is_a_constructor_argument`,
+   `a_parenthesised_constructor_heads_a_case_branch` and `constructors_nest_in_a_parameter` —
+   and each is rewritten to the inner span, with its mutation note. Decided by the language
+   owner, 2026-10-06, over keeping the parentheses in the span for every parenthesised pattern
+   and over keeping them for an applied constructor alone.
 4. Rewrite the comment above `Pattern` to describe the two tiers and cite *Where a pattern is
    parenthesised*.
 
@@ -60,7 +65,8 @@ pattern, whichever of the two lands first. No ticket implements an as-pattern ye
 `PatternKind::Constructor` with one argument, and that `{ taken = Celsius t }` parses to a
 record pattern whose entry holds one, each seen red against the current grammar. A third
 asserts an argument position is unchanged: `Wrapper Circle n` in a `case` branch is `Wrapper`
-with two arguments. The `expect=unimplemented` blocks in [*Where a pattern is
+with two arguments. `(Circle n)` at a branch's head has the span of the text `Circle n`. The
+`expect=unimplemented` blocks in [*Where a pattern is
 parenthesised*](../spec/patterns.md#where-a-pattern-is-parenthesised) and in [*Record
 patterns*](../spec/records.md#record-patterns) go red and are retagged `expect=ok`, and their
 **Not implemented:** paragraphs go. `cargo test --workspace` is green.
