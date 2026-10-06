@@ -5,7 +5,7 @@ hold a parameter the walk does not supply. What could make it bigger is that eve
 (`matched`, `differed`, `atConstructor`, `combine`) takes the extra parameters, and a generated
 member then takes them as well.
 
-**Part of:** *Active work: type classes* in [the index](README.md), after `LANG-83`. Found in the
+**Part of:** the type-class work, after `LANG-83`. Found in the
 review of `LANG-83`'s PR, which kept the rejection because canonical code has no lambda.
 
 **Location:** `crates/zelkova-compiler/src/canonical/derivation.rs` — `class_derivations`, which

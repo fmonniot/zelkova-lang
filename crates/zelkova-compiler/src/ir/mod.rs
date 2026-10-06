@@ -318,14 +318,9 @@ pub struct Declaration {
     /// annotation, and for a facade signature.
     ///
     /// Read off the declaration's solved type, as the types on its nodes are: each
-    /// predicate's type is the variable the annotation constrained, with the final
-    /// substitution applied. That is a variable of [`tpe`](Self::tpe) as long as the body
-    /// left it one. When the body forces it to a concrete type, `min : Comparable a => a
-    /// -> a -> a` over a body that makes `a` an `Int`, `tpe` is `Int -> Int -> Int` and
-    /// the predicate is `Comparable Int`: the declaration was checked at `Int` and the
-    /// predicate is the one it discharged there. Its signature, which callers are checked
-    /// against, still says `Comparable a`
-    /// ([`LANG-12`](../../docs/tickets/lang-12.md) closes the difference).
+    /// predicate's type is the variable the annotation constrained. The annotation's
+    /// variables are rigid while the body is checked, so it is always a variable of
+    /// [`tpe`](Self::tpe).
     ///
     /// A superclass the context implies is not listed.
     pub context: Vec<Predicate>,

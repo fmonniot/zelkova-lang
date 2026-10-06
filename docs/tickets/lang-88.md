@@ -4,7 +4,7 @@
 there is nowhere to bind the rest of the walk without evaluating it. What could make it bigger is
 what the emitted JavaScript does with a helper per fold level.
 
-**Part of:** *Active work: type classes* in [the index](README.md), after `LANG-83`. Found in the
+**Part of:** the type-class work, after `LANG-83`. Found in the
 review of `LANG-83`'s PR, which measured it and did not bound it.
 
 **Location:** `crates/zelkova-compiler/src/canonical/derivation.rs` — `Generated::rewrite`, whose

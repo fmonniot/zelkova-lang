@@ -125,10 +125,28 @@ fn unify_one_constraint(constraint: &Constraint) -> Result<Substitution, ErrorKi
                 .collect();
             unify(constraints)
         }
+        // A rigid variable is equal to itself and, below, to nothing else.
+        (Type::Variable(left), Type::Variable(right)) if left == right => Ok(Substitution::empty()),
         // `Side` names where `tpe` was read from, not where the variable was: it is
-        // the solved *type* whose provenance the solution carries.
-        (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe, Side::Right, constraint),
-        (tpe, Type::Variable(tvar)) => unify_variable(tvar, tpe, Side::Left, constraint),
+        // the solved *type* whose provenance the solution carries. A flexible variable
+        // is solved to whatever it meets, a rigid one included; the guard is what keeps
+        // a rigid one from being solved at all.
+        (Type::Variable(tvar), tpe) if !tvar.is_rigid() => {
+            unify_variable(tvar, tpe, Side::Right, constraint)
+        }
+        (tpe, Type::Variable(tvar)) if !tvar.is_rigid() => {
+            unify_variable(tvar, tpe, Side::Left, constraint)
+        }
+        // What is left has a rigid variable on one side, and on the other anything that
+        // is not a flexible variable and not that same variable: a type it would have to
+        // be solved to, or another rigid variable.
+        (Type::Variable(rigid), tpe) | (tpe, Type::Variable(rigid)) => {
+            Err(ErrorKind::RigidVariable {
+                variable: rigid.spelling(),
+                tpe: Box::new(tpe.clone()),
+                origin: Box::new(constraint.origin.clone()),
+            })
+        }
         (left, right) => Err(ErrorKind::UnificationFailed {
             left: Box::new(left.clone()),
             right: Box::new(right.clone()),
@@ -470,9 +488,9 @@ mod tests {
 
     #[test]
     fn unifies_variables() {
-        let tvar1 = TypeVariable { id: 1 };
+        let tvar1 = TypeVariable::flexible(1);
         let t1 = Type::Variable(tvar1.clone());
-        let t2 = Type::Variable(TypeVariable { id: 2 });
+        let t2 = Type::Variable(TypeVariable::flexible(2));
 
         let constraints = vec![constraint(t1, t2.clone())];
 
@@ -484,7 +502,7 @@ mod tests {
 
     #[test]
     fn unifies_variable_with_literal() {
-        let tvar1 = TypeVariable { id: 1 };
+        let tvar1 = TypeVariable::flexible(1);
         let t1 = Type::Variable(tvar1.clone());
         let t2 = Type::Literal(TypeLiteral::Int);
 
@@ -498,8 +516,8 @@ mod tests {
 
     #[test]
     fn unifies_variables_in_functions() {
-        let tvar1 = TypeVariable { id: 1 };
-        let tvar2 = TypeVariable { id: 2 };
+        let tvar1 = TypeVariable::flexible(1);
+        let tvar2 = TypeVariable::flexible(2);
 
         let constraints = vec![constraint(
             // tvar1 -> bool
@@ -568,7 +586,7 @@ mod tests {
     /// unchanged: the explanation is then `None` and the assertion goes red.
     #[test]
     fn a_substituted_type_is_explained_by_the_constraint_that_solved_it() {
-        let t1 = Type::Variable(TypeVariable { id: 1 });
+        let t1 = Type::Variable(TypeVariable::flexible(1));
 
         let constraints = vec![
             Constraint::new(

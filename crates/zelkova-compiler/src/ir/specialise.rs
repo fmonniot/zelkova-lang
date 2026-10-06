@@ -66,10 +66,6 @@
 //! nothing a JavaScript module emits depends on it; two uses at one key in one module are one
 //! specialisation. The assignment is found by matching the types the declaration's
 //! [`context`](Declaration::context) is over against the ground ones the reference gave them.
-//! Where the declaration's body forced a constrained variable to a concrete type — the width
-//! of the hole an annotation has until
-//! [`LANG-12`](../../../docs/tickets/lang-12.md) — the context holds that type, there is no
-//! variable to bind, and the key is shorter by it.
 //!
 //! A member of an instance with a context is specialised at the ground types of the variables
 //! its own context constrains. They are found by reading the member's declared type against

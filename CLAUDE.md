@@ -116,7 +116,7 @@ from, beside the `ir::Module` a backend will read.
 | Parsing | `crates/zelkova-syntax/src/parser/grammar.lalrpop` | LALRPOP grammar → `parser::Module`. Compiled by `crates/zelkova-syntax/build.rs` |
 | Dependency resolution | `crates/zelkova-compiler/src/dependencies.rs` | petgraph; Tarjan SCC for cycles; yields a topological order |
 | Canonicalization | `crates/zelkova-compiler/src/canonical/` | resolves imports against `Interface`s, qualifies names, resolves classes and instances and holds each instance to the orphan rule, checks each class's derivations, gives a `derived` instance its inferred context and its generated members, validates exports → `canonical::Module` |
-| Type checking | `crates/zelkova-compiler/src/typer/` | Hindley–Milner: `annotate.rs` → `constraint.rs` → `unifier.rs`, then `classes.rs` answers the class obligations `unify` cannot answer on sight (its module doc comment is the account). **Wired into `check_module`** |
+| Type checking | `crates/zelkova-compiler/src/typer/` | Hindley–Milner: `annotate.rs` → `constraint.rs` → `unifier.rs`, then `classes.rs` answers the class obligations `unify` cannot answer on sight (its module doc comment is the account). An annotation's variables are **rigid** while its own body is checked, which `TypeVariable`'s doc comment in `typer/mod.rs` explains. **Wired into `check_module`** |
 | Exhaustiveness | `crates/zelkova-compiler/src/exhaustiveness.rs` | **stub** — `check` inspects nothing and accepts every module. `Error::NonExhaustiveMatch` exists and renders, but nothing constructs it yet |
 | Backend IR | `crates/zelkova-compiler/src/ir/` | the shape a backend reads: a type on every node, the four kinds of name apart, arity, saturation and a constructor's place in its declaration, and what a constrained name asks: a context on each reference and declaration, and a module's instances. `ir::build` turns the canonical module and what the typer solved into one `ir::Module`; `ir::specialise` then reads every module of the build and resolves each reference that carries obligations to an instance's member or to a specialisation of the using module (*Specialisation*, in `ir/specialise.rs`). Its module doc comment is where the WebAssembly constraints are written, and is what to read before changing the shape |
 | Code generation | `crates/zelkova-js/src/lib.rs`, `crates/zelkova-js/src/output.rs` | `zelkova_js::emit` turns one `CheckedModule` into the text of an ES module. Once the whole build has checked, `zelkova::compile_package` emits every module and writes them, the runtime and each facade's companion to `build/out/js/` beside the root manifest — or nothing, if anything failed; `zelkova-js`'s *Paths* section is the layout. It emits every module of `std/core`, `case` included, and an `unsafe` facade's forwarding code runs its companion's result through the predicate of the declared type (*The boundary check*); an effectful facade's call site builds a `Task` over the runtime's `$effect` (`Ok`, `Threw`, `Malformed`); a class is no code, an instance's member is a function of its own module, and a specialisation a function of the module that uses it (*Classes, instances and specialisations*); it refuses a facade with no companion, a facade result no predicate decides, a reference `ir::specialise` has not resolved, an instance the typer rejected, a module holding a declaration the typer could not check, and a declaration holding a name that did not resolve. Its module doc comment has the shape, the representations and the call rule |
@@ -241,12 +241,10 @@ divergence from Elm — parse but are rejected by canonicalization
 **Type classes**, without higher-kinded variables, are how a signature says what a type
 variable may be: [`docs/spec/type-classes.md`](docs/spec/type-classes.md) specifies the mechanism,
 [`DEC-2`](docs/decisions/dec-2.md) and [`DEC-24`](docs/decisions/dec-24.md) hold the decisions
-behind it, and *Active work: type classes* in
-[`docs/tickets/README.md`](docs/tickets/README.md) carries the tickets still open. `number`,
-`comparable` and `appendable` are ordinary type variables the compiler never special-cased; what
-they were meant to say is `Basics`' four classes, `Eq`, `Comparable`, `Number` and `Appendable`,
-whose instances are written beside them for the scalar types and derived for the rest. Read the
-chapter before touching any of it.
+behind it. `number`, `comparable` and `appendable` are ordinary type variables the compiler
+never special-cased; what they were meant to say is `Basics`' four classes, `Eq`, `Comparable`,
+`Number` and `Appendable`, whose instances are written beside them for the scalar types and
+derived for the rest. Read the chapter before touching any of it.
 
 A class and an instance parse, into `parser::ClassDecl` and `parser::InstanceDecl`, and
 canonicalization resolves them (`canonical/classes.rs`; its module doc comment is the account):
