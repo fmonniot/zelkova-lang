@@ -22,7 +22,7 @@ way to manage errors in Elm.
 @docs withDefault, toMaybe, fromMaybe, mapError
 -}
 
-import Basics exposing ( Bool(..) )
+import Basics exposing ( Bool(..), Eq )
 import Maybe exposing ( Maybe(..) )
 
 
@@ -32,6 +32,10 @@ import Maybe exposing ( Maybe(..) )
 type Result error value
     = Ok value
     | Err error
+
+
+instance Eq (Result error value) where
+  derived
 
 
 {-| If the result is `Ok` return the value, but if the result is an `Err` then

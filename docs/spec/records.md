@@ -498,3 +498,7 @@ type's instance in the ordinary way.
 
 [Structural equality](evaluation-semantics.md#what-structural-equality-computes) over two records
 is that walk with `Eq`'s answers filled in: equal when every field is equal.
+
+**Not implemented:** the walk has no code behind it ([`LANG-85`](../tickets/lang-85.md)). `==` on
+two records is accepted by the type checker and refused when the build specialises the program
+that uses it, so no program compares two records yet.

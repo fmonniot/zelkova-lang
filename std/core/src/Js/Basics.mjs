@@ -50,10 +50,22 @@ function pow(a, b) {
   return typeof a === 'bigint' ? BigInt.asIntN(64, a ** b) : Math.pow(a, b);
 }
 
+// `negate` and `abs` take one operand and dispatch the same way. The smallest `Int`
+// has no positive counterpart in 64 bits, so `negate` and `abs` of it wrap back
+// to itself, the way `-2^63 // -1` does below. A `Float` keeps IEEE's answers:
+// `negate 0.0` is `-0.0` and `abs` clears the sign of a `nan` as it does of any
+// other value.
+function negate(a) { return typeof a === 'bigint' ? BigInt.asIntN(64, -a) : -a }
+function abs(a) {
+  return typeof a === 'bigint' ? BigInt.asIntN(64, a < 0n ? -a : a) : Math.abs(a);
+}
+
 export { add as addInt, add as addFloat };
 export { sub as subInt, sub as subFloat };
 export { mul as mulInt, mul as mulFloat };
 export { pow as powInt, pow as powFloat };
+export { negate as negateInt, negate as negateFloat };
+export { abs as absInt, abs as absFloat };
 
 // docs/spec/evaluation-semantics.md#an-operation-with-no-answer defines
 // `n // 0` to be `0`. `BigInt` division by zero throws, so the divisor is

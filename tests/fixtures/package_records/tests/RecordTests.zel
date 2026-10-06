@@ -1,4 +1,4 @@
--- A record built, read, updated, matched and compared, each by the value it computes.
+-- A record built, read, updated and matched, each by the value it computes.
 module RecordTests exposing (..)
 
 import Basics exposing (..)
@@ -94,38 +94,11 @@ recordInAnotherConstructor =
 
 
 -- EQUALITY
-
-equalRecordsAreEqual : Test
-equalRecordsAreEqual =
-  Test.check (Records.point 1 2 == Records.point 1 2)
-
-
-recordsDifferingInOneFieldAreNotEqual : Test
-recordsDifferingInOneFieldAreNotEqual =
-  Test.equal (Records.point 1 2 == Records.point 1 3) False
-
-
-recordsAreEqualWhateverOrderTheyWereWrittenIn : Test
-recordsAreEqualWhateverOrderTheyWereWrittenIn =
-  Test.check ({ y = 2, x = 1 } == Records.point 1 2)
-
-
-nestedRecordsAreCompared : Test
-nestedRecordsAreCompared =
-  Test.check
-    ({ centre = Records.point 1 2, radius = 3 } == { centre = Records.point 1 2, radius = 3 })
-
-
-nestedRecordsDifferingDeepAreNotEqual : Test
-nestedRecordsDifferingDeepAreNotEqual =
-  Test.equal
-    ({ centre = Records.point 1 2, radius = 3 } == { centre = Records.point 1 9, radius = 3 })
-    False
-
-
-recordsInAConstructorAreCompared : Test
-recordsInAConstructorAreCompared =
-  Test.check (Records.circle 1 2 3 == Records.circle 1 2 3)
+--
+-- A record is compared with `==` only once a class can be discharged at a record type, which
+-- is `LANG-85`'s: until then an `Eq` obligation at a record is refused where the program is
+-- specialised, so no test here compares two records, or two values holding one, whole.
+-- `LANG-85`'s acceptance lists the tests that come back.
 
 
 -- LABELS A JAVASCRIPT OBJECT HAS A MEANING FOR
@@ -148,11 +121,6 @@ updateOfAnInheritedName =
 patternOnReservedAndInheritedNames : Test
 patternOnReservedAndInheritedNames =
   Test.equal (Records.patternKeyed (Records.keyed 1)) 13
-
-
-reservedAndInheritedLabelsAreCompared : Test
-reservedAndInheritedLabelsAreCompared =
-  Test.equal (Records.keyed 1 == Records.keyed 2) False
 
 
 -- THE ORDER FIELDS ARE EVALUATED IN
@@ -186,12 +154,12 @@ companionReceivesAPlainObject =
 
 recordReturnedByACompanionIsTheRecordTheTypeSays : Test
 recordReturnedByACompanionIsTheRecordTheTypeSays =
-  Test.equal (Source.rightPoint 3) (Records.point 3 4)
+  Test.equal (Records.getX (Source.rightPoint 3), (Source.rightPoint 3).y) (3, 4)
 
 
 unitFieldIsPresent : Test
 unitFieldIsPresent =
-  Test.equal (Source.rightUnit 6) { done = (), n = 6 }
+  Test.equal ((Source.rightUnit 6).done, (Source.rightUnit 6).n) ((), 6)
 
 
 nestedRecordReturnedByACompanion : Test
@@ -201,7 +169,12 @@ nestedRecordReturnedByACompanion =
 
 recordInAConstructorReturnedByACompanion : Test
 recordInAConstructorReturnedByACompanion =
-  Test.equal (Source.rightWrapped 8) (Wrapper { n = 8 })
+  Test.equal (wrapped (Source.rightWrapped 8)) 8
+
+
+wrapped : Wrapper -> Int
+wrapped (Wrapper record) =
+  record.n
 
 
 keyedRecordReturnedByACompanion : Test

@@ -64,7 +64,7 @@ rule, and no class the compiler has to know by name.
 The cost lands in one place: inside a function constrained over a numeric class, a literal is
 already concrete, so it cannot be used at the constrained type:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (double)
 
 double : Number a => a -> a
@@ -72,13 +72,11 @@ double x =
   mul x 2
 ```
 
-**Not implemented:** `std/core` declares no `Number` class ([`LANG-42`](../tickets/lang-42.md)),
-so neither `Number` nor `mul` resolves to anything in the block above. An annotation's type
-variables are not rigid, so nothing holds `a` to `Number` against a body that forces it to
-another type ([`LANG-12`](../tickets/lang-12.md)). Once both hold, that declaration is an error:
-`2` is an `Int`, so `mul x 2` forces `a` to be `Int` and the annotation promises more than the
-body supports. `double x = add x x` is the way to write it, and a class that wants numeric
-constants declares them as members.
+**Known gap:** that declaration should be an error and is accepted. `2` is an `Int`, so `mul x 2`
+forces `a` to be `Int` and the annotation promises more than the body supports. An annotation's
+type variables are not rigid, so nothing holds `a` to `Number` against a body that forces it to
+another type ([`LANG-12`](../tickets/lang-12.md)). `double x = add x x` is the way to write it,
+and a class that wants numeric constants declares them as members.
 
 ### There is no boolean literal
 

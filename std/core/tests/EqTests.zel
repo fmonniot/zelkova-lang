@@ -1,0 +1,135 @@
+-- `Eq` at each type `std/core` declares an instance for, and `/=`, which is `eq` under
+-- `not`. `Position` is left out: nothing outside `Basics` builds one. A `Float` is
+-- compared the way IEEE 754 compares it, so `nan` is equal to nothing and `0.0` to `-0.0`.
+module EqTests exposing
+  ( intsAreEqualByValue
+  , floatsAreEqualByValue
+  , nanIsEqualToNothing
+  , zeroEqualsNegativeZero
+  , charsAreEqualByValue
+  , stringsAreEqualByContent
+  , boolsAreEqualByValue
+  , ordersAreEqualByConstructor
+  , pairsAreEqualElementWise
+  , triplesAreEqualElementWise
+  , unitEqualsUnit
+  , maybesAreEqualByConstructorAndArgument
+  , resultsAreEqualByConstructorAndArgument
+  , failuresAreEqualByConstructorAndArgument
+  , notEqualIsTheNegationOfEqual
+  , equalityHoldsInsideNestedValues
+  )
+
+import Basics exposing (..)
+import Maybe exposing (Maybe(..))
+import Result exposing (Result(..))
+import Task exposing (Failure(..))
+import Test exposing (Test)
+
+
+nan : Float
+nan =
+  0.0 / 0.0
+
+
+-- `Eq` is never decided by a default, so a constructor that leaves a type
+-- parameter open needs a signature that closes it before it is compared.
+nothing : Maybe Int
+nothing =
+  Nothing
+
+
+ok : Int -> Result String Int
+ok n =
+  Ok n
+
+
+err : String -> Result String Int
+err e =
+  Err e
+
+
+intsAreEqualByValue : Test
+intsAreEqualByValue =
+  Test.check ((3 == 3) && not (3 == 4))
+
+
+floatsAreEqualByValue : Test
+floatsAreEqualByValue =
+  Test.check ((1.5 == 1.5) && not (1.5 == 2.5))
+
+
+nanIsEqualToNothing : Test
+nanIsEqualToNothing =
+  Test.check (not (nan == nan) && not (nan == 1.5) && (nan /= nan))
+
+
+zeroEqualsNegativeZero : Test
+zeroEqualsNegativeZero =
+  Test.check (0.0 == negate 0.0)
+
+
+charsAreEqualByValue : Test
+charsAreEqualByValue =
+  Test.check (('a' == 'a') && not ('a' == 'b'))
+
+
+stringsAreEqualByContent : Test
+stringsAreEqualByContent =
+  Test.check (("abc" == "abc") && not ("abc" == "abd") && not ("abc" == "ab"))
+
+
+boolsAreEqualByValue : Test
+boolsAreEqualByValue =
+  Test.check ((True == True) && (False == False) && not (True == False) && not (False == True))
+
+
+ordersAreEqualByConstructor : Test
+ordersAreEqualByConstructor =
+  Test.check ((LT == LT) && (EQ == EQ) && (GT == GT) && not (LT == GT) && not (EQ == LT))
+
+
+pairsAreEqualElementWise : Test
+pairsAreEqualElementWise =
+  Test.check (((1, "a") == (1, "a")) && not ((1, "a") == (1, "b")) && not ((1, "a") == (2, "a")))
+
+
+triplesAreEqualElementWise : Test
+triplesAreEqualElementWise =
+  Test.check (((1, 'x', True) == (1, 'x', True)) && not ((1, 'x', True) == (1, 'x', False)))
+
+
+unitEqualsUnit : Test
+unitEqualsUnit =
+  Test.check (() == ())
+
+
+maybesAreEqualByConstructorAndArgument : Test
+maybesAreEqualByConstructorAndArgument =
+  Test.check
+    ((Just 1 == Just 1) && (nothing == nothing) && not (Just 1 == Just 2) && not (Just 1 == nothing))
+
+
+resultsAreEqualByConstructorAndArgument : Test
+resultsAreEqualByConstructorAndArgument =
+  Test.check
+    ((ok 1 == ok 1) && (err "e" == err "e") && not (ok 1 == ok 2) && not (ok 1 == err "e"))
+
+
+failuresAreEqualByConstructorAndArgument : Test
+failuresAreEqualByConstructorAndArgument =
+  Test.check
+    ((Threw "x" == Threw "x") && not (Threw "x" == Threw "y") && not (Threw "x" == Malformed "x"))
+
+
+notEqualIsTheNegationOfEqual : Test
+notEqualIsTheNegationOfEqual =
+  Test.check ((1 /= 2) && not (1 /= 1) && ("a" /= "b"))
+
+
+-- A pair holding a `Maybe` holding a pair: each level goes through the instance of
+-- the type it holds.
+equalityHoldsInsideNestedValues : Test
+equalityHoldsInsideNestedValues =
+  Test.check
+    (((1, Just (2, "a")) == (1, Just (2, "a"))) && not ((1, Just (2, "a")) == (1, Just (2, "b"))))

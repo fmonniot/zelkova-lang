@@ -21,18 +21,15 @@ class Same a where
           False
 
 
--- `Basics.Position` has no `Comparable` instance until `LANG-42`, so a derivation here
--- cannot order two constructors by where they are declared. It answers `LT` for a pair of
--- different constructors, which is not an ordering, and a test reads only what it computes
--- for two values of one constructor. `combine` names its first parameter twice, as
--- `Comparable`'s does, so a derived member that substituted it for the expression that
--- computes it would answer each part twice.
+-- `combine` names its first parameter twice, as `Comparable`'s does, so a derived member that
+-- substituted it for the expression that computes it would answer each part twice.
 class Same a => Ranked a where
   rank : a -> a -> Order
 
   derived rank
     matched = EQ
-    differed _ _ = LT
+    differed i j =
+      compare i j
     combine x y =
       case x of
         EQ ->
@@ -72,20 +69,9 @@ instance Ranked (a, b) where
   derived
 
 
--- `Basics.compare` answers `EQ` for everything until `LANG-42` replaces it.
 orderOfInts : Int -> Int -> Order
 orderOfInts a b =
-  case a < b of
-    True ->
-      LT
-
-    False ->
-      case a == b of
-        True ->
-          EQ
-
-        False ->
-          GT
+  compare a b
 
 
 -- A function constrained by one class.

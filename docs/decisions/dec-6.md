@@ -131,7 +131,7 @@ question would be a large decision taken as a side effect of a small one; and it
 released program with precisely the undefined behaviour this rule exists to remove, at the one
 moment it is least observable.
 
-So every value entering Zelkova from a companion is checked. [`BUG-20`](../tickets/bug-20.md) is
+So every value entering Zelkova from a companion is checked. [`BUG-20`](../tickets/README.md) is
 the case that motivates both halves of this entry: `_Utils_cmp`, handed a value of a user union
 type, read three fields that are not there and returned a comparison of nothing against nothing,
 until it was made to refuse such a value instead. That it could still be *called* that way

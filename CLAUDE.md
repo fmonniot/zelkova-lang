@@ -47,12 +47,8 @@ What the *compiler* emits is checked by running it under `node --test 'tests/js/
 file there compiles a fixture under `tests/fixtures/` itself, with `cargo run`, and loads the
 output or runs its tests. CI's `javascript` job runs both, in that order.
 
-`cargo run -- test std/core` currently reports **`98 tests: 98 passed, 0 failed, 0 errored`
-and exits 0**. `std/core/tests/FloatTests.ignored` is excluded from that count by its extension:
-`Basics.add` sends a `Float` through the `addInt` facade and its boundary check aborts, so
-`FloatTests`' two tests fail to load and are disabled until [`BUG-44`](docs/tickets/bug-44.md)
-closes, tracked there rather than left red in CI. Any error, failure, or a different count from
-what's left is a regression you introduced.
+`cargo run -- test std/core` currently reports **`151 tests: 151 passed, 0 failed, 0 errored`
+and exits 0**. Any error, failure, or a different count is a regression you introduced.
 
 `.github/workflows/rust.yml` gates a PR on `fmt`, on `clippy`, and on a `rustdoc` job that
 builds the crates' docs with the flags `rustdoc.yml` deploys them with. The clippy job lints
@@ -242,14 +238,15 @@ divergence from Elm — parse but are rejected by canonicalization
 (`Error::MultipleBindingsUnsupported`); `LANG-20` is the ticket. The standard library under
 `std/core/src/` carries `.ignored` files for modules that do not compile yet.
 
-`number`, `comparable` and `appendable` are **ordinary type variables** and always were — the
-compiler never special-cased them, and `std/core/src/` now spells all three `a`. **Type
-classes**, without higher-kinded variables, are what replaces them:
-[`docs/spec/type-classes.md`](docs/spec/type-classes.md) specifies the mechanism,
+**Type classes**, without higher-kinded variables, are how a signature says what a type
+variable may be: [`docs/spec/type-classes.md`](docs/spec/type-classes.md) specifies the mechanism,
 [`DEC-2`](docs/decisions/dec-2.md) and [`DEC-24`](docs/decisions/dec-24.md) hold the decisions
 behind it, and *Active work: type classes* in
-[`docs/tickets/README.md`](docs/tickets/README.md) carries the tickets implementing it and the
-order they have to land in. Read the chapter before touching any of it.
+[`docs/tickets/README.md`](docs/tickets/README.md) carries the tickets still open. `number`,
+`comparable` and `appendable` are ordinary type variables the compiler never special-cased; what
+they were meant to say is `Basics`' four classes, `Eq`, `Comparable`, `Number` and `Appendable`,
+whose instances are written beside them for the scalar types and derived for the rest. Read the
+chapter before touching any of it.
 
 A class and an instance parse, into `parser::ClassDecl` and `parser::InstanceDecl`, and
 canonicalization resolves them (`canonical/classes.rs`; its module doc comment is the account):

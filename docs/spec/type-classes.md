@@ -21,13 +21,12 @@ class Comparable a where
   compare : a -> a -> Order
 ```
 
-**Not implemented:** a constraint required of a record type is accepted without being checked
+**Not implemented:** a constraint required of a record type is accepted without being checked,
+and the build then refuses a use of it, because no instance or derivation answers for a record
 ([`LANG-85`](../tickets/lang-85.md)). An annotation's type variables are not rigid
 ([`LANG-12`](../tickets/lang-12.md)), so a body that forces a constrained variable to a concrete
 type is accepted when that type has the instance, and the annotation's constraint is not held
-against the body. The type-class ticket program in
-[`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
-land.
+against the body.
 
 ## Declaring a class
 
@@ -372,7 +371,7 @@ two of the same constructor by their arguments, left to right, the first unequal
 
 ```zel expect=fragment
 -- `Basics`' declaration of `Comparable`
-class Comparable a where
+class Eq a => Comparable a where
   compare : a -> a -> Order
 
   derived compare
@@ -394,8 +393,10 @@ class Comparable a where
 A derivation for a member at `a -> R` walks **one** value, and asks the class for two bindings
 rather than three.
 
-```zel expect=fragment
--- `positionIndex` and `add` are `Basics`'s, which `LANG-42` declares and puts this block under test
+```zel expect=ok
+module Example exposing (Hashable)
+
+-- `positionIndex` and `add` are `Basics`'s
 class Hashable a where
   hash : a -> Int
 
@@ -1116,12 +1117,6 @@ loop x =
 end. That is an error, reported against the declaration with the type that kept growing. It is
 the same error when the chain runs through two functions that call each other.
 
-**Known gap:** `Basics.lt`, `compare`, `min`, `max` and friends are ordinary declarations —
-not facade signatures — over any type at all, so a user union type still type-checks where none
-of them can genuinely order or compare one. [`BUG-20`](../tickets/bug-20.md) tracks it. They sit
-outside a facade's admitted-types rule, which only constrains `Js.Utils`'s own, monomorphic
-signatures underneath; closing the gap for real needs the class mechanism this chapter specifies.
-
 ## The words this reserves
 
 `class` and `instance` are reserved words, usable nowhere but at the start of the declarations
@@ -1232,10 +1227,8 @@ is the one type here the compiler knows by name, because it has to give those pa
 before any class has been read. That is a name for a *type*, which the compiler already has four
 of; it is not a name for a class.
 
-**Not implemented:** [`LANG-42`](../tickets/lang-42.md) is the pass that declares them. A
-constrained function cannot be a single-line re-export of a JavaScript facade, which is what most
-of these are in `std/core` — its body has to choose an instance. [Lists](lists.md) are not
-implemented either, so `Appendable`'s `List` instance waits on them.
+**Not implemented:** [Lists](lists.md) are not implemented, so `Appendable`'s `List` instance
+waits on them.
 
 ## Open questions
 

@@ -431,6 +431,53 @@ pub fn task_interface() -> (Name, Interface) {
     ("Task".into(), interface)
 }
 
+/// `std/core`'s `Js.Basics`, `Js.Utils` and `Basics`, each checked from its source as a module
+/// of `zelkova-core`, in the order they check in, for a test that checks another module of that
+/// package on its own. `Task`, `Maybe` and `Result` each import `Basics` for the class they
+/// declare an instance of, and `Basics` is not something a hand-built double like
+/// [`basics_interface`] can stand in for there: the class is the thing imported.
+pub fn core_basics_modules() -> Vec<CheckedModule> {
+    let core = PackageName::core();
+    let mut interfaces = HashMap::new();
+    let mut modules = Vec::new();
+    for (name, source) in [
+        (
+            "Js.Basics",
+            include_str!("../../../../std/core/src/Js/Basics.zel"),
+        ),
+        (
+            "Js.Utils",
+            include_str!("../../../../std/core/src/Js/Utils.zel"),
+        ),
+        (
+            "Basics",
+            include_str!("../../../../std/core/src/Basics.zel"),
+        ),
+    ] {
+        let module = zelkova_compiler::check_module(&core, &interfaces, &parse_source(source))
+            .unwrap_or_else(|error| panic!("expected {}.zel to check, got {:?}", name, error));
+        interfaces.insert(
+            module.canonical.name.name().clone(),
+            module.to_interface(None),
+        );
+        modules.push(module);
+    }
+    modules
+}
+
+/// The interfaces of [`core_basics_modules`], keyed by module name.
+pub fn core_basics_interfaces() -> HashMap<Name, Interface> {
+    core_basics_modules()
+        .iter()
+        .map(|module| {
+            (
+                module.canonical.name.name().clone(),
+                module.to_interface(None),
+            )
+        })
+        .collect()
+}
+
 /// Check a package of `sources`, each one module, in dependency order with the real
 /// checker, and return what came back for the module named `name`: its errors, or the
 /// checked module.

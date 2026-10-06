@@ -41,16 +41,15 @@
 // what it answers now.
 
 import assert from 'node:assert/strict';
-// `Basics.mjs` no longer exports bare `add`/`sub`/`mul`/`pow`: `LANG-43`
-// split each into a monomorphic `*Int`/`*Float` pair (`Js/Basics.zel`), and
-// `Basics.zel` itself picks the `Int` one for its own `a -> a -> a`
-// re-export. The two aliases share one underlying function (see
-// `Basics.mjs`), so importing the `Int` name under its old bare spelling
-// below still exercises exactly what these tests exercised before — Float
-// operands included.
+// `Basics.mjs` exports each operation once per type, `addInt` and `addFloat`
+// and so on (`Js/Basics.zel`), and `Basics.zel`'s `Number` instances forward to
+// them. The two names of an operation share one underlying function (see
+// `Basics.mjs`), so importing the `Int` name under its bare spelling below
+// exercises Float operands as well.
 import {
     addInt as add, subInt as sub, mulInt as mul, idiv, modBy, remainderBy,
     round, floor, ceiling, truncate, toFloat, powInt as pow,
+    negateInt, negateFloat, absInt, absFloat,
 } from '../../src/Js/Basics.mjs';
 
 // INT ARITHMETIC (LANG-56)
@@ -294,4 +293,38 @@ export function powComputesOnFloats() {
 // PINS pow still throws on a negative Int exponent, pending LANG-66
 export function powThrowsOnANegativeIntExponent() {
     assert.throws(() => pow(2n, -1n), RangeError);
+}
+
+// NEGATE AND ABS (`Number`'s two members that are not binary)
+
+// negateInt wraps the one Int with no positive counterpart back to itself
+export function negateOnIntsWrapsAt64Bits() {
+    assert.equal(negateInt(5n), -5n);
+    assert.equal(negateInt(-5n), 5n);
+    assert.equal(negateInt(0n), 0n);
+    assert.equal(negateInt(INT_MAX), -INT_MAX);
+    assert.equal(negateInt(INT_MIN), INT_MIN);
+}
+
+// absInt wraps the one Int with no positive counterpart back to itself
+export function absOnIntsWrapsAt64Bits() {
+    assert.equal(absInt(5n), 5n);
+    assert.equal(absInt(-5n), 5n);
+    assert.equal(absInt(0n), 0n);
+    assert.equal(absInt(-INT_MAX), INT_MAX);
+    assert.equal(absInt(INT_MIN), INT_MIN);
+}
+
+// negateFloat and absFloat keep IEEE's answers, the sign of a zero included
+export function negateAndAbsOnFloatsFollowIEEE() {
+    assert.equal(negateFloat(1.5), -1.5);
+    assert.ok(Object.is(negateFloat(0), -0));
+    assert.ok(Object.is(negateFloat(-0), 0));
+    assert.equal(negateFloat(Infinity), -Infinity);
+    assert.ok(Number.isNaN(negateFloat(NaN)));
+    assert.equal(absFloat(-1.5), 1.5);
+    assert.equal(absFloat(1.5), 1.5);
+    assert.ok(Object.is(absFloat(-0), 0));
+    assert.equal(absFloat(-Infinity), Infinity);
+    assert.ok(Number.isNaN(absFloat(NaN)));
 }

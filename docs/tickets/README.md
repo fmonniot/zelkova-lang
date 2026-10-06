@@ -149,19 +149,19 @@ GEN-24   specialisation: a member, an instance and a constrained   ← closed
   │      function are emitted
   │      ← the first point at which a program using a class runs
   │
-LANG-42  `std/core` declares Eq, Comparable, Number, Appendable
-  │      ← closes BUG-20, BUG-44 and BUG-46
+LANG-42  `std/core` declares Eq, Comparable, Number, Appendable   ← closed
+  │      ← closed BUG-20, BUG-44 and BUG-46
   │
 LANG-12  an annotation's variables are rigid
-         ← last, where it used to be LANG-40's hard prerequisite: until
-           LANG-42 it rejects thirteen declarations of `Basics` itself
-           (DEC-24 decision 10). Closes SPEC-36, and the order
+         ← last, where it used to be LANG-40's hard prerequisite: it
+           rejected thirteen declarations of `Basics` itself until
+           LANG-42 rewrote them (DEC-24 decision 10). Closes SPEC-36,
+           and the order
 ```
 
 Two tickets sit just outside it. [`LANG-4`](lang-4.md) wants prefix `-` to mean `negate`, and
-has a `Float`-capable `negate` to desugar to once `LANG-42` lands; until then `-x` on a
-`Float` is a type error.
-[`PERF-2`](perf-2.md) is narrowed by `LANG-42`, which rewrites most of the forwarding
+has a `Float`-capable `negate` to desugar to: `LANG-42` made it a member of `Number`.
+[`PERF-2`](perf-2.md) was narrowed by `LANG-42`, which rewrote most of the forwarding
 declarations it is about, and not closed by it.
 
 ## Tickets
@@ -190,7 +190,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-17 | bug | high | closed 2026-09-10 | A type application's arguments are discarded when its head resolves |
 | BUG-18 | bug | medium | closed 2026-09-13 | A variant that is not a constructor application is silently dropped |
 | BUG-19 | bug | medium | closed 2026-09-12 | A line whose first token starts with `-` leaves the tokenizer measuring indentation mid-line |
-| [BUG-20](bug-20.md) | bug | high | open | `Js.Utils`'s comparison and append facades declare a type the JavaScript cannot honour |
+| BUG-20 | bug | high | closed 2026-10-05 | `Js.Utils`'s comparison and append facades declare a type the JavaScript cannot honour |
 | BUG-21 | bug | medium | closed 2026-09-13 | Every error from the source-directory walk is discarded, so a missing package root compiles as success |
 | BUG-22 | bug | high | closed 2026-09-10 | An operator's declared precedence and associativity are recorded and then ignored |
 | BUG-23 | bug | medium | closed 2026-09-12 | An `else` does not close a `case` block, so a `case` in a `then` arm is a layout error |
@@ -214,11 +214,11 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-41](bug-41.md) | bug | low | open | A union reached only transitively has no spelling, and `Spellings::spell` falls back to a name that can still collide |
 | [BUG-42](bug-42.md) | bug | low | open | A module-name collision with a test-dependency's module is found only after `src/` checks |
 | BUG-43 | bug | high | closed 2026-09-28 | A call to another module's function of two or more parameters is emitted one argument at a time against a plain n-ary function |
-| [BUG-44](bug-44.md) | bug | medium | open | `Float` arithmetic aborts at the `Int` facade's boundary check |
+| BUG-44 | bug | medium | closed 2026-10-05 | `Float` arithmetic aborts at the `Int` facade's boundary check |
 | [BUG-45](bug-45.md) | bug | low | open | A facade signature may name a union whose constructors hold a type no predicate decides |
-| [BUG-46](bug-46.md) | bug | low | open | `Js.Utils.compareInt` and `compareFloat` declare an `Int` result their companion returns as a number |
+| BUG-46 | bug | low | closed 2026-10-05 | `Js.Utils.compareInt` and `compareFloat` declare an `Int` result their companion returns as a number |
 | [BUG-47](bug-47.md) | bug | low | open | A qualified name an imported module does not expose is reported as under the importing module |
-| [BUG-48](bug-48.md) | bug | medium | open | `Js.Utils`'s structural equality throws a `ReferenceError` on a value nested more than a hundred deep |
+| BUG-48 | bug | medium | closed 2026-10-05 | `Js.Utils`'s structural equality throws a `ReferenceError` on a value nested more than a hundred deep |
 | [BUG-49](bug-49.md) | bug | medium | open | A pattern variable that shadows an outer name drops the outer binder when its branch ends, so a valid declaration is left unchecked |
 | [BUG-50](bug-50.md) | bug | low | open | A cycle of parameterless bindings that runs through an instance member is accepted and fails when the module loads |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
@@ -281,6 +281,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-37 | task | — | closed 2026-09-28 | How a `Task` is represented and run is undesigned, on either target |
 | [SPEC-38](spec-38.md) | task | — | open | `patterns.md` parenthesises every sub-pattern and also writes `Circle n :: rest` bare |
 | [SPEC-39](spec-39.md) | task | — | open | The chapter does not say what a context written on a `derived` instance means, or which constructors a `derived` instance needs in scope |
+| [SPEC-40](spec-40.md) | task | — | open | No chapter says how `Comparable` orders a `Char`, a `String` or a `nan` |
 | LANG-1 | task | — | closed 2026-10-01 | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
@@ -322,7 +323,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-39 | task | — | closed 2026-10-03 | Resolve classes and instances, and enforce the orphan rule |
 | LANG-40 | task | — | closed 2026-10-04 | Discharge class constraints in the type checker |
 | LANG-41 | task | — | closed 2026-10-03 | Retire `Type::Number`: an integer literal is an `Int` |
-| [LANG-42](lang-42.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
+| LANG-42 | task | — | closed 2026-10-05 | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
 | LANG-43 | task | — | closed 2026-09-27 | A facade signature may name any type at all, including ones no runtime predicate can decide |
 | [LANG-44](lang-44.md) | task | — | open | There is no list-literal production, so `[1, 2]` does not parse |
 | [LANG-45](lang-45.md) | task | — | open | There is no list pattern, so neither `[]` nor `first :: rest` can be matched |
@@ -414,7 +415,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TIDY-8](tidy-8.md) | task | — | open | Two tokenizer comments describe the `Int` width as unsettled and cite a closed ticket |
 | [TIDY-9](tidy-9.md) | task | — | open | `Module::from_declarations` has a `panic!` on a declaration kind its own bucketing rules out |
 | [TIDY-10](tidy-10.md) | task | — | open | `Interface::arities` is a parallel map, and a miss silently reads as arity 0 |
-| [TIDY-11](tidy-11.md) | task | — | open | `BUG-20` and `Js/Utils.mjs` describe a tuple encoding and a test file that no longer match the tree |
+| TIDY-11 | task | — | closed 2026-10-05 | `BUG-20` and `Js/Utils.mjs` describe a tuple encoding and a test file that no longer match the tree |
 | [TIDY-12](tidy-12.md) | task | — | open | The compiler's crates are on edition 2018 |
 | [TIDY-13](tidy-13.md) | task | — | open | `CompilationError::Many` is never constructed |
 | [TIDY-15](tidy-15.md) | task | — | open | `insert_foreign_value` has a `todo!()` on a variable-table state its callers cannot produce |

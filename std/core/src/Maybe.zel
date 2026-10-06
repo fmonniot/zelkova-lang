@@ -19,7 +19,7 @@ you with optional arguments, error handling, and records with optional fields.
 -}
 
 
-import Basics exposing (Bool(..))
+import Basics exposing (Bool(..), Eq)
 
 
 
@@ -39,6 +39,10 @@ sometimes, but does not absolutely need it.
 type Maybe a
     = Just a
     | Nothing
+
+
+instance Eq (Maybe a) where
+  derived
 
 
 {-| Provide a default value, turning an optional value into a normal

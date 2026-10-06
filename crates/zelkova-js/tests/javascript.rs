@@ -2040,8 +2040,9 @@ fn a_binding_named_undefined_is_mangled() {
     );
 }
 
-/// `std/core`'s `Task` module emits as it stands: `succeed` and `map` are exported and
-/// nothing else is (`Done`'s helpers and the `Task` constructor stay inside), and each
+/// `std/core`'s `Task` module emits as it stands: `succeed` and `map` are exported, with the
+/// member of `Eq Failure`'s instance and nothing else (`Done`'s helpers and the `Task`
+/// constructor stay inside), and each
 /// helper that would hand off to a run function or a continuation returns a `Bounce`
 /// of that call instead of making it.
 ///
@@ -2054,14 +2055,24 @@ fn a_binding_named_undefined_is_mangled() {
 fn std_cores_task_module_emits_with_every_handoff_a_bounce() {
     let source = include_str!("../../../std/core/src/Task.zel");
     let core = PackageName::new("zelkova-core").unwrap();
-    let module = check_module(&core, &HashMap::new(), &parse_source(source))
-        .unwrap_or_else(|error| panic!("expected Task.zel to check, got {:?}", error));
+    let mut modules = core_basics_modules();
+    let interfaces = core_basics_interfaces();
+    modules.push(
+        check_module(&core, &interfaces, &parse_source(source))
+            .unwrap_or_else(|error| panic!("expected Task.zel to check, got {:?}", error)),
+    );
+    // `Task` declares `Eq Failure`, whose `eq` calls `Eq String`'s, which `Basics` declares: the
+    // reference is resolved once the two modules are read together.
+    specialise_all(&mut modules).expect("Task and the modules it imports specialise");
+    let module = modules.last().expect("Task was pushed");
 
-    let text = emit(&module);
+    let text = emit(module);
 
     assert!(
-        text.contains("export { map, succeed };"),
-        "expected exactly `map` and `succeed` exported, got:\n{}",
+        text.contains(
+            "export { map, succeed, $instance$zelkova_core$Basics$Eq$zelkova_core$Task$Failure$eq };"
+        ),
+        "expected exactly `map`, `succeed` and the `Eq Failure` member exported, got:\n{}",
         text
     );
     for helper in ["succeedRun", "mapRun", "mapContinue"] {

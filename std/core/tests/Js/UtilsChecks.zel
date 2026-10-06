@@ -4,59 +4,29 @@
 -- which the wrapper around the call turns into `Err (Threw ..)`. `Js.UtilsTests`
 -- exposes one `Test` per check.
 module foreign Js.UtilsChecks exposing
-  ( compareOrdersNumbers
-  , compareOrdersStrings
-  , compareOrdersProdTuples
-  , compareOrdersDebugTuples
-  , compareStopsAtAPairsArity
-  , compareRefusesAUnionValue
-  , compareRefusesAUnionAgainstAPrimitive
-  , compareRefusesAnArray
-  , compareRefusesARecord
-  , compareRefusesAFunction
-  , compareRefusesNullAndUndefined
-  , compareRefusesTuplesOfDifferentSizes
-  , compareRefusesANestedUnion
-  , comparisonOperatorsRefuseWhatCompareRefuses
-  , comparisonOperatorsAnswerOnNumbers
-  , compareOrdersTwoInts
-  , comparisonOperatorsAnswerOnTwoInts
-  , appendConcatenatesTwoStrings
-  , appendRefusesAStringAndANonString
-  , appendRefusesAUnionValue
-  , appendRefusesAConsList
-  , appendRefusesArrays
-  , appendRefusesARecordAndAFunction
-  , equalityOnTwoFunctionsIsFalse
-  , aFunctionEqualsItself
+  ( equalIntAnswersOnTwoInts
+  , equalFloatFollowsIEEE
+  , equalCharAndStringCompareByContent
+  , equalityRefusesAValueOfAnotherType
+  , ltIntOrdersTwoInts
+  , ltFloatOrdersTwoFloatsAndNotNan
+  , ltCharAndStringOrderByCodePoint
+  , orderingRefusesAValueOfAnotherType
+  , appendStringConcatenatesTwoStrings
+  , appendStringRefusesWhatIsNotAString
   )
 
 import Result exposing (Result)
 import Task exposing (Task, Failure)
 
 
-compareOrdersNumbers : Task (Result Failure ())
-compareOrdersStrings : Task (Result Failure ())
-compareOrdersProdTuples : Task (Result Failure ())
-compareOrdersDebugTuples : Task (Result Failure ())
-compareStopsAtAPairsArity : Task (Result Failure ())
-compareRefusesAUnionValue : Task (Result Failure ())
-compareRefusesAUnionAgainstAPrimitive : Task (Result Failure ())
-compareRefusesAnArray : Task (Result Failure ())
-compareRefusesARecord : Task (Result Failure ())
-compareRefusesAFunction : Task (Result Failure ())
-compareRefusesNullAndUndefined : Task (Result Failure ())
-compareRefusesTuplesOfDifferentSizes : Task (Result Failure ())
-compareRefusesANestedUnion : Task (Result Failure ())
-comparisonOperatorsRefuseWhatCompareRefuses : Task (Result Failure ())
-comparisonOperatorsAnswerOnNumbers : Task (Result Failure ())
-compareOrdersTwoInts : Task (Result Failure ())
-comparisonOperatorsAnswerOnTwoInts : Task (Result Failure ())
-appendConcatenatesTwoStrings : Task (Result Failure ())
-appendRefusesAStringAndANonString : Task (Result Failure ())
-appendRefusesAUnionValue : Task (Result Failure ())
-appendRefusesAConsList : Task (Result Failure ())
-appendRefusesArrays : Task (Result Failure ())
-appendRefusesARecordAndAFunction : Task (Result Failure ())
-equalityOnTwoFunctionsIsFalse : Task (Result Failure ())
-aFunctionEqualsItself : Task (Result Failure ())
+equalIntAnswersOnTwoInts : Task (Result Failure ())
+equalFloatFollowsIEEE : Task (Result Failure ())
+equalCharAndStringCompareByContent : Task (Result Failure ())
+equalityRefusesAValueOfAnotherType : Task (Result Failure ())
+ltIntOrdersTwoInts : Task (Result Failure ())
+ltFloatOrdersTwoFloatsAndNotNan : Task (Result Failure ())
+ltCharAndStringOrderByCodePoint : Task (Result Failure ())
+orderingRefusesAValueOfAnotherType : Task (Result Failure ())
+appendStringConcatenatesTwoStrings : Task (Result Failure ())
+appendStringRefusesWhatIsNotAString : Task (Result Failure ())

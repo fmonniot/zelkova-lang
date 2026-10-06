@@ -90,6 +90,16 @@ In a fixture run under `node`, the way `GEN-24`'s is: two records equal field by
 differ in one field; a record holding a record; and a comparison decided by the first label in
 label order when the type was written in another.
 
+`tests/fixtures/package_records/tests/RecordTests.zel` gets its equality tests back. `LANG-42`
+made `==` require an `Eq` instance and removed the seven that compared a record, or a value
+holding one, because this ticket's gap refuses the obligation at specialisation:
+`equalRecordsAreEqual`, `recordsDifferingInOneFieldAreNotEqual`,
+`recordsAreEqualWhateverOrderTheyWereWrittenIn`, `nestedRecordsAreCompared`,
+`nestedRecordsDifferingDeepAreNotEqual`, `recordsInAConstructorAreCompared` (which needs
+`instance Eq Shape where derived` in `Records.zel`) and `reservedAndInheritedLabelsAreCompared`.
+Three more of its tests read a record a companion returned through its fields where they once
+compared the whole record, and can compare it whole again.
+
 `cargo test --workspace` is green, `cargo run -- compile std/core` still lists all ten modules
 as checked.
 

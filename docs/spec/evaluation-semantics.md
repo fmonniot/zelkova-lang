@@ -388,7 +388,7 @@ by the shape of the value:
 An instance is free to define something else — equality up to a normal form, say, for a type
 whose representation has more than one spelling of the same value.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Colour, alike)
 
 type Colour
@@ -400,9 +400,8 @@ alike a b =
   eq a b
 ```
 
-**Not implemented:** `std/core` declares no classes ([`LANG-42`](../tickets/lang-42.md)), so
-neither `Eq` nor `eq` resolves to anything in the block above. A type asks for the definition above rather than writing
-it out by declaring an instance whose body is `derived` — and what that yields is the definition
+A type asks for the definition above rather than writing it out by declaring an instance whose
+body is `derived` — and what that yields is the definition
 [`Eq`'s own declaration supplies](type-classes.md#a-class-says-how-it-is-derived), not one the
 compiler holds for a class it recognises.
 

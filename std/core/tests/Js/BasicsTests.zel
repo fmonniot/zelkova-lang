@@ -31,6 +31,9 @@ module Js.BasicsTests exposing
   , powWrapsAt64Bits
   , powComputesOnFloats
   , powThrowsOnANegativeIntExponent
+  , negateOnIntsWrapsAt64Bits
+  , absOnIntsWrapsAt64Bits
+  , negateAndAbsOnFloatsFollowIEEE
   )
 
 import Js.BasicsChecks as Checks
@@ -180,3 +183,18 @@ powComputesOnFloats =
 powThrowsOnANegativeIntExponent : Test
 powThrowsOnANegativeIntExponent =
   Test.succeeds Checks.powThrowsOnANegativeIntExponent
+
+
+negateOnIntsWrapsAt64Bits : Test
+negateOnIntsWrapsAt64Bits =
+  Test.succeeds Checks.negateOnIntsWrapsAt64Bits
+
+
+absOnIntsWrapsAt64Bits : Test
+absOnIntsWrapsAt64Bits =
+  Test.succeeds Checks.absOnIntsWrapsAt64Bits
+
+
+negateAndAbsOnFloatsFollowIEEE : Test
+negateAndAbsOnFloatsFollowIEEE =
+  Test.succeeds Checks.negateAndAbsOnFloatsFollowIEEE

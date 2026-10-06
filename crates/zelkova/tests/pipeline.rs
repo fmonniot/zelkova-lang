@@ -633,7 +633,7 @@ fn zelkova_test_package_compiles() {
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 }
 
-/// Every checked module of `std/core`, the way [`check_fixture`] reads a smaller
+/// Every checked and specialised module of `std/core`, the way [`check_fixture`] reads a smaller
 /// fixture package — needed here rather than [`compile_package`] because
 /// `zelkova_js::emit` reads a module's [`CheckedModule`], which `compile_package` does
 /// not hand back.
@@ -664,6 +664,20 @@ fn check_std_core() -> Vec<CheckedModule> {
         "std/core must check clean, got {:?}",
         errors
     );
+
+    // `Basics` writes `add`, `eq` and the rest as members of a class and `degrees` calls them,
+    // so a module emits only once the build has resolved each of those to an instance.
+    let mut checked = checked;
+    specialise_all(&mut checked).unwrap_or_else(|errors| {
+        panic!(
+            "std/core must specialise, got {:?}",
+            errors
+                .iter()
+                .flat_map(|module| &module.errors)
+                .map(PhaseError::message)
+                .collect::<Vec<_>>()
+        )
+    });
 
     checked
 }
@@ -751,6 +765,160 @@ fn the_stdlib_bitwise_forwards_to_its_facade() {
         text.contains("const and = $curry(zelkova_core$Js$Bitwise$and, 2);"),
         "got:\n{}",
         text
+    );
+}
+
+// ── What `std/core`'s classes reject ─────────────────────────────────────────
+
+/// `main`, a module of an ordinary package, checked against the real `std/core` as
+/// [`check_std_core`] supplies it, with the default imports bringing in `Basics` and the rest.
+///
+/// The error is the one the checker rejects it with, which has to be a single type error: the
+/// three programs below each hold one mistake, and a second error would be a reason to doubt
+/// the first was the one the test means.
+fn only_type_error_against_std_core(main: &str) -> typer::Error {
+    let interfaces: HashMap<Name, Interface> = check_std_core()
+        .iter()
+        .map(|module| {
+            (
+                module.canonical.name.name().clone(),
+                module.to_interface(None),
+            )
+        })
+        .collect();
+
+    let error = match check_module(&test_package(), &interfaces, &parse_source(main)) {
+        Ok(_) => panic!("expected a type error, but the module checked clean"),
+        Err(error) => error,
+    };
+    let CompilationError::Type(mut errors, module) = error else {
+        panic!("expected a Type error, got {:?}", error);
+    };
+    assert_eq!(module, Name::from("Main"));
+    assert_eq!(errors.len(), 1, "expected one type error, got {:?}", errors);
+    errors.remove(0)
+}
+
+/// The class and the type a [`typer::ErrorKind::NoInstance`] names, written the way the
+/// source would.
+fn no_instance_of(error: &typer::Error) -> (String, String) {
+    match &error.kind {
+        typer::ErrorKind::NoInstance { class, tpe, .. } => (
+            class.unqualified_name().as_str().to_string(),
+            format!("{}", tpe),
+        ),
+        other => panic!("expected `NoInstance`, got {:?}", other),
+    }
+}
+
+/// The range of the one primary label of `error`, which every caret assertion below reads.
+fn primary_range(error: &typer::Error) -> std::ops::Range<usize> {
+    let labels = error.labels();
+    let primary: Vec<_> = labels.iter().filter(|label| label.primary).collect();
+    assert_eq!(
+        primary.len(),
+        1,
+        "expected one primary label, got {:?}",
+        labels
+    );
+    primary[0].span.to_range()
+}
+
+/// A user union type with no `Comparable` instance cannot be ordered: `min Red Blue` is a
+/// type error naming `Comparable` and `Colour`, with its caret under `min`. This is the
+/// program the checker used to accept and `_Utils_cmp` used to answer with a comparison of
+/// nothing against nothing.
+///
+/// Mutation-checked by having `entail` in `typer/classes.rs` answer `Ok(())` where it finds no
+/// instance for a declared type: the module checks clean.
+#[test]
+fn min_of_a_type_with_no_comparable_instance_is_a_type_error() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (smaller)
+
+        type Colour
+          = Red
+          | Blue
+
+        smaller : Colour
+        smaller =
+          min Red Blue
+    "#};
+
+    let error = only_type_error_against_std_core(main);
+
+    assert_eq!(
+        no_instance_of(&error),
+        ("Comparable".to_string(), "Colour".to_string())
+    );
+    let at = main.find("min Red").expect("the probe writes `min Red`");
+    assert_eq!(
+        primary_range(&error),
+        at..at + "min".len(),
+        "the caret must be under `min`"
+    );
+}
+
+/// `eq` on two functions is a type error: no instance of `Eq` can exist for a function type,
+/// so what used to compile and answer `false` at run time is rejected where it is written.
+/// The error names `Eq` and the function type, with its caret under `eq`.
+///
+/// Mutation-checked by having the `Type::Fun` arm of `entail` in `typer/classes.rs` answer
+/// `Ok(())`: the module checks clean.
+#[test]
+fn eq_on_two_functions_is_a_type_error() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (same)
+
+        same : Bool
+        same =
+          eq not not
+    "#};
+
+    let error = only_type_error_against_std_core(main);
+
+    assert_eq!(
+        no_instance_of(&error),
+        ("Eq".to_string(), "Bool -> Bool".to_string())
+    );
+    let at = main.find("eq not").expect("the probe writes `eq not`");
+    assert_eq!(
+        primary_range(&error),
+        at..at + "eq".len(),
+        "the caret must be under `eq`"
+    );
+}
+
+/// `add 1 1.5` is a type error: `Number` has an instance at `Int` and one at `Float`, and
+/// `add : a -> a -> a` holds both arguments to one `a`, so the `Float` literal is blamed
+/// against the `Int` the first one fixed it to. What used to be handed to `addInt`, whose
+/// boundary check then aborted the program, no longer type checks.
+///
+/// Mutation-checked by annotating `Basics.add`'s member as `a -> b -> a` in the class: the
+/// two arguments no longer have to agree and the module checks, or fails with a different
+/// error.
+#[test]
+fn add_of_an_int_and_a_float_is_a_type_error() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (sum)
+
+        sum : Int
+        sum =
+          add 1 1.5
+    "#};
+
+    let error = only_type_error_against_std_core(main);
+
+    assert!(
+        matches!(error.kind, typer::ErrorKind::UnificationFailed { .. }),
+        "expected a unification failure, got {:?}",
+        error.kind
+    );
+    let at = main.find("1.5").expect("the probe writes `1.5`");
+    assert_eq!(
+        primary_range(&error),
+        at..at + "1.5".len(),
+        "the caret must be under the `1.5`"
     );
 }
 

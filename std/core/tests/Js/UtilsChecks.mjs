@@ -1,5 +1,5 @@
-// The JavaScript checks over std/core/src/Js/Utils.mjs, the companion behind
-// the Js.Utils facade (Js/Utils.zel).
+// The JavaScript checks over std/core/src/Js/Utils.mjs, the companion behind the
+// Js.Utils facade (Js/Utils.zel).
 //
 // This is the companion of the test facade Js.UtilsChecks
 // (tests/Js/UtilsChecks.zel), laid out as docs/spec/interop.md's "Testing a
@@ -9,262 +9,172 @@
 // `Err (Threw ..)`. Js.UtilsTests (tests/Js/UtilsTests.zel) exposes one
 // `Test` per check, so `zelkova test std/core` runs them.
 //
-// `lt`/`le`/`gt`/`ge`/`compare` and `append` are declared `a -> a -> ...`
-// (BUG-20), a type their JavaScript cannot honour: handed a value of a
-// user-defined union type, `_Utils_cmp` and `append` read undefined tuple and
-// list fields off it and returned a nonsense answer instead of failing. The
-// fix is a guard that admits only the shapes this file can actually read and
-// throws on everything else.
+// Js.Utils is a set of primitives, one per scalar type, that the instances of
+// `Eq`, `Comparable` and `Appendable` in Basics.zel forward to. What an
+// instance computes over a whole value is checked where it is written, in the
+// Zelkova tests beside these (EqTests.zel, ComparableTests.zel, NumberTests.zel,
+// AppendableTests.zel and DerivedTests.zel); what is checked here is each
+// primitive on its own type, and that each one refuses a value that is not of
+// it, because the facades are the package's boundary.
 //
-// Two kinds of check live below, each labelled in the comment above its
-// export, where a Zelkova name could not carry it:
-//
-//   PINS  — verified red against the file as it stood before the guard: either
-//           the unguarded original, or a guard keyed on the presence of a `$`
-//           field alone. These are the fix.
-//   GUARD — passes with and without the guard. These pin that the fix did not
-//           narrow what the file used to accept; they prove nothing about the
-//           fix itself, so do not read a green one as a pinned new behaviour.
-//
-// Values are shaped the way docs/spec/interop.md says they cross to
-// JavaScript, or the way this file's own constructors build them, since code
-// generation does not exist yet to produce either from real Zelkova source.
+// Values are shaped the way docs/spec/interop.md says they cross to JavaScript.
 // Utils.mjs is imported as a module of the target rather than reached through
 // its facade, which is what lets these ask what it does with a value Js.Utils
 // would have refused to pass it.
 
 import assert from 'node:assert/strict';
-// `Utils.mjs` no longer exports these eight under their bare names:
-// `LANG-43` split each into a monomorphic `*Int`/`*Float` pair
-// (`Js/Utils.zel`), and `Basics.zel` itself picks the `Int` one for its own
-// re-export. The two aliases share one underlying function (see
-// `Utils.mjs`), so importing the `Int` name under its old bare spelling
-// below still exercises exactly what these tests exercised before, whatever
-// the operands' types.
 import {
-    compareInt as compare, ltInt as lt, leInt as le, gtInt as gt,
-    geInt as ge, appendInt as append, equalInt as equal,
-    notEqualInt as notEqual,
+    equalInt, equalFloat, equalChar, equalString,
+    ltInt, ltFloat, ltChar, ltString,
+    appendString,
 } from '../../src/Js/Utils.mjs';
 
-// A stand-in for `Colour = Red | Blue`, encoded as
+// Stand-ins for `Colour = Red | Blue` and a three-argument constructor, encoded as
 // docs/spec/interop.md#a-union-crosses-as-a-tagged-value specifies.
 const Red = { $: 'Red' };
-const Blue = { $: 'Blue' };
 const Rgb = (r, g, b) => ({ $: 'Rgb', a: r, b: g, c: b });
 
-// The two encodings `_Utils_Tuple2`/`_Utils_Tuple3` build in this file.
-const prodPair = (a, b) => ({ a, b });
-const debugPair = (a, b) => ({ $: '#2', a, b });
-const prodTriple = (a, b, c) => ({ a, b, c });
-const debugTriple = (a, b, c) => ({ $: '#3', a, b, c });
+// The values none of the nine primitives takes, whatever type it is for.
+const strangers = [
+    Red,
+    Rgb(1n, 2n, 3n),
+    [1n, 2n],
+    { x: 1n },
+    () => 1n,
+    null,
+    undefined,
+    true,
+];
 
-// A cons list in the encoding `__List_Cons` used to build, which `append`'s
-// deleted walk was written for.
-const nil = { $: 0 };
-const cons = (h, t) => ({ $: 1, a: h, b: t });
+const refusal = /can only be given two (Int|Float|Char|String)s, but was given/;
 
-const cmpError = /compare: can only compare /;
-const appendError = /append: can only append two Strings/;
+// EQUALITY
 
-// COMPARE — what it accepts
-
-// GUARD compare orders numbers
-export function compareOrdersNumbers() {
-    assert.equal(compare(1, 2), -1);
-    assert.equal(compare(2, 2), 0);
-    assert.equal(compare(3, 2), 1);
+// equalInt answers on two Ints, the whole 64-bit range included
+export function equalIntAnswersOnTwoInts() {
+    assert.equal(equalInt(3n, 3n), true);
+    assert.equal(equalInt(3n, 4n), false);
+    assert.equal(equalInt(-(2n ** 63n), -(2n ** 63n)), true);
+    assert.equal(equalInt(2n ** 63n - 1n, -(2n ** 63n)), false);
 }
 
-// GUARD compare orders strings
-export function compareOrdersStrings() {
-    assert.equal(compare('a', 'b'), -1);
-    assert.equal(compare('b', 'b'), 0);
+// equalFloat is IEEE 754's equality: nan equals nothing, and 0 equals -0
+// (docs/spec/evaluation-semantics.md#what-structural-equality-computes)
+export function equalFloatFollowsIEEE() {
+    assert.equal(equalFloat(1.5, 1.5), true);
+    assert.equal(equalFloat(1.5, 2.5), false);
+    assert.equal(equalFloat(NaN, NaN), false);
+    assert.equal(equalFloat(NaN, 1.5), false);
+    assert.equal(equalFloat(0, -0), true);
+    assert.equal(equalFloat(Infinity, Infinity), true);
+    assert.equal(equalFloat(Infinity, -Infinity), false);
 }
 
-// GUARD compare orders tuples in the PROD encoding
-export function compareOrdersProdTuples() {
-    assert.equal(compare(prodPair(1, 2), prodPair(1, 3)), -1);
-    assert.equal(compare(prodPair(1, 2), prodPair(1, 2)), 0);
-    assert.equal(compare(prodTriple(1, 2, 3), prodTriple(1, 2, 2)), 1);
+// equalChar and equalString compare by content, a Char above U+FFFF included
+export function equalCharAndStringCompareByContent() {
+    assert.equal(equalChar('a', 'a'), true);
+    assert.equal(equalChar('a', 'b'), false);
+    assert.equal(equalChar('\u{1F600}', '\u{1F600}'), true);
+    assert.equal(equalChar('\u{1F600}', '\u{1F601}'), false);
+    assert.equal(equalString('', ''), true);
+    assert.equal(equalString('abc', 'abc'), true);
+    assert.equal(equalString('abc', 'abd'), false);
+    assert.equal(equalString('abc', 'ab'), false);
 }
 
-// PINS compare orders tuples in the DEBUG encoding
-export function compareOrdersDebugTuples() {
-    // _Utils_Tuple2__DEBUG stamps `$: '#2'` on a perfectly legitimate tuple.
-    // A guard keyed on the mere presence of `$` rejects it.
-    assert.equal(compare(debugPair(1, 2), debugPair(1, 3)), -1);
-    assert.equal(compare(debugTriple(1, 2, 3), debugTriple(1, 2, 3)), 0);
-}
-
-// GUARD compare stops at a 2-tuple instead of reading a third field
-export function compareStopsAtAPairsArity() {
-    // The walk now stops at the arity rather than recursing into `x.c`/`y.c`,
-    // which are both `undefined` on a pair. The old walk reached the same
-    // answer the long way round, so this only pins that it still does.
-    assert.equal(compare(prodPair(1, 2), prodPair(1, 2)), 0);
-    assert.equal(compare(prodPair(2, 1), prodPair(1, 1)), 1);
-}
-
-// COMPARE — what it refuses
-
-// PINS compare refuses a union value
-export function compareRefusesAUnionValue() {
-    assert.throws(() => compare(Red, Blue), cmpError);
-    assert.throws(() => compare(Rgb(1, 2, 3), Rgb(1, 2, 4)), cmpError);
-}
-
-// PINS compare refuses a union against a primitive, either way round
-export function compareRefusesAUnionAgainstAPrimitive() {
-    // The old guard sat behind the primitive branch, so only one order threw.
-    assert.throws(() => compare(Red, 1), cmpError);
-    assert.throws(() => compare(1, Red), cmpError);
-}
-
-// PINS compare refuses an array
-export function compareRefusesAnArray() {
-    // docs/spec/interop.md says a tuple and a list each cross as an array.
-    // This file reads the object encoding, so an array is unreadable here —
-    // and untagged, so a `$`-keyed guard waves it through and answers EQ.
-    assert.throws(() => compare([1, 2], [1, 3]), cmpError);
-    assert.throws(() => compare([1, 2, 3], [1, 2, 4]), cmpError);
-}
-
-// PINS compare refuses a record
-export function compareRefusesARecord() {
-    // A record is a plain untagged object of the record's own fields (zelkova-js's
-    // `Representations`).
-    assert.throws(() => compare({ x: 1, y: 2 }, { x: 1, y: 3 }), cmpError);
-}
-
-// PINS compare refuses a function
-export function compareRefusesAFunction() {
-    assert.throws(() => compare(() => 1, () => 2), cmpError);
-}
-
-// PINS compare refuses null and undefined
-export function compareRefusesNullAndUndefined() {
-    assert.throws(() => compare(null, null), cmpError);
-    assert.throws(() => compare(undefined, undefined), cmpError);
-}
-
-// PINS compare refuses tuples of different sizes
-export function compareRefusesTuplesOfDifferentSizes() {
-    assert.throws(() => compare(prodPair(1, 2), prodTriple(1, 2, 3)), cmpError);
-}
-
-// PINS compare refuses a union nested inside a tuple
-export function compareRefusesANestedUnion() {
-    // Here it is the recursion that has to catch it, not the entry point.
-    assert.throws(() => compare(prodPair(1, Red), prodPair(1, Blue)), cmpError);
-    assert.throws(
-        () => compare(prodTriple(1, 2, Red), prodTriple(1, 2, Blue)),
-        cmpError,
-    );
-}
-
-// PINS the comparison operators refuse what compare refuses
-export function comparisonOperatorsRefuseWhatCompareRefuses() {
-    for (const op of [lt, le, gt, ge]) {
-        assert.throws(() => op(Red, Blue), cmpError);
-        assert.throws(() => op([1, 2], [1, 3]), cmpError);
+// every equality refuses what is not of its type, a number where an Int is
+// asked for and a bigint where a Float is among them
+export function equalityRefusesAValueOfAnotherType() {
+    assert.throws(() => equalInt(1, 1), refusal);
+    assert.throws(() => equalInt(1n, 1), refusal);
+    assert.throws(() => equalFloat(1n, 1n), refusal);
+    assert.throws(() => equalFloat(1.5, 'a'), refusal);
+    assert.throws(() => equalChar('ab', 'ab'), refusal);
+    assert.throws(() => equalChar('', ''), refusal);
+    assert.throws(() => equalChar('a', 1n), refusal);
+    assert.throws(() => equalString('a', 1n), refusal);
+    assert.throws(() => equalString(1n, 'a'), refusal);
+    for (const stranger of strangers) {
+        for (const equal of [equalInt, equalFloat, equalChar, equalString]) {
+            assert.throws(() => equal(stranger, stranger), refusal);
+        }
     }
 }
 
-// GUARD the comparison operators still answer on numbers
-export function comparisonOperatorsAnswerOnNumbers() {
-    assert.equal(lt(1, 2), true);
-    assert.equal(le(2, 2), true);
-    assert.equal(gt(1, 2), false);
-    assert.equal(ge(2, 2), true);
+// ORDER
+
+// ltInt orders two Ints, past the range a number is exact over
+export function ltIntOrdersTwoInts() {
+    assert.equal(ltInt(3n, 5n), true);
+    assert.equal(ltInt(5n, 5n), false);
+    assert.equal(ltInt(5n, 3n), false);
+    assert.equal(ltInt(-(2n ** 63n), 2n ** 63n - 1n), true);
+    assert.equal(ltInt(2n ** 53n, 2n ** 53n + 1n), true);
 }
 
-// COMPARE — Ints (LANG-65)
-//
-// An `Int` crosses as a `bigint` (docs/spec/interop.md#which-types-may-cross-
-// the-boundary), which `_Utils_isOrdered` did not admit: `compare`, `lt`,
-// `le`, `gt` and `ge` fell through to the tuple-arity branch and threw
-// `cmpError` on two `Int`s, the same throw a genuinely unorderable value
-// gets.
-
-// PINS compare orders two Ints instead of throwing
-export function compareOrdersTwoInts() {
-    assert.equal(compare(3n, 5n), -1);
-    assert.equal(compare(5n, 5n), 0);
-    assert.equal(compare(5n, 3n), 1);
+// ltFloat orders two Floats, and a nan is unordered against everything
+// (docs/spec/evaluation-semantics.md#numbers)
+export function ltFloatOrdersTwoFloatsAndNotNan() {
+    assert.equal(ltFloat(1.5, 2.5), true);
+    assert.equal(ltFloat(2.5, 2.5), false);
+    assert.equal(ltFloat(2.5, 1.5), false);
+    assert.equal(ltFloat(-Infinity, Infinity), true);
+    assert.equal(ltFloat(-0, 0), false);
+    assert.equal(ltFloat(0, -0), false);
+    assert.equal(ltFloat(NaN, 1.5), false);
+    assert.equal(ltFloat(1.5, NaN), false);
+    assert.equal(ltFloat(NaN, NaN), false);
+    assert.equal(ltFloat(-Infinity, NaN), false);
 }
 
-// PINS the comparison operators answer on two Ints instead of throwing
-export function comparisonOperatorsAnswerOnTwoInts() {
-    assert.equal(lt(3n, 5n), true);
-    assert.equal(le(5n, 5n), true);
-    assert.equal(gt(5n, 3n), true);
-    assert.equal(ge(5n, 5n), true);
-    assert.equal(lt(5n, 3n), false);
+// ltChar and ltString order by code point, not by the UTF-16 units `<` compares:
+// U+10000 is two units, both above U+E000's one
+export function ltCharAndStringOrderByCodePoint() {
+    assert.equal(ltChar('a', 'b'), true);
+    assert.equal(ltChar('b', 'a'), false);
+    assert.equal(ltChar('a', 'a'), false);
+    assert.equal(ltChar('', '\u{10000}'), true);
+    assert.equal(ltChar('\u{10000}', ''), false);
+    assert.equal(ltChar('\u{1F600}', '\u{10000}'), false);
+    assert.equal(ltString('abc', 'abd'), true);
+    assert.equal(ltString('abc', 'abc'), false);
+    assert.equal(ltString('ab', 'abc'), true);
+    assert.equal(ltString('abc', 'ab'), false);
+    assert.equal(ltString('', 'a'), true);
+    assert.equal(ltString('a', 'a\u{10000}'), true);
+    assert.equal(ltString('a\u{10000}', 'a'), false);
+    assert.equal(ltString('\u{10000}a', '\u{10000}b'), true);
+}
+
+// every ordering refuses what is not of its type
+export function orderingRefusesAValueOfAnotherType() {
+    assert.throws(() => ltInt(1, 2), refusal);
+    assert.throws(() => ltInt(1n, 2), refusal);
+    assert.throws(() => ltFloat(1n, 2n), refusal);
+    assert.throws(() => ltChar('ab', 'cd'), refusal);
+    assert.throws(() => ltString(1n, 'a'), refusal);
+    for (const stranger of strangers) {
+        for (const lt of [ltInt, ltFloat, ltChar, ltString]) {
+            assert.throws(() => lt(stranger, stranger), refusal);
+        }
+    }
 }
 
 // APPEND
 
-// GUARD append concatenates two strings
-export function appendConcatenatesTwoStrings() {
-    assert.equal(append('ab', 'cd'), 'abcd');
-    assert.equal(append('', ''), '');
+// appendString concatenates two strings
+export function appendStringConcatenatesTwoStrings() {
+    assert.equal(appendString('ab', 'cd'), 'abcd');
+    assert.equal(appendString('', ''), '');
+    assert.equal(appendString('a', ''), 'a');
 }
 
-// PINS append refuses a string and a non-string
-export function appendRefusesAStringAndANonString() {
-    assert.throws(() => append('ab', 1), appendError);
-    assert.throws(() => append(1, 'ab'), appendError);
-    assert.throws(() => append('ab', Red), appendError);
-}
-
-// PINS append refuses a union value
-export function appendRefusesAUnionValue() {
-    assert.throws(() => append(Red, Blue), appendError);
-}
-
-// PINS append refuses a cons list, and says lists are not implemented
-export function appendRefusesAConsList() {
-    // The deleted walk was written for exactly this encoding and called an
-    // undefined `__List_Cons` (BUG-24). Whatever it did, it never concatenated
-    // two lists — so the error has to name lists as absent rather than claim
-    // they are supported.
-    assert.throws(() => append(cons(1, nil), cons(2, nil)), appendError);
-    assert.throws(() => append(nil, nil), appendError);
-}
-
-// PINS append refuses arrays rather than returning one of them
-export function appendRefusesArrays() {
-    // The array encoding docs/spec/interop.md gives a list. Untagged, so a
-    // `$`-keyed guard passes it to the walk, which returned `ys` unchanged.
-    assert.throws(() => append([1, 2], [3, 4]), appendError);
-}
-
-// PINS append refuses a record and a function
-export function appendRefusesARecordAndAFunction() {
-    assert.throws(() => append({ x: 1 }, { x: 2 }), appendError);
-    assert.throws(() => append(() => 1, () => 2), appendError);
-}
-
-// EQUALITY — the function case (BUG-24)
-
-// `Eq` has no instance for a function type, so comparing two functions does
-// not type-check and this path is unreachable from well-typed source — but
-// `Js.Utils.equal` is declared `a -> a -> Bool` today (BUG-20) and accepts
-// anything, so it is reachable now. `_Utils_eqHelp` used to call an undefined
-// crash helper here, a `ReferenceError`; it now answers `false` instead of
-// inventing a failure mode equality does not have.
-// PINS comparing two functions for equality answers false rather than throwing
-export function equalityOnTwoFunctionsIsFalse() {
-    const f = () => 1;
-    const g = () => 2;
-    assert.equal(equal(f, g), false);
-    assert.equal(notEqual(f, g), true);
-}
-
-// GUARD a function is equal to itself by reference
-export function aFunctionEqualsItself() {
-    const f = () => 1;
-    assert.equal(equal(f, f), true);
-    assert.equal(notEqual(f, f), false);
+// appendString refuses a value that is not a string, naming it
+export function appendStringRefusesWhatIsNotAString() {
+    assert.throws(() => appendString('ab', 1n), refusal);
+    assert.throws(() => appendString(1n, 'ab'), refusal);
+    assert.throws(() => appendString('ab', Red), /a value of the user-defined constructor Red/);
+    for (const stranger of strangers) {
+        assert.throws(() => appendString(stranger, stranger), refusal);
+    }
 }

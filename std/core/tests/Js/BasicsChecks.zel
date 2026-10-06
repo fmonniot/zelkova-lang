@@ -33,6 +33,9 @@ module foreign Js.BasicsChecks exposing
   , powWrapsAt64Bits
   , powComputesOnFloats
   , powThrowsOnANegativeIntExponent
+  , negateOnIntsWrapsAt64Bits
+  , absOnIntsWrapsAt64Bits
+  , negateAndAbsOnFloatsFollowIEEE
   )
 
 import Result exposing (Result)
@@ -68,3 +71,6 @@ powComputesOnTwoInts : Task (Result Failure ())
 powWrapsAt64Bits : Task (Result Failure ())
 powComputesOnFloats : Task (Result Failure ())
 powThrowsOnANegativeIntExponent : Task (Result Failure ())
+negateOnIntsWrapsAt64Bits : Task (Result Failure ())
+absOnIntsWrapsAt64Bits : Task (Result Failure ())
+negateAndAbsOnFloatsFollowIEEE : Task (Result Failure ())
