@@ -1,13 +1,12 @@
 # DEC-24 · What implementing type classes had to settle: twelve decisions
 
 **Settled:** 2026-10-02, by the language owner, in the session that brought the
-[type-class tickets](../tickets/README.md#active-work-type-classes) up to date with a tree that
+type-class tickets up to date with a tree that
 had gained a manifest, a backend and a test runner since they were filed.
 **Status:** live.
 **Where the rule lives:** [Type classes](../spec/type-classes.md) for decisions 1 to 9, with
 [Modules](../spec/modules.md#the-exposing-list) and
-[Name resolution](../spec/name-resolution.md#namespaces) for decision 6; the
-[ticket index](../tickets/README.md#active-work-type-classes) for decisions 10 to 12, which are
+[Name resolution](../spec/name-resolution.md#namespaces) for decision 6; decisions 10 to 12 are
 about the order of the work and say nothing about the language.
 
 [DEC-2](dec-2.md) decided what a class is. It was written before anything implemented one, and
@@ -212,9 +211,8 @@ written across two functions, so the limit would be needed behind it regardless.
 
 ## 10 — `LANG-12` closes the order instead of opening it
 
-[`LANG-12`](../tickets/lang-12.md) makes an annotation's variables rigid, and was a hard
-prerequisite of the solver: without it a constrained declaration can prove `Comparable Int` and
-publish `Comparable a`.
+`LANG-12` makes an annotation's variables rigid, and was a hard prerequisite of the solver:
+without it a constrained declaration can prove `Comparable Int` and publish `Comparable a`.
 
 Between that being written and this session, [a facade signature stopped being able to name a
 type variable](dec-6.md#2--a-bare-type-variable-is-rejected-so-a-facade-is-monomorphic). So
@@ -224,9 +222,8 @@ and the class mechanism was waiting on `LANG-12`.
 
 The order is turned round: the solver lands on today's flexible variables, `std/core` is
 rewritten onto classes, and `LANG-12` goes last, onto a library with nothing left for it to
-reject. For the length of the work a constrained declaration can under-prove its signature
-exactly as any annotated declaration can today; the series does not finish until that is
-closed.
+reject. For the length of the work a constrained declaration could under-prove its signature
+exactly as any annotated declaration could; the series did not finish until that was closed.
 
 A long-lived branch holding the whole series in the written order was the alternative, and
 would have had no such window, and would have drifted against `main` for as long as the series

@@ -14,7 +14,7 @@ requirement; `crates/zelkova-compiler/src/ir/` — the specialisation pass
 **Depends on:** `LANG-51` (closed) for the record type; [`LANG-40`](README.md) and
 [`LANG-83`](README.md) for obligations and for what a derivation is; [`GEN-24`](README.md) and
 `GEN-25` (closed) before a program using it runs. It is the one ticket that needs both
-*Active work* orders in [the index](README.md) finished.
+the type-class order and the record order finished.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decision 8):** a
 record is walked by a derivation field by field, **in label order**, folded with `combine`; a

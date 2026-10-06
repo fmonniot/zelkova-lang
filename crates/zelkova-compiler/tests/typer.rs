@@ -118,6 +118,100 @@ fn identity_function_types() {
     assert!(run(source).is_ok(), "identity : a -> a should type-check");
 }
 
+// ── An annotation's variables are rigid ───────────────────────────────────────
+
+/// An annotation's variable stands for every type a caller may choose, so a body that
+/// always returns one particular type does not honour `f : a -> a`: the error is the
+/// variable's, names the type the body needed, and has the annotation as its explanation.
+///
+/// Mutation-checked by making `make_rigid` return its type unchanged in
+/// `value_to_term_and_annotation`: `a` is solved to `T` and `one_type_error` panics.
+#[test]
+fn an_annotation_variable_cannot_be_solved_to_a_type() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        type T
+          = C
+
+        f : a -> a
+        f x =
+          C
+    "#};
+
+    let error = one_type_error(source);
+    assert_eq!(
+        rigid_variable_of(&error),
+        ("a".to_string(), "T".to_string())
+    );
+    assert_eq!(
+        error.message(),
+        "`a` stands for any type, but here it would have to be `T`"
+    );
+    // The caret is where the body disagrees, and the annotation is named beside it.
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_of(source, "x =\n  C"), range_of(source, "f : a -> a"),]
+    );
+    assert_eq!(
+        error.labels()[1].message,
+        "expected because of this type annotation"
+    );
+    assert!(
+        error.notes().contains(
+            &"a declaration's body must have the type its annotation declares".to_string()
+        ),
+        "{:?}",
+        error.notes()
+    );
+}
+
+/// The honest polymorphic identity checks: its body works for any `a`, so the rigid
+/// variable is never asked to be anything but itself.
+///
+/// Mutation-checked together with the test above: refusing to unify a rigid variable with
+/// itself (deleting the `left == right` arm of `unify_one_constraint`) makes this one
+/// fail with a `RigidVariable` error for `a` against `a`.
+#[test]
+fn an_honest_polymorphic_identity_checks() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        f : a -> a
+        f x =
+          x
+    "#};
+
+    let solved = solved(source);
+    assert_eq!(format!("{}", typed_declaration(&solved, "f").tpe), "a -> a");
+}
+
+/// Two variables of one annotation are two rigid variables: a body that returns the second
+/// where the first was promised is an error naming both.
+///
+/// Mutation-checked by letting `unify_one_constraint` solve one rigid variable to another:
+/// `one_type_error` panics.
+#[test]
+fn two_annotation_variables_are_not_one() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        pick : a -> b -> a
+        pick x y =
+          y
+    "#};
+
+    let error = one_type_error(source);
+    let (variable, tpe) = rigid_variable_of(&error);
+    assert!(
+        (variable.as_str(), tpe.as_str()) == ("a", "b")
+            || (variable.as_str(), tpe.as_str()) == ("b", "a"),
+        "got `{}` against `{}`",
+        variable,
+        tpe
+    );
+}
+
 // ── Int literal type ──────────────────────────────────────────────────────────
 
 /// A constant `42` should have type `Int`.
@@ -1271,11 +1365,7 @@ fn a_constructor_pattern_parameter_is_typed() {
     let solved = solved(source);
 
     let rendered = format!("{}", typed_declaration(&solved, "never").tpe);
-    assert!(
-        rendered.starts_with("Never -> t"),
-        "expected `Never` to anything, got {}",
-        rendered
-    );
+    assert_eq!(rendered, "Never -> a");
 }
 
 /// A parameter's pattern is checked against the type the annotation gives that
@@ -2103,20 +2193,15 @@ fn a_label_set_differing_on_one_side_names_that_side() {
 }
 
 /// The occurs check goes into a record's fields: a record holding the value it is the
-/// type of would be the infinite type `a = { x : a }`, annotated or not.
+/// type of would be the infinite type `a = { x : a }`. Neither declaration is annotated,
+/// because an annotation's variable is rigid and a rigid variable is not solved to a record
+/// at all (`an_annotation_variable_cannot_be_solved_to_a_type`).
 ///
-/// Mutation-checked by giving `occurs` the arm `Type::Record(_fields) => false`: `loop`
-/// and `wrapped` then both type check, and `one_type_error` panics.
+/// Mutation-checked by giving `occurs` the arm `Type::Record(_fields) => false`: `wrapped`
+/// and `rewrapped` then both type check, and `one_type_error` panics.
 #[test]
 fn a_record_cannot_hold_its_own_type() {
     for source in [
-        indoc::indoc! {r#"
-            module Test exposing ()
-
-            loop : a -> a
-            loop r =
-              { x = r }
-        "#},
         indoc::indoc! {r#"
             module Test exposing ()
 
@@ -2127,6 +2212,16 @@ fn a_record_cannot_hold_its_own_type() {
             wrapped r =
               same r { x = r }
         "#},
+        indoc::indoc! {r#"
+            module Test exposing ()
+
+            same : a -> a -> a
+            same x y =
+              x
+
+            rewrapped r =
+              same { x = r } r
+        "#},
     ] {
         let error = one_type_error(source);
         assert!(
@@ -2135,6 +2230,30 @@ fn a_record_cannot_hold_its_own_type() {
             error.kind
         );
     }
+}
+
+/// An annotation's variable is not solved to a record either: `a` would have to be `{ x : a }`,
+/// and that is a rigid variable the body cannot make something of its own, not a circular
+/// type.
+///
+/// Mutation-checked by not making an annotation's variables rigid in
+/// `value_to_term_and_annotation` (leaving out its `make_rigid`): the error is then a
+/// `CircularType` and `rigid_variable_of` panics.
+#[test]
+fn an_annotation_variable_is_not_solved_to_a_record_holding_it() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        loop : a -> a
+        loop r =
+          { x = r }
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(
+        rigid_variable_of(&error),
+        ("a".to_string(), "{ x : a }".to_string())
+    );
 }
 
 /// An access has the type of the field it reads, and a field read at another type is
@@ -3722,6 +3841,17 @@ fn no_instance_of(error: &typer::Error) -> (String, String) {
     }
 }
 
+/// The variable and the type a [`typer::ErrorKind::RigidVariable`] names, written the way the
+/// message does, or a panic for any other kind.
+fn rigid_variable_of(error: &typer::Error) -> (String, String) {
+    match &error.kind {
+        typer::ErrorKind::RigidVariable { variable, tpe, .. } => {
+            (variable.clone(), format!("{}", tpe))
+        }
+        other => panic!("expected `RigidVariable`, got {:?}", other),
+    }
+}
+
 /// A use whose obligation an instance discharges checks, and so does a use through an
 /// instance with a context when the context's own obligation is discharged in turn.
 ///
@@ -4592,22 +4722,16 @@ fn an_operator_naming_a_member_raises_its_obligation() {
     .is_ok());
 }
 
-/// An annotation's variable that the body forces to a concrete type takes its given with
-/// it: `min : Comparable a => a -> a -> a` whose body makes `a` an `Int` proves
-/// `Comparable Int` and publishes `Comparable a`, and **checks**.
+/// An annotation's variable is rigid, so a constrained one cannot be solved to a type to
+/// make the body check: `min : Comparable a => a -> a -> a` whose body makes `a` an `Int` is
+/// an error whether or not `Comparable Int` exists, because `Comparable a` is a promise
+/// about every `a` and the body only works for one.
 ///
-/// This pins a hole on purpose. It is the width of the hole every annotation has while its
-/// variables are flexible: `LANG-12` makes them rigid, and rejects this declaration with
-/// its own error. That ticket has to turn this test round; nothing in this one narrows the
-/// hole (no partial rigidity check), so the day `LANG-12` lands it goes red and says where.
-///
-/// The second half is what shows the given went with the variable: with no `Comparable
-/// Int`, the declaration is a `NoInstance` at `Int` and not a missing constraint.
-///
-/// Mutation-checked by letting a given answer an obligation on any type of its class: the
-/// second half goes red.
+/// Mutation-checked by making `make_rigid` return its type unchanged in
+/// `value_to_term_and_annotation`: the declaration is solved at `Int`, `Comparable Int` is
+/// proved by the instance, and the first half goes red.
 #[test]
-fn an_annotation_variable_forced_to_int_checks_until_lang_12() {
+fn an_annotation_variable_forced_to_int_is_an_error() {
     let declarations = indoc::indoc! {r#"
         module Test exposing (..)
 
@@ -4639,19 +4763,170 @@ fn an_annotation_variable_forced_to_int_checks_until_lang_12() {
                 True
         "#}
     );
-    assert!(
-        run(&with_instances).is_ok(),
-        "{:?}",
-        run(&with_instances).err()
-    );
 
-    // Without an instance at `Int` the obligation is on `Int`, where a given does not
-    // reach: the error is the instance's absence, not the annotation's.
-    let error = one_type_error(declarations);
+    for source in [with_instances.as_str(), declarations] {
+        let error = one_type_error(source);
+        assert_eq!(
+            rigid_variable_of(&error),
+            ("a".to_string(), "Int".to_string())
+        );
+        assert_eq!(
+            error.message(),
+            "`a` stands for any type, but here it would have to be `Int`"
+        );
+        assert_eq!(
+            ranges(&error.labels()),
+            vec![
+                range_within(source, "lt x 0", "0"),
+                range_of(source, "min : Comparable a => a -> a -> a"),
+            ]
+        );
+    }
+}
+
+/// An instance's bindings are checked with the head's variables rigid: `instance Eq a => Eq
+/// (Box a)` whose `eq` only works when `a` is an `Int` is an error, though `Eq Int` exists,
+/// and the caret is under the use that needs the `Int`.
+///
+/// Mutation-checked by not making the head rigid in `InstanceCheck::of`: `a` is solved to
+/// `Int`, `Eq Int` answers, and `one_type_error` panics.
+#[test]
+fn an_instance_binding_cannot_force_a_head_variable_to_a_type() {
+    let source = with_eq(indoc::indoc! {r#"
+        type Wrapper a
+          = Wrapper a
+
+        instance Eq a => Eq (Wrapper a) where
+          eq (Wrapper left) (Wrapper right) =
+            eq left 0
+    "#});
+
+    let error = one_type_error(&source);
     assert_eq!(
-        no_instance_of(&error),
-        ("Comparable".to_string(), "Int".to_string())
+        rigid_variable_of(&error),
+        ("a".to_string(), "Int".to_string())
     );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_within(&source, "eq left 0", "0"),
+            range_of(&source, "instance Eq a => Eq (Wrapper a) where"),
+        ]
+    );
+    assert!(
+        error
+            .notes()
+            .iter()
+            .any(|note| note.starts_with("a type variable of an instance stands for every type")),
+        "{:?}",
+        error.notes()
+    );
+}
+
+/// The variables a class member's signature binds beyond the class's are rigid in an
+/// instance's binding too: `has : a -> b -> b -> Bool` is held to every `b`.
+///
+/// Mutation-checked by not making the member's signature rigid in `InstanceCheck::binding`:
+/// `b` is solved to `Int` and `one_type_error` panics.
+#[test]
+fn an_instance_binding_cannot_force_a_member_signature_variable_to_a_type() {
+    let source = with_eq(indoc::indoc! {r#"
+        class Container a where
+          has : a -> b -> b -> Bool
+
+        instance Container (Box a) where
+          has c x y =
+            eq x 0
+    "#});
+
+    let error = one_type_error(&source);
+    assert_eq!(
+        rigid_variable_of(&error),
+        ("b".to_string(), "Int".to_string())
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_within(&source, "eq x 0", "0"),
+            range_of(&source, "instance Container (Box a) where"),
+        ]
+    );
+    assert_eq!(
+        error.message(),
+        "`b` stands for any type, but here it would have to be `Int`"
+    );
+    assert!(
+        error.notes().iter().any(|note| note.starts_with(
+            "a type variable of a member's signature stands for every type a caller of the member may choose"
+        )),
+        "{:?}",
+        error.notes()
+    );
+}
+
+/// An instance's head and the member signature its binding is held to may write a variable
+/// alike, and the message says whose each is: without it, `b` would have to be `b`. The note
+/// is the one for the variable the message is about, here the head's.
+///
+/// Mutation-checked by reading no other variable of the same spelling in `ErrorKind::message`
+/// (`let other = None`): the message reads "`b` stands for any type, but here it would have
+/// to be `b`" and the first assertion goes red.
+#[test]
+fn two_rigid_variables_written_alike_are_told_apart() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Holder a where
+          hold : a -> b -> b
+
+        type Box c
+          = Box c
+
+        instance Holder (Box b) where
+          hold bx y =
+            case bx of
+              Box z ->
+                z
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(
+        error.message(),
+        "`b` of the instance head stands for any type, but here it would have to be `b`, where `b` is the member signature's"
+    );
+    assert!(
+        error.notes().iter().any(|note| note.starts_with(
+            "a type variable of an instance stands for every type the instance may be used at"
+        )),
+        "{:?}",
+        error.notes()
+    );
+}
+
+/// A constrained declaration whose body uses only what its context provides checks, and is
+/// checked at a rigid variable: the type it is solved to still has `a` in it, written as
+/// the annotation wrote it, and the context it publishes is on that variable.
+///
+/// Mutation-checked by not making `make_rigid` rename the variable it keeps: the type is
+/// written `t10001 -> t10001 -> Bool` and the first assertion goes red.
+#[test]
+fn a_constrained_declaration_using_only_its_context_checks_at_a_rigid_variable() {
+    let source = with_eq(indoc::indoc! {r#"
+        same : Eq a => a -> a -> Bool
+        same x y =
+          eq x y
+    "#});
+
+    let solved = solved(&source);
+    let declaration = typed_declaration(&solved, "same");
+    assert_eq!(format!("{}", declaration.tpe), "a -> a -> Bool");
+
+    let Some(Solved::Typed { context, .. }) = solved.get(&Name::new("same")) else {
+        panic!("`same` should be typed, got {:?}", solved);
+    };
+    assert_eq!(context.len(), 1);
+    assert_eq!(context[0].class.unqualified_name().as_str(), "Eq");
+    assert_eq!(format!("{}", context[0].tpe), "a");
 }
 
 // ── Class obligations across modules ──────────────────────────────────────────
@@ -4936,6 +5211,64 @@ fn a_derivation_that_needs_a_class_of_a_variable_it_is_not_given_is_missing_a_co
             .any(|note| note.contains("a derivation's bindings carry no context")),
         "{:?}",
         error.notes()
+    );
+}
+
+/// A variable the member's signature binds beyond the class's is in the answer type `R` too,
+/// and a derivation's binding is held to every type it may stand for: `Just 0` is not a
+/// `Maybe b` for every `b`. The error is at the class, under the use that needs the `Int`, and
+/// it is there whether or not any instance derives the class.
+///
+/// Mutation-checked by not making the answer's variables rigid in `DerivationCheck::binding`:
+/// `b` is solved to `Int`, the class checks and `one_type_error` panics.
+#[test]
+fn a_derivation_cannot_force_a_member_signature_variable_to_a_type() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Maybe2 a
+          = Nothing2
+          | Just2 a
+
+        class Tag a where
+          tag : a -> a -> Maybe2 b
+
+          derived tag
+            matched = Just2 0
+            differed _ _ = Nothing2
+            combine x y = x
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(
+        rigid_variable_of(&error),
+        ("b".to_string(), "Int".to_string())
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_within(source, "matched = Just2 0", "0"),
+            range_of(source, "derived tag"),
+        ]
+    );
+    assert!(
+        error
+            .notes()
+            .contains(&"in the binding `matched` of the derivation of `tag`".to_owned()),
+        "{:?}",
+        error.notes()
+    );
+
+    // An instance derived from the class has nothing to add: the class has the error.
+    let derived = format!(
+        "{}\ntype Colour\n  = Red\n  | Green\n\ninstance Tag Colour where\n  derived\n",
+        source
+    );
+    assert_eq!(
+        type_errors(&derived).len(),
+        1,
+        "{:?}",
+        type_errors(&derived)
     );
 }
 

@@ -274,6 +274,7 @@ fn error_kind_names(errors: &[typer::Error]) -> Vec<&'static str> {
         .iter()
         .map(|e| match e.kind {
             typer::ErrorKind::UnificationFailed { .. } => "UnificationFailed",
+            typer::ErrorKind::RigidVariable { .. } => "RigidVariable",
             typer::ErrorKind::CircularType { .. } => "CircularType",
             typer::ErrorKind::UnboundVariable { .. } => "UnboundVariable",
             typer::ErrorKind::RecordTypeUnknown { .. } => "RecordTypeUnknown",
@@ -1795,8 +1796,7 @@ fn type_error_needs_the_typer_to_be_the_phase_that_failed() {
 /// `expect=ok` means the block type checks too, not only that it canonicalizes.
 ///
 /// This is what makes a `**Known gap:**` about the type checker go red on the day its
-/// ticket lands, instead of having to be deleted by hand — `LANG-12`'s block in
-/// `docs/spec/types.md` is the case the tightening was made for.
+/// ticket lands, instead of having to be deleted by hand.
 ///
 /// Pins: the same fixture as [`type_error_of_the_wrong_kind_is_a_failure`], retagged
 /// `expect=ok` in memory, because the property under test is that canonicalizing

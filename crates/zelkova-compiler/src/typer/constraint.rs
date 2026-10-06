@@ -497,7 +497,7 @@ mod tests {
 
     #[test]
     fn constrains_int() {
-        let t1 = Type::Variable(TypeVariable { id: 1 });
+        let t1 = Type::Variable(TypeVariable::flexible(1));
 
         // An integer literal constrains to `Int`, and to nothing wider.
         let expected = vec![constraint(
@@ -513,9 +513,9 @@ mod tests {
 
     #[test]
     fn constrains_function() {
-        let t1 = Type::Variable(TypeVariable { id: 1 });
-        let t2 = Type::Variable(TypeVariable { id: 2 });
-        let t3 = Type::Variable(TypeVariable { id: 3 });
+        let t1 = Type::Variable(TypeVariable::flexible(1));
+        let t2 = Type::Variable(TypeVariable::flexible(2));
+        let t3 = Type::Variable(TypeVariable::flexible(3));
 
         // t1 === t2 -> t3 (eg. fn type === arg type -> body type )
         let expected = vec![constraint(
@@ -541,7 +541,7 @@ mod tests {
 
     #[test]
     fn constrains_variable() {
-        let t1 = Type::Variable(TypeVariable { id: 1 });
+        let t1 = Type::Variable(TypeVariable::flexible(1));
 
         let b = identifier(t1, "a");
 
@@ -550,9 +550,9 @@ mod tests {
 
     #[test]
     fn constrains_apply() {
-        let t1 = Type::Variable(TypeVariable { id: 1 });
-        let t2 = Type::Variable(TypeVariable { id: 2 });
-        let t3 = Type::Variable(TypeVariable { id: 3 });
+        let t1 = Type::Variable(TypeVariable::flexible(1));
+        let t2 = Type::Variable(TypeVariable::flexible(2));
+        let t3 = Type::Variable(TypeVariable::flexible(3));
 
         // t2 === t3 -> t1 (eg. fn type === arg type -> apply type )
         let expected = vec![constraint(
@@ -580,10 +580,10 @@ mod tests {
 
     #[test]
     fn constrains_if() {
-        let t1 = Type::Variable(TypeVariable { id: 1 });
-        let t2 = Type::Variable(TypeVariable { id: 2 });
-        let t3 = Type::Variable(TypeVariable { id: 3 });
-        let t4 = Type::Variable(TypeVariable { id: 4 });
+        let t1 = Type::Variable(TypeVariable::flexible(1));
+        let t2 = Type::Variable(TypeVariable::flexible(2));
+        let t3 = Type::Variable(TypeVariable::flexible(3));
+        let t4 = Type::Variable(TypeVariable::flexible(4));
 
         // t2 === Basics.Bool (eg. the condition needs to be a boolean)
         // t3 === t1   (eg. the if type is the same as the first branch)
@@ -615,10 +615,10 @@ mod tests {
 
     #[test]
     fn constrains_let() {
-        let t1 = Type::Variable(TypeVariable { id: 1 });
-        let t2 = Type::Variable(TypeVariable { id: 2 });
-        let t3 = Type::Variable(TypeVariable { id: 3 });
-        let t4 = Type::Variable(TypeVariable { id: 4 });
+        let t1 = Type::Variable(TypeVariable::flexible(1));
+        let t2 = Type::Variable(TypeVariable::flexible(2));
+        let t3 = Type::Variable(TypeVariable::flexible(3));
+        let t4 = Type::Variable(TypeVariable::flexible(4));
 
         // t1 === t4   (eg. let type === body type)
         // t3 === t2   (eg. value type === var type)

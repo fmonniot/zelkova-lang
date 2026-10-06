@@ -33,18 +33,16 @@
 //! # What is given
 //!
 //! The context an annotation wrote — or an instance wrote, for the bindings of its body —
-//! is given inside the declaration, and not proved. A given is the unification variable
-//! `canonical_type_to_typer_type` made for the variable the constraint is on, with the
-//! final substitution applied, and it answers an obligation on that same variable. A
+//! is given inside the declaration, and not proved. A given is on a rigid variable: the one
+//! the annotation's variable was translated to, which `unify` does not solve to a type (see
+//! [`TypeVariable`]). It answers an obligation on that same variable and on nothing else. A
 //! superclass is implied by its subclass, transitively, so `Comparable a` provides `Eq a`.
 //!
-//! **A given goes with the variable.** If the body forces the variable to a concrete type,
-//! the given is a given on that type and answers nothing: the obligation is answered by an
-//! instance, or is [`ErrorKind::NoInstance`]. `min : Comparable a => a -> a -> a` over a
-//! body that makes `a` an `Int` proves `Comparable Int` and publishes `Comparable a`. That
-//! is the width of the hole every annotation has while its variables are flexible, and it
-//! is [`LANG-12`](../../../docs/tickets/lang-12.md)'s to close; no partial check here
-//! narrows it.
+//! **A given cannot follow its variable to a type.** `min : Comparable a => a -> a -> a`
+//! over a body that makes `a` an `Int` never reaches an obligation: `unify` refuses to solve
+//! `a`, and the declaration is [`ErrorKind::RigidVariable`] before any obligation is read.
+//! So an obligation still on a variable of the declaration's type is on a rigid one, and
+//! the only thing that answers it is a given on it.
 //!
 //! # What a variable that nothing provides is
 //!
@@ -227,10 +225,10 @@ pub(super) fn discharge(
         return Ok(());
     }
 
+    // A given is on a rigid variable, which no substitution rewrites.
     let mut given = Vec::new();
     for (class, variable) in declared.given {
-        let tpe = substitution.apply_type(&Type::Variable(variable.clone()));
-        table.provide(class, &tpe, &mut given);
+        table.provide(class, &Type::Variable(variable.clone()), &mut given);
     }
 
     let mut residuals: Vec<Residual> = Vec::new();
@@ -513,6 +511,6 @@ pub(crate) fn instance_head_type(
     // can stand in one, so the fallback is a variable no one uses.
     super::canonical_type_to_typer_type(&canonical, variables, counter).unwrap_or_else(|| {
         *counter += 1;
-        Type::Variable(TypeVariable { id: *counter })
+        Type::Variable(TypeVariable::flexible(*counter))
     })
 }

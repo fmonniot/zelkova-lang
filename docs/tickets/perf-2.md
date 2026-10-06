@@ -34,11 +34,11 @@ the two ways to remove it is a language rule.
 1. **Write the forwarding declarations with parameters**: `add a b = Js.Basics.addInt a b`.
    No language rule changes, and `add` then has arity 2 in its interface. Probed on
    2026-09-28: rewriting `add` and `idiv` that way, `cargo run -- compile std/core` still checks
-   all eight modules. For `add : a -> a -> a` that is only because an annotation's type
-   variable unifies with `Int` ([`LANG-12`](lang-12.md)), which is exactly as true of today's
-   `add = Js.Basics.addInt`, so this direction is no worse placed than the current source when
-   `LANG-12` lands. The comment above `add` in `Basics.zel`, which explains the choice of
-   `addInt`, moves with it.
+   all eight modules. For `add : a -> a -> a` that was only because an annotation's type
+   variable unified with `Int`, which was exactly as true of `add = Js.Basics.addInt`; the
+   probe predates `LANG-42`, which rewrote most of these onto classes, and `LANG-12`, which
+   made an annotation's variables rigid, and says nothing about the tree today. The comment
+   above `add` in `Basics.zel`, which explains the choice of `addInt`, moves with it.
 2. **Give a parameterless binding the arity of the function it names**: a binding whose body is
    a bare reference to a declaration of arity *n* is emitted as that declaration, or as an
    *n*-parameter function forwarding to it. That is eta-expansion. It is observable only

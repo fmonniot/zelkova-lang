@@ -94,76 +94,6 @@ git log --oneline --diff-filter=D -- TODO.md    # the commit that removed it
 git show <that-sha>^:TODO.md                    # the nine items in their final form
 ```
 
-## Active work: type classes
-
-Eleven tickets are one body of work: `LANG-37` through `LANG-42`, `LANG-70`, `LANG-71`,
-`LANG-83`, `LANG-12` and `GEN-24`. The goal is that **a signature can say what it needs of its
-type** — `min : Comparable a => a -> a -> a` rather than `a -> a -> a`, which is what `min`'s
-type has always actually been.
-
-They get their own section because most tickets each close a complete, independently shippable
-gap on landing, while these are fragments of one mechanism that only works once the chain
-lands. `LANG-41`, closed, stood alone and sits in the order because `LANG-40` needed it gone first.
-
-[`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
-read before picking any of these up: none of them re-argues a decision, and several would look
-arbitrary without it. The arguments the chapter does not carry are two entries:
-[DEC-2](../decisions/dec-2.md), the eleven decisions that settled what a class is, and
-[DEC-24](../decisions/dec-24.md), the twelve that implementing one had to settle — which is
-what the tickets below cite by number. **No ticket in the order leaves a language decision
-open.** Where one says a choice is the implementer's, it means that and names the constraints;
-anything else that looks like a decision is a gap to report, not to fill.
-
-They land in this order, one at a time, each on a `main` whose `std/core` compiles and whose
-tests pass:
-
-```
-LANG-37  `=>` becomes a token; a constrained annotation parses   ← closed
-  │
-LANG-71  a context holds any number of constraints, as a list   ← closed
-  │      ← first, because a class head and an instance head parse a
-  │        context too, and LANG-38 is written against this shape
-  │
-LANG-41  `Type::Number` retires; an integer literal is an `Int`   ← closed
-  │      ← closed ERR-13
-  │
-LANG-38  `class` / `instance` parse, with a `where` block of members   ← closed
-  │      ← syntax only: canonicalization rejects each one, the way a
-  │        multi-clause declaration is rejected today
-  │
-LANG-39  resolution: what a class and an instance are, members in the   ← closed
-  │      value namespace, instances across modules, the orphan rule
-  │      ← the emitter refuses a module holding a class from here on
-  │
-LANG-70  a constraint in an annotation is resolved; its context is   ← closed
-  │      kept, on the value and in the `Interface`
-  │
-LANG-40  the solver: obligations are collected, deferred and discharged   ← closed
-  │      ← on today's flexible annotation variables. A constrained
-  │        declaration can under-prove its signature until LANG-12,
-  │        and a test here pins that it does
-  │
-LANG-83  a derivation is checked, and a `derived` instance gets members   ← closed
-  │
-GEN-24   specialisation: a member, an instance and a constrained   ← closed
-  │      function are emitted
-  │      ← the first point at which a program using a class runs
-  │
-LANG-42  `std/core` declares Eq, Comparable, Number, Appendable   ← closed
-  │      ← closed BUG-20, BUG-44 and BUG-46
-  │
-LANG-12  an annotation's variables are rigid
-         ← last, where it used to be LANG-40's hard prerequisite: it
-           rejected thirteen declarations of `Basics` itself until
-           LANG-42 rewrote them (DEC-24 decision 10). Closes SPEC-36,
-           and the order
-```
-
-Two tickets sit just outside it. [`LANG-4`](lang-4.md) wants prefix `-` to mean `negate`, and
-has a `Float`-capable `negate` to desugar to: `LANG-42` made it a member of `Number`.
-[`PERF-2`](perf-2.md) was narrowed by `LANG-42`, which rewrote most of the forwarding
-declarations it is about, and not closed by it.
-
 ## Tickets
 
 Open tickets link to their file. Rows with a close date are tombstones — the file is gone; see
@@ -277,7 +207,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-33 | task | — | closed 2026-09-15 | Which default imports a module gets is a fixed point over the whole package |
 | SPEC-34 | task | — | closed 2026-09-27 | Only `zelkova-core` may declare a module the default imports name, and the exemption is keyed on the package rather than on module names |
 | SPEC-35 | task | — | closed 2026-09-27 | A package cannot be tested with a library that depends on it |
-| [SPEC-36](spec-36.md) | task | — | open | The `double` block in `expressions.md` cannot go red for the reason its paragraph gives |
+| SPEC-36 | task | — | closed 2026-10-06 | The `double` block in `expressions.md` cannot go red for the reason its paragraph gives |
 | SPEC-37 | task | — | closed 2026-09-28 | How a `Task` is represented and run is undesigned, on either target |
 | [SPEC-38](spec-38.md) | task | — | open | `patterns.md` parenthesises every sub-pattern and also writes `Circle n :: rest` bare |
 | [SPEC-39](spec-39.md) | task | — | open | The chapter does not say what a context written on a `derived` instance means, or which constructors a `derived` instance needs in scope |
@@ -293,7 +223,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-9 | task | — | closed 2026-09-27 | A type argument must be a bare name, so `Maybe (Maybe Int)` does not parse |
 | [LANG-10](lang-10.md) | task | — | open | A trailing `\|` and a variant-less `type T =` are both accepted |
 | [LANG-11](lang-11.md) | task | — | open | A type annotation may sit anywhere in the file, and a repeated one silently wins |
-| [LANG-12](lang-12.md) | task | — | open | An annotation more general than its body is accepted and silently specialised |
+| LANG-12 | task | — | closed 2026-10-06 | An annotation more general than its body is accepted and silently specialised |
 | LANG-13 | task | — | closed 2026-09-19 | A package has no manifest, and its name is hardcoded |
 | LANG-14 | task | — | closed 2026-09-20 | Nothing implements a package boundary |
 | LANG-15 | task | — | closed 2026-09-20 | A package has no test root, and nothing runs a package's tests |
@@ -419,6 +349,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TIDY-12](tidy-12.md) | task | — | open | The compiler's crates are on edition 2018 |
 | [TIDY-13](tidy-13.md) | task | — | open | `CompilationError::Many` is never constructed |
 | [TIDY-15](tidy-15.md) | task | — | open | `insert_foreign_value` has a `todo!()` on a variable-table state its callers cannot produce |
+| [TIDY-16](tidy-16.md) | task | — | open | `ir::specialise` still tolerates a constrained variable that its assignment has nothing for, a case `LANG-12` closes |
 | TIDY-14 | task | — | closed 2026-10-02 | CI's clippy job never lints test code, and test code already fails it |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |

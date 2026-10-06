@@ -488,7 +488,7 @@ on, so the declared type may be **no more general** than what the body can actua
 particular type cannot honour that, and the declaration is an error — even though there is a
 type (`Size -> Size`) that would make the body check.
 
-```zel expect=ok
+```zel expect=type-error:RigidVariable
 module Example exposing (Size, f)
 
 type Size
@@ -498,13 +498,6 @@ f : a -> a
 f x =
   Small
 ```
-
-**Known gap:** that block should be rejected and is accepted. The annotation's type variables
-become ordinary unification variables, so `a` is quietly solved to `Size` and the type the
-compiler works with is not the one written in the file
-([`docs/tickets/lang-12.md`](../tickets/lang-12.md)). Its `expect=ok` tag is what the type
-checker does today: the block goes red the day that ticket lands, and this paragraph goes with
-it.
 
 An annotation *more* specific than the body would allow is ordinary and useful: it is how a
 general function is given a narrower published type.

@@ -66,10 +66,6 @@
 //! nothing a JavaScript module emits depends on it; two uses at one key in one module are one
 //! specialisation. The assignment is found by matching the types the declaration's
 //! [`context`](Declaration::context) is over against the ground ones the reference gave them.
-//! Where the declaration's body forced a constrained variable to a concrete type — the width
-//! of the hole an annotation has until
-//! [`LANG-12`](../../../docs/tickets/lang-12.md) — the context holds that type, there is no
-//! variable to bind, and the key is shorter by it.
 //!
 //! A member of an instance with a context is specialised at the ground types of the variables
 //! its own context constrains. They are found by reading the member's declared type against
@@ -973,8 +969,7 @@ impl Reader<'_, '_> {
     /// of them, is as good as any: what has to be a type is what the key is made of.
     ///
     /// A variable that is still a variable here, or still holds one, is [`Error::NotGround`]
-    /// and `None`. A variable `assignment` has nothing for is left out of the key: where a
-    /// declaration's body forced it to a type, there is nothing to bind.
+    /// and `None`. A variable `assignment` has nothing for is left out of the key.
     fn bind(
         &mut self,
         context: &[Predicate],
@@ -1141,8 +1136,7 @@ impl Reader<'_, '_> {
 
         let mut assignment = Assignment::new();
         for (pattern, predicate) in declaration.context.iter().zip(ground) {
-            // Where a body forced a constrained variable to a type the pattern is that type
-            // and has nothing to bind; a use at another one binds nothing either.
+            // What the pattern does not bind stays out of `assignment`, as `bind` reads it.
             match_type(&pattern.tpe, &predicate.tpe, &mut assignment);
         }
         let bound = self.bind(&declaration.context, &assignment, span)?;
