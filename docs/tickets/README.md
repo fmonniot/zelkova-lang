@@ -350,6 +350,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TIDY-13](tidy-13.md) | task | — | open | `CompilationError::Many` is never constructed |
 | [TIDY-15](tidy-15.md) | task | — | open | `insert_foreign_value` has a `todo!()` on a variable-table state its callers cannot produce |
 | [TIDY-16](tidy-16.md) | task | — | open | `ir::specialise` still tolerates a constrained variable that its assignment has nothing for, a case `LANG-12` closes |
+| [TIDY-17](tidy-17.md) | task | — | open | `Solved::Untranslatable` is unreachable from source, and the `Option` returns behind it are nearly so |
 | TIDY-14 | task | — | closed 2026-10-02 | CI's clippy job never lints test code, and test code already fails it |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
