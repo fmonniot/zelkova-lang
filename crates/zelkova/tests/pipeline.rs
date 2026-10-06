@@ -7157,23 +7157,20 @@ fn a_pattern_hole_with_a_unit_argument_is_held_to_unit() {
 
 /// A declaration that holds a hole but that the typer cannot type is `reported`: the
 /// hole's error stands behind it, though the typer walked past it rather than rejecting
-/// it. The first is `Solved::Untranslatable` (the float literal argument of the
-/// unresolved constructor is refused), the second `Solved::UnboundName` (`u` has no annotation, so
-/// the typer's environment does not hold it). A declaration the typer walks past with no
-/// hole in it stays unreported.
+/// it. Here that is `Solved::UnboundName` (`u` has no annotation, so the typer's
+/// environment does not hold it). A declaration the typer walks past with no hole in it
+/// stays unreported (`a_declaration_with_no_ir_is_named_rather_than_dropped`'s `helper`,
+/// in `ir.rs`).
 ///
-/// Mutation-checked by setting `reported` to `false` for those two arms in `ir::build`:
-/// both assertions on `reported: true` go red.
+/// `Solved::Untranslatable` takes the same arm in `ir::build`, and no source checked
+/// against its own interfaces reaches it, so it is not pinned from here.
+///
+/// Mutation-checked by setting `reported` to `false` for the `UnboundName` arm in
+/// `ir::build`: the assertion on `reported: true` goes red.
 #[test]
 fn a_hole_the_typer_cannot_type_is_a_reported_unchecked_declaration() {
     let source = indoc::indoc! {r#"
-        module Test exposing (h, g)
-
-        h : Int -> Int
-        h x =
-          case x of
-            Nope 1.5 -> 1
-            _ -> 2
+        module Test exposing (g)
 
         u x = x
 
@@ -7204,10 +7201,6 @@ fn a_hole_the_typer_cannot_type_is_a_reported_unchecked_declaration() {
             })
             .reported
     };
-    assert!(
-        reported("h"),
-        "an untranslatable declaration holding a hole"
-    );
     assert!(reported("g"), "an unbound-name declaration holding a hole");
 }
 

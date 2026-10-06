@@ -726,7 +726,7 @@ pub enum TermPatternKind {
     /// Matches one specific value; constrains the scrutinee to the type carried here
     /// and, unlike the type alone, says which value of it.
     ///
-    /// `tpe` is a [`Type::Literal`] for an `Int` or a `Char` pattern, and the
+    /// `tpe` is a [`Type::Literal`] for an `Int`, `Float`, `Char` or `String` pattern, and the
     /// [`Type::Adt`] `typer::bool_type` builds for a `Basics.True`/`Basics.False` one —
     /// `Bool` is the union `Basics` declares, not a literal type. Two patterns of that
     /// same kind — two `Int`s, say — share that one type, so `value` is what tells `1`
@@ -837,15 +837,21 @@ impl TermPattern {
 /// The concrete value a [`TermPatternKind::Literal`] pattern tests for.
 ///
 /// The pattern's own `tpe` cannot tell `1` from `2`, or `'a'` from `'b'`: both share one
-/// type, and only this says which value the scrutinee has to equal. A `Bool` is tested
+/// type, and only this says which value the scrutinee has to equal. A `Float` is equal
+/// to a scrutinee as IEEE 754 compares them ([What structural equality
+/// computes](../../../docs/spec/evaluation-semantics.md#what-structural-equality-computes)),
+/// so `0.0` equals `-0.0`. The compiler accepts no negative pattern literal, so no
+/// pattern holds `-0.0`; no literal is `nan`, so a `nan` scrutinee equals none. A `Bool` is tested
 /// by its value too: `Basics`' own `True`/`False` constructors arrive here as a
 /// `Bool(..)`, never as a [`TermPatternKind::Constructor`] (`typer::translate_pattern`
 /// does the normalising).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LiteralValue {
     Bool(bool),
     Int(i64),
+    Float(f64),
     Char(char),
+    String(String),
 }
 
 #[derive(Debug, Clone)]
@@ -998,8 +1004,8 @@ pub enum Solved {
     /// what reads it back out.
     NoBody,
     /// `value_to_term_and_annotation` could not translate the declaration into the
-    /// typer's term language — a `VarKernel` reference, or a float or string pattern at
-    /// any depth, whether a `case` branch or a parameter wrote it.
+    /// typer's term language: a `VarKernel` reference, or a constructor naming a union
+    /// the typer was given no declaration of.
     /// Nothing about the declaration was checked.
     ///
     /// Not an [`Error`](crate::typer::Error): it is a gap in the typer rather

@@ -2285,8 +2285,8 @@ pub(super) fn bool_type() -> Type {
 /// Convert a canonical expression to a Term, keeping the position it was written at.
 ///
 /// Returns None for constructs the inference engine doesn't yet handle (a `VarKernel`
-/// reference, and a float or string pattern inside a `Case`), and for a constructor of a
-/// union neither this module nor an interface in [`Translation`] declares.
+/// reference), and for a constructor of a union neither this module nor an interface in
+/// [`Translation`] declares.
 ///
 /// Every arm attaches `expr.span` to the term it builds. That is the whole of what
 /// `ERR-4` needed from this function: a constraint can only point at a
@@ -2491,8 +2491,9 @@ fn spine(expr: &canonical::Expression) -> (&canonical::Expression, Vec<&canonica
     (callee, applications)
 }
 
-/// Translate a canonical pattern into a `TermPattern`. Returns `None` for unsupported
-/// pattern shapes: a float and a string.
+/// Translate a canonical pattern into a `TermPattern`. Returns `None` for a pattern the
+/// term language does not model: a constructor that names no case of its declaration, or
+/// a sub-pattern that is itself one of those.
 ///
 /// The pattern keeps its own span, separate from the branch body's: a `case` branch
 /// whose pattern does not match what is being matched on is about the pattern, and
@@ -2515,6 +2516,14 @@ fn translate_pattern(
         canonical::PatternKind::Char(value) => TermPatternKind::Literal {
             tpe: Type::Literal(TypeLiteral::Char),
             value: LiteralValue::Char(*value),
+        },
+        canonical::PatternKind::Float(value) => TermPatternKind::Literal {
+            tpe: Type::Literal(TypeLiteral::Float),
+            value: LiteralValue::Float(*value),
+        },
+        canonical::PatternKind::String(value) => TermPatternKind::Literal {
+            tpe: Type::Literal(TypeLiteral::String),
+            value: LiteralValue::String(value.clone()),
         },
         canonical::PatternKind::Unit => TermPatternKind::Unit,
         // `Basics`' own `True` and `False` are tested by value, as an `Int` or a
@@ -2627,8 +2636,6 @@ fn translate_pattern(
 
             TermPatternKind::Hole { args }
         }
-        // Float and String patterns — not yet supported.
-        canonical::PatternKind::Float(_) | canonical::PatternKind::String(_) => return None,
         // Each entry's field gets a fresh type, and its pattern is translated as a
         // constructor's argument is (see `translate_sub_pattern`). Nothing is built here
         // for the record itself: the pattern names a subset of its fields, so its record
@@ -2663,7 +2670,7 @@ fn translate_pattern(
 ///
 /// It is translated by [`translate_pattern`] like a pattern anywhere else, so any
 /// pattern that translates at the top of a branch translates here too, at any depth, and
-/// one that does not — a float pattern, say — answers `None` here as it does there. A
+/// one that does not — a constructor of a union nobody declared, say — answers `None` here as it does there. A
 /// refutable sub-pattern needs nothing of its own: `pattern_constraints` holds it to
 /// `tpe` the way a branch's pattern is held to the scrutinee's type, and
 /// `ir::decision_tree` tests it at its occurrence.

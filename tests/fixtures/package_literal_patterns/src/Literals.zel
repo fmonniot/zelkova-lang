@@ -1,0 +1,52 @@
+-- Float and String literal patterns, for `tests/js/LiteralPatternChecks.mjs` to run.
+module Literals exposing (classifyFloat, classifyString, tooLarge)
+
+import Basics exposing (..)
+
+
+-- Each branch answers the number its pattern is, so a wrong match names itself.
+classifyFloat : Float -> Int
+classifyFloat x =
+  case x of
+    0.0 ->
+      0
+
+    0.1 ->
+      1
+
+    1.0 ->
+      2
+
+    2.5 ->
+      3
+
+    10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0 ->
+      4
+
+    _ ->
+      99
+
+
+classifyString : String -> Int
+classifyString s =
+  case s of
+    "" ->
+      0
+
+    "hello" ->
+      1
+
+    "say \"hi\"\n" ->
+      2
+
+    "Hello" ->
+      3
+
+    _ ->
+      99
+
+
+-- Positive infinity, by the rule that a literal too large for binary64 denotes it.
+tooLarge : Float
+tooLarge =
+  1.0 / 0.0

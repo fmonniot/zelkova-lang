@@ -98,11 +98,11 @@ pub enum Step {
 }
 
 /// The value a [`Decision::Test`] checks for.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
     /// The value was built by this constructor.
     Constructor(Constructor),
-    /// The value equals this `Int`, `Char` or `Bool`.
+    /// The value equals this `Int`, `Float`, `Char`, `String` or `Bool`.
     Literal(LiteralValue),
 }
 
@@ -294,7 +294,7 @@ fn lower<'a>(
         TermPatternKind::Literal { value, .. } => Decision::Test {
             matched: Box::new(lower(pending, bindings, body, on_fail)),
             default: Box::new(on_fail.clone()),
-            outcome: Outcome::Literal(*value),
+            outcome: Outcome::Literal(value.clone()),
             scrutinee: occurrence,
         },
         TermPatternKind::Constructor { ctor, args, .. } => {

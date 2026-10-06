@@ -292,7 +292,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-78](lang-78.md) | task | — | open | `std/core`'s `Task` has no `andThen` |
 | [LANG-79](lang-79.md) | task | — | open | Multi-line `"""` string literals are specified but not tokenized |
 | [LANG-80](lang-80.md) | task | — | open | The spec does not settle a string's unknown escape, surrogate escape or `\u{…}` digit count |
-| [LANG-81](lang-81.md) | task | — | open | A `Float` or `String` literal pattern is not checked by the typer and not emitted |
+| LANG-81 | task | — | closed 2026-10-06 | A `Float` or `String` literal pattern is not checked by the typer and not emitted |
 | [LANG-82](lang-82.md) | task | — | open | A character literal recognises no escape sequence |
 | LANG-83 | task | — | closed 2026-10-04 | A derivation is not checked, and a `derived` instance has no members |
 | LANG-84 | task | — | closed 2026-10-02 | A record pattern is not type checked |
@@ -350,6 +350,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TIDY-13](tidy-13.md) | task | — | open | `CompilationError::Many` is never constructed |
 | [TIDY-15](tidy-15.md) | task | — | open | `insert_foreign_value` has a `todo!()` on a variable-table state its callers cannot produce |
 | [TIDY-16](tidy-16.md) | task | — | open | `ir::specialise` still tolerates a constrained variable that its assignment has nothing for, a case `LANG-12` closes |
+| [TIDY-17](tidy-17.md) | task | — | open | `Solved::Untranslatable` is unreachable from source, and the `Option` returns behind it are nearly so |
 | TIDY-14 | task | — | closed 2026-10-02 | CI's clippy job never lints test code, and test code already fails it |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |

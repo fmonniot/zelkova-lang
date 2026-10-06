@@ -1,0 +1,14 @@
+# The fixture `tests/js/LiteralPatternChecks.mjs` compiles, loads and runs `zelkova test`
+# against. `src/Literals.zel` matches a `Float` and a `String` against literal patterns;
+# `tests/LiteralTests.zel` holds the Zelkova tests, each judged by the value it computes.
+# `cargo test` never loads it; `cargo run -- test` and `node --test 'tests/js/**/*.mjs'` do.
+name = "package-literal-patterns"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies.zelkova-test]
+path = "../../../std/test"
+wrapped = false

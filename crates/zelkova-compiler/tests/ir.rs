@@ -663,8 +663,8 @@ fn independent_parameterless_bindings_come_back_in_name_sorted_order() {
 ///
 /// A backend handed only the declarations that worked cannot tell a module it may emit
 /// whole from one that quietly lost a declaration, which is the mistake `DEC-18`'s first
-/// decision is about. `helper` below matches a float pattern, which the typer does not
-/// translate, so it is exactly such a declaration.
+/// decision is about. `helper` below calls `lift`, which has no annotation, so the typer
+/// holds no type for it and checks nothing of `helper`: it is exactly such a declaration.
 ///
 /// Mutation-checked by dropping the `unchecked.push` in `ir::build`'s catch-all arm:
 /// `helper` then goes missing from both lists and the count assertion goes red.
@@ -677,14 +677,12 @@ fn a_declaration_with_no_ir_is_named_rather_than_dropped() {
         answer =
           1
 
-        helper : Float -> Int
-        helper x =
-          case x of
-            1.5 ->
-              1
+        lift x =
+          x
 
-            _ ->
-              0
+        helper : Int
+        helper =
+          lift 1
     "#});
 
     assert_eq!(
@@ -701,7 +699,7 @@ fn a_declaration_with_no_ir_is_named_rather_than_dropped() {
             .iter()
             .map(|entry| entry.name.as_str().to_string())
             .collect::<Vec<_>>(),
-        vec!["answer".to_string()],
+        vec!["answer".to_string(), "lift".to_string()],
     );
 }
 
@@ -973,6 +971,69 @@ fn a_char_pattern_becomes_a_test_on_its_value() {
         tree,
         test_root(
             Outcome::Literal(LiteralValue::Char('a')),
+            leaf(vec![], bodies[0]),
+            leaf(vec![], bodies[1]),
+        )
+    );
+}
+
+/// A `Float` pattern is a `Test` on the value the literal spells.
+///
+/// Mutation-checked by removing the `Float` arm from `typer::translate_pattern`: the
+/// declaration has no IR and `declaration` panics. Having it record `LiteralValue::Float(0.0)`
+/// whatever the pattern wrote turns the assertion red.
+#[test]
+fn a_float_pattern_becomes_a_test_on_its_value() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (half)
+
+        half : Float -> Int
+        half x =
+          case x of
+            0.5 ->
+              1
+
+            _ ->
+              0
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "half"), "half");
+
+    assert_eq!(
+        tree,
+        test_root(
+            Outcome::Literal(LiteralValue::Float(0.5)),
+            leaf(vec![], bodies[0]),
+            leaf(vec![], bodies[1]),
+        )
+    );
+}
+
+/// A `String` pattern is a `Test` on the text the literal holds.
+///
+/// Mutation-checked by removing the `String` arm from `typer::translate_pattern`: the
+/// declaration has no IR and `declaration` panics. Having it record an empty
+/// `LiteralValue::String` turns the assertion red.
+#[test]
+fn a_string_pattern_becomes_a_test_on_its_value() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing ()
+
+        greeting s =
+          case s of
+            "hello" ->
+              1
+
+            _ ->
+              0
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "greeting"), "greeting");
+
+    assert_eq!(
+        tree,
+        test_root(
+            Outcome::Literal(LiteralValue::String("hello".to_string())),
             leaf(vec![], bodies[0]),
             leaf(vec![], bodies[1]),
         )

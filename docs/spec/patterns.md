@@ -278,6 +278,67 @@ isVowel c =
       Off
 ```
 
+A literal pattern has the type of the literal it spells, so the value it is matched against has
+that type: a `Float` pattern matches a `Float` and a `String` pattern a `String`.
+
+```zel expect=ok
+module Example exposing (Flag, isHalf)
+
+type Flag
+  = On
+  | Off
+
+greeting s =
+  case s of
+    "hello" ->
+      On
+
+    _ ->
+      Off
+
+isHalf : Float -> Flag
+isHalf x =
+  case x of
+    0.5 ->
+      On
+
+    _ ->
+      Off
+```
+
+A `case` whose pattern has a different type from the value it matches is a type error:
+
+```zel expect=type-error
+module Example exposing (answer)
+
+answer : Int
+answer =
+  case 1 of
+    "a" ->
+      1
+
+    _ ->
+      0
+```
+
+```zel expect=type-error
+module Example exposing (answer)
+
+answer : Int
+answer =
+  case 1 of
+    0.5 ->
+      1
+
+    _ ->
+      0
+```
+
+A `Float` pattern matches a value equal to it as [structural
+equality](evaluation-semantics.md#what-structural-equality-computes) compares two `Float`s,
+which is IEEE 754's comparison: the pattern `0.0` matches `-0.0` as well as `0.0`, and no float
+literal matches `nan`, so a `nan` is matched only by a variable or a wildcard pattern.
+
 A literal pattern is refutable, so it needs a branch after it that covers the rest of the
 type — which for a literal type means a wildcard or a variable, since no finite list of
 literals covers one.
