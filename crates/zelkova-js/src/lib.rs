@@ -2384,7 +2384,12 @@ fn test_condition(root: &str, occurrence: &Occurrence, outcome: &Outcome) -> Str
     match outcome {
         Outcome::Literal(LiteralValue::Bool(b)) => format!("{} === {}", value, b),
         Outcome::Literal(LiteralValue::Int(i)) => format!("{} === {}n", value, i),
+        // `===` on two numbers is IEEE 754's equality, which is what a `Float` pattern
+        // asks for (docs/spec/evaluation-semantics.md#what-structural-equality-computes):
+        // `0 === -0` holds and `NaN === NaN` does not.
+        Outcome::Literal(LiteralValue::Float(f)) => format!("{} === {}", value, float_literal(*f)),
         Outcome::Literal(LiteralValue::Char(c)) => format!("{} === {}", value, char_literal(*c)),
+        Outcome::Literal(LiteralValue::String(s)) => format!("{} === {}", value, string_literal(s)),
         Outcome::Constructor(ctor) => format!("{}.$ === \"{}\"", value, ctor.name.as_str()),
     }
 }

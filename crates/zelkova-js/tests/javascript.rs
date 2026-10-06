@@ -271,31 +271,6 @@ fn a_string_literal_is_an_escaped_javascript_string() {
     );
 }
 
-/// A declaration matching on a string literal is refused, not emitted: the typer does
-/// not translate a string pattern, so it has no IR.
-#[test]
-fn a_string_pattern_is_refused() {
-    let errors = refused(indoc! {r#"
-        module Test exposing ()
-
-        isHello s =
-          case s of
-            "hello" ->
-              1
-
-            _ ->
-              0
-    "#});
-
-    assert_eq!(
-        errors,
-        vec![Error::Unchecked {
-            name: Name::new("isHello"),
-            span: NodeSpan::none(),
-        }]
-    );
-}
-
 /// `True` and `False` are JavaScript's `true` and `false`, and `Bool` hoists no constant.
 ///
 /// The fixture is a `Basics` of its own, declaring `Bool` itself, so no interface has to
@@ -1148,6 +1123,96 @@ fn a_char_pattern_is_tested_by_equality() {
     );
 }
 
+/// A `Float` pattern is tested by `===` against the number the literal spells, written so
+/// JavaScript reads back the binary64 value Rust parsed: `0.1` is not widened to a decimal
+/// that rounds elsewhere, and a literal too large for binary64 is `Infinity`.
+///
+/// `===` on two numbers is IEEE 754's equality, `0 === -0` and `NaN !== NaN`, which is what
+/// [structural equality](../../../docs/spec/evaluation-semantics.md#what-structural-equality-computes)
+/// asks of a `Float`. The runtime half of that is `tests/js/LiteralPatternChecks.mjs`.
+///
+/// Mutation-checked by removing the `Float` arm from `typer::translate_pattern`: the
+/// module then has no IR and `emitted` panics on the refusal. Having `test_condition`'s
+/// `Float` arm write the value as `{}` instead of through `float_literal` turns the `1.0`
+/// and `1e300` assertions red.
+#[test]
+fn a_float_pattern_is_tested_by_equality() {
+    // Exponents are not tokenized, so a literal too large for binary64 is written out.
+    let too_large = format!("1{}.0", "0".repeat(400));
+    let text = emitted(&format!(
+        indoc! {r#"
+            module Test exposing (label)
+
+            label : Float -> Int
+            label x =
+              case x of
+                0.1 ->
+                  1
+
+                2.0 ->
+                  2
+
+                100000000000000000000000.0 ->
+                  3
+
+                {} ->
+                  4
+
+                _ ->
+                  0
+        "#},
+        too_large
+    ));
+
+    for condition in [
+        "if ($scrutinee === 0.1) {",
+        "if ($scrutinee === 2.0) {",
+        "if ($scrutinee === 1e23) {",
+        "if ($scrutinee === Infinity) {",
+    ] {
+        assert!(text.contains(condition), "`{}` in:\n{}", condition, text);
+    }
+}
+
+/// A `String` pattern is tested by `===` against a JavaScript string literal, escaped the
+/// way an expression's string literal is.
+///
+/// Mutation-checked by removing the `String` arm from `typer::translate_pattern`: the
+/// module then has no IR and `emitted` panics on the refusal. Having `test_condition`'s
+/// `String` arm write the text unescaped turns the second assertion red.
+#[test]
+fn a_string_pattern_is_tested_by_equality() {
+    let text = emit(&checked_against(
+        indoc! {r#"
+        module Test exposing (label)
+
+        label : String -> Int
+        label s =
+          case s of
+            "hello" ->
+              1
+
+            "say \"hi\"\n" ->
+              2
+
+            _ ->
+              0
+    "#},
+        HashMap::from([basics_interface(), char_interface(), string_interface()]),
+    ));
+
+    assert!(
+        text.contains("if ($scrutinee === \"hello\") {"),
+        "got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("if ($scrutinee === \"say \\\"hi\\\"\\n\") {"),
+        "got:\n{}",
+        text
+    );
+}
+
 /// A `True`/`False` pattern is tested by the value itself, never by a `$` tag: `Bool`
 /// is a JavaScript boolean, not a tagged object. `typer::translate_pattern` turns both
 /// constructors into an [`ir::Outcome::Literal`] before this backend sees the pattern
@@ -1315,8 +1380,9 @@ fn a_failing_parameter_pattern_describes_itself_as_a_parameter_not_a_case() {
 }
 
 /// A module holding a declaration the typer could not check is refused rather than
-/// emitted without it. `helper` matches a float pattern, which the typer does not
-/// translate.
+/// emitted without it. `helper` calls `lift`, which has no annotation, so the typer's
+/// environment holds no type for it and nothing about `helper` is checked
+/// ([`Solved::UnboundName`](zelkova_compiler::typer::Solved::UnboundName)).
 ///
 /// Mutation-checked by starting `emit`'s errors empty instead of from `ir.unchecked`:
 /// the module is then emitted with `helper` missing.
@@ -1329,14 +1395,12 @@ fn a_declaration_with_no_ir_is_refused() {
         answer =
           1
 
-        helper : Float -> Int
-        helper x =
-          case x of
-            1.5 ->
-              1
+        lift x =
+          x
 
-            _ ->
-              0
+        helper : Int
+        helper =
+          lift 1
     "#});
 
     // `NodeSpan`'s equality ignores the span, so this compares the variant and the name.

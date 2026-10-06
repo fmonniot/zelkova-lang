@@ -778,7 +778,7 @@ impl Reader<'_, '_> {
             TermPatternKind::Unit => TermPatternKind::Unit,
             TermPatternKind::Literal { tpe, value } => TermPatternKind::Literal {
                 tpe: self.ty(tpe),
-                value: *value,
+                value: value.clone(),
             },
             TermPatternKind::Constructor {
                 ctor,

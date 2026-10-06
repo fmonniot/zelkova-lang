@@ -1207,9 +1207,11 @@ fn a_declaration_the_typer_cannot_resolve_comes_back_marked() {
 /// The other skip: a declaration the term language cannot express is present too, and
 /// says so.
 ///
-/// A float pattern is one `translate_pattern` refuses, and a parameter's pattern goes
-/// through it as a `case` branch's does, so nothing about `unwrap` is checked —
-/// including its annotation.
+/// Canonicalization is given an interface that declares `Maybe` and the typer is not, so
+/// `Just` names a union the typer holds no declaration of and `translate_pattern` has no
+/// case to translate it to: nothing about `unwrap` is checked, including its annotation.
+/// A parameter's pattern goes through `translate_pattern` as a `case` branch's does. No
+/// source checked against the interfaces it was canonicalized with reaches this.
 ///
 /// The span is asserted because the warning `ERR-8` will make of this needs a caret,
 /// and the whole declaration is the only position available: which construct stopped
@@ -1223,11 +1225,17 @@ fn a_declaration_the_typer_cannot_resolve_comes_back_marked() {
 fn a_declaration_the_typer_cannot_translate_comes_back_marked() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
-        unwrap : (Float, Int) -> Int
-        unwrap (1.5, k) = k
+        unwrap : Maybe Int -> Int
+        unwrap (Just k) = k
     "#};
 
-    let solved = solved(source);
+    let canonicalized_against =
+        HashMap::from([basics_interface(), char_interface(), maybe_interface()]);
+    let canonical = canonicalize_with_interfaces(source, &canonicalized_against)
+        .unwrap_or_else(|errors| panic!("expected the module to canonicalize, got {:?}", errors));
+    let typed_against = HashMap::from([basics_interface(), char_interface()]);
+    let solved = typer::type_check(&canonical, &typed_against)
+        .unwrap_or_else(|errors| panic!("expected the module to type check, got {:?}", errors));
 
     let span = match solved.get(&Name::new("unwrap")) {
         Some(Solved::Untranslatable { span }) => *span,
@@ -1243,7 +1251,7 @@ fn a_declaration_the_typer_cannot_translate_comes_back_marked() {
         span.to_range(),
         Some(range_of(
             source,
-            "unwrap : (Float, Int) -> Int\nunwrap (1.5, k) = k"
+            "unwrap : Maybe Int -> Int\nunwrap (Just k) = k"
         ))
     );
 }
@@ -1284,6 +1292,149 @@ fn a_module_with_a_type_error_still_answers_for_every_declaration() {
 
     assert_eq!(errors.len(), 1, "got {:?}", errors);
     assert_eq!(errors[0].declaration, Name::new("bad"));
+}
+
+// ── Float and String literal patterns ────────────────────────────────────────
+
+/// A float pattern holds the scrutinee to `Float`, so a `case` over an `Int` that writes
+/// one is a type error, with the pattern among the carets.
+///
+/// Mutation-checked by removing the `Float` arm from `translate_pattern`: the declaration
+/// is then unchecked, no error is raised, and `type_errors` panics on the module
+/// checking.
+#[test]
+fn a_float_pattern_over_an_int_is_a_type_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (label)
+
+        label : Int -> Int
+        label n =
+          case n of
+            1.5 ->
+              1
+
+            _ ->
+              0
+    "#};
+
+    let error = one_type_error(source);
+
+    match &error.kind {
+        typer::ErrorKind::UnificationFailed { left, right, .. } => {
+            let sides = [left.to_string(), right.to_string()];
+            assert!(
+                sides.contains(&"Int".to_string()) && sides.contains(&"Float".to_string()),
+                "expected `Int` against `Float`, got {:?}",
+                sides
+            );
+        }
+        other => panic!("expected a unification failure, got {:?}", other),
+    }
+    // The caret is under the pattern, not under the scrutinee.
+    let labels = error.labels();
+    let primary: Vec<_> = labels
+        .iter()
+        .filter(|label| label.primary)
+        .cloned()
+        .collect();
+    assert_eq!(ranges(&primary), vec![range_of(source, "1.5")]);
+}
+
+/// The ticket's own example: a string pattern holds the scrutinee to `String`, so
+/// `case 1 of "a" -> …` is a type error.
+///
+/// Mutation-checked by removing the `String` arm from `translate_pattern`: the
+/// declaration is then unchecked, no error is raised, and `type_errors` panics on the
+/// module checking.
+#[test]
+fn a_string_pattern_over_an_int_is_a_type_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (label)
+
+        label : Int
+        label =
+          case 1 of
+            "a" ->
+              1
+
+            _ ->
+              0
+    "#};
+
+    let error = one_type_error(source);
+
+    match &error.kind {
+        typer::ErrorKind::UnificationFailed { left, right, .. } => {
+            let sides = [left.to_string(), right.to_string()];
+            assert!(
+                sides.contains(&"Int".to_string()) && sides.contains(&"String".to_string()),
+                "expected `Int` against `String`, got {:?}",
+                sides
+            );
+        }
+        other => panic!("expected a unification failure, got {:?}", other),
+    }
+    let labels = error.labels();
+    // The scrutinee is what is blamed, and the pattern is what it is held to.
+    let scrutinee = range_of(source, "case 1 of");
+    let literal = scrutinee.start + "case ".len()..scrutinee.start + "case 1".len();
+    assert_eq!(ranges(&labels), vec![literal, range_of(source, "\"a\"")]);
+}
+
+/// A float or string pattern is what types an unannotated scrutinee, at any depth: here
+/// as a `case` branch's pattern, a parameter's, and a tuple's element.
+///
+/// Mutation-checked by removing either arm from `translate_pattern`: the declaration that
+/// writes that pattern comes back `Untranslatable` and `typed_declaration` panics.
+#[test]
+fn float_and_string_patterns_type_what_they_match() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        isHalf x =
+          case x of
+            0.5 ->
+              1
+
+            _ ->
+              0
+
+        isHello s =
+          case s of
+            "hello" ->
+              1
+
+            _ ->
+              0
+
+        unwrap : (Float, Int) -> Int
+        unwrap (1.5, k) = k
+
+        pair p =
+          case p of
+            ("a", k) ->
+              k
+
+            _ ->
+              0
+    "#});
+
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "isHalf").tpe),
+        "Float -> Int"
+    );
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "isHello").tpe),
+        "String -> Int"
+    );
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "unwrap").tpe),
+        "( Float, Int ) -> Int"
+    );
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "pair").tpe),
+        "( String, Int ) -> Int"
+    );
 }
 
 // ── Patterns in parameters ────────────────────────────────────────────────────

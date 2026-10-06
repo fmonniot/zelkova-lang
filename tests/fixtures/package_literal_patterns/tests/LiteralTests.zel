@@ -1,0 +1,72 @@
+-- A `Float` and a `String` literal pattern, each judged by the value it computes.
+module LiteralTests exposing (..)
+
+import Basics exposing (..)
+import Literals exposing (classifyFloat, classifyString, tooLarge)
+import Test exposing (Test)
+
+
+-- FLOAT PATTERNS
+
+floatMatchesItsLiteral : Test
+floatMatchesItsLiteral =
+  Test.equal (classifyFloat 2.5) 3
+
+
+floatMatchesALiteralWithNoExactBinaryValue : Test
+floatMatchesALiteralWithNoExactBinaryValue =
+  Test.equal (classifyFloat 0.1) 1
+
+
+floatMatchesAWholeNumberComputedFromAnInt : Test
+floatMatchesAWholeNumberComputedFromAnInt =
+  Test.equal (classifyFloat (toFloat 1)) 2
+
+
+floatFallsThroughToTheWildcard : Test
+floatFallsThroughToTheWildcard =
+  Test.equal (classifyFloat 3.5) 99
+
+
+-- IEEE 754 equality: `0.0` is equal to `-0.0`.
+positivePatternMatchesNegativeZero : Test
+positivePatternMatchesNegativeZero =
+  Test.equal (classifyFloat (negate 0.0)) 0
+
+
+-- IEEE 754 equality: `nan` is equal to nothing, so no literal matches it.
+nanMatchesNoLiteral : Test
+nanMatchesNoLiteral =
+  Test.equal (classifyFloat (0.0 / 0.0)) 99
+
+
+infinityMatchesTheLiteralTooLargeForBinary64 : Test
+infinityMatchesTheLiteralTooLargeForBinary64 =
+  Test.equal (classifyFloat tooLarge) 4
+
+
+-- STRING PATTERNS
+
+stringMatchesItsLiteral : Test
+stringMatchesItsLiteral =
+  Test.equal (classifyString "hello") 1
+
+
+stringMatchesTheEmptyString : Test
+stringMatchesTheEmptyString =
+  Test.equal (classifyString "") 0
+
+
+stringMatchesEscapes : Test
+stringMatchesEscapes =
+  Test.equal (classifyString "say \"hi\"\n") 2
+
+
+stringComparisonIsCaseSensitive : Test
+stringComparisonIsCaseSensitive =
+  Test.equal (classifyString "Hello") 3
+
+
+stringFallsThroughToTheWildcard : Test
+stringFallsThroughToTheWildcard =
+  Test.equal (classifyString "hello!") 99
