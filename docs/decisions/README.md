@@ -125,3 +125,4 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-23](dec-23.md) | A module with errors still has a shape: seven decisions | live |
 | [DEC-24](dec-24.md) | What implementing type classes had to settle: twelve decisions | live |
 | [DEC-25](dec-25.md) | Type aliases: two decisions | live |
+| [DEC-26](dec-26.md) | A pattern is parenthesised in an argument position, and nowhere else: two decisions | live |

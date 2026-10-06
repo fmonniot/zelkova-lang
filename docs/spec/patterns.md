@@ -414,7 +414,8 @@ declared with. It matches a value built by that constructor, and matches each ar
 against the pattern in that position.
 
 Whether the constructor's arguments may be written without parentheses depends on the
-position. In a `case` branch the whole left-hand side is one pattern, so a constructor and its
+position, and [the rule for every position](#where-a-pattern-is-parenthesised) is below. In a
+`case` branch the whole left-hand side is one pattern, so a constructor and its
 arguments read as one thing:
 
 ```zel expect=ok
@@ -580,9 +581,67 @@ f flag =
 
 ## Patterns nest
 
-Every pattern position takes a whole pattern, so patterns nest to any depth: a constructor
-argument may be a tuple or another constructor pattern, and a tuple element may be a
-constructor pattern. An applied constructor written as a sub-pattern is parenthesised.
+Every pattern position takes a pattern, so patterns nest to any depth: a constructor argument
+may be a tuple or another constructor pattern, and a tuple element may be a constructor
+pattern.
+
+### Where a pattern is parenthesised
+
+Three forms have nothing in their own spelling that ends them: a constructor applied to
+arguments, a [cons pattern](#list-patterns) and an [as-pattern](#as-patterns). They group the
+way their counterparts in an expression do. A constructor's arguments bind tightest, then `::`,
+which groups rightward, then `as`:
+
+| Written | Read as |
+|---|---|
+| `Circle n :: rest` | `(Circle n) :: rest` |
+| `a :: b :: rest` | `a :: (b :: rest)` |
+| `first :: rest as whole` | `(first :: rest) as whole` |
+
+An **argument position** is a constructor's argument or a parameter. Juxtaposition alone
+separates one argument from the next, so any of the three forms written there must be
+parenthesised: `Wrapper (Circle n)`, `Wrapper (shape as whole)`, and `total (first :: rest)` in a
+declaration's head. Parentheses are also how a looser form becomes the operand of a tighter one,
+as in `(first as whole) :: rest`.
+
+Every other position is ended by a token, and takes any pattern without parentheses:
+
+| Position | Ended by | Example |
+|---|---|---|
+| the left-hand side of a `case` branch | `->` | `Circle n ->` |
+| a tuple pattern's element | `,` or `)` | `(Circle n, Dot)` |
+| a record pattern's entry | `,` or `}` | `{ taken = Celsius t }` |
+| a bracketed list pattern's element | `,` or `]` | `[Circle n, _]` |
+
+Parentheses around one pattern are grouping wherever they are written, so a pattern that needs
+none may still carry them.
+
+An applied constructor as a tuple element:
+
+```zel expect=unimplemented
+module Example exposing (Count, Shape, first)
+
+type Count
+  = One
+  | Many
+
+type Shape
+  = Dot
+  | Circle Count
+
+first : (Shape, Shape) -> Count
+first pair =
+  case pair of
+    (Circle n, _) ->
+      n
+
+    _ ->
+      One
+```
+
+**Not implemented:** a tuple pattern's element and a record pattern's entry are read as an
+argument position is, so an applied constructor there is a syntax error and `((Circle n), _)` is
+the spelling that parses. [`docs/tickets/lang-89.md`](../tickets/lang-89.md) is the ticket.
 
 A nullary constructor as a tuple element:
 
@@ -659,7 +718,9 @@ sub-patterns bind their parts as usual and the name binds what they were taken f
 branch can inspect a value and pass it on without rebuilding it.
 
 `as` binds more loosely than everything else in a pattern: in `Rect w h as whole`, `whole`
-names the entire `Rect`, not `h`. An as-pattern written as a sub-pattern is parenthesised.
+names the entire `Rect`, not `h`. It is parenthesised
+[in an argument position and as an operand of `::`](#where-a-pattern-is-parenthesised), and
+nowhere else.
 
 ```zel expect=unimplemented
 module Example exposing (Count, Shape, widen)
@@ -692,8 +753,11 @@ element by element. `[]` matches the empty list, `[a]` a list of one, `[a, b]` a
 
 A **cons pattern**, `first :: rest`, matches a list of one element or more: it binds the first
 element to the pattern on the left and the rest of the list — possibly empty — to the pattern
-on the right. Both sides are whole patterns, so `a :: b :: rest` matches a list of two or more,
-and `Circle n :: rest` matches on the first element's shape.
+on the right. `::` groups rightward, so `a :: b :: rest` matches a list of two or more, and a
+constructor's arguments bind tighter than `::`, so `Circle n :: rest` matches on the first
+element's shape. [Where a pattern is parenthesised](#where-a-pattern-is-parenthesised) has the
+rule for both forms as sub-patterns: a bracket pattern is delimited and never needs parentheses,
+and a cons pattern needs them in an argument position.
 
 `::` here is a form of the grammar and not a name — in an *expression* it is an ordinary
 operator, and [Lists](lists.md#the-cons-operator) is where the two halves are set beside each
@@ -787,6 +851,6 @@ describe reading =
 ```
 
 A record pattern names a **subset** of the record's fields, so it is refutable exactly when one
-of its sub-patterns is and a pattern of shorthand entries alone can never fail. Sub-patterns are
-whole patterns, so record patterns nest in both directions like every other form.
+of its sub-patterns is and a pattern of shorthand entries alone can never fail. An entry takes
+any pattern, so record patterns nest in both directions like every other form.
 [Records](records.md#record-patterns) is where the rest of the construct is specified.

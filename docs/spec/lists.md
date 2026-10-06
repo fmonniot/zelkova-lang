@@ -181,8 +181,10 @@ whatever a module has bound the operator to.
 
 A **bracket pattern** matches a list of exactly its length, element by element: `[]` matches the
 empty list, `[a, b]` a list of two. A **cons pattern**, `first :: rest`, matches a list of one
-element or more. Both sides of a `::` are whole patterns, so `a :: b :: rest` matches a list of
-two or more and `Circle n :: rest` matches on the first element's shape.
+element or more. `::` groups rightward, so `a :: b :: rest` matches a list of two or more, and a
+constructor's arguments bind tighter than `::`, so `Circle n :: rest` matches on the first
+element's shape. [Patterns](patterns.md#where-a-pattern-is-parenthesised) says where either form
+needs parentheses.
 
 ```zel expect=unimplemented
 module Example exposing (f)
