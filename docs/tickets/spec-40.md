@@ -1,4 +1,4 @@
-# SPEC-40 · No chapter says how `Comparable` orders a `Char` or a `String`
+# SPEC-40 · No chapter says how `Comparable` orders a `Char`, a `String` or a `nan`
 
 **Sizing:** small. One rule stated in a sentence or a short section of an existing chapter; the
 language owner ratifies it. It is not larger unless the owner wants an order other than the one
@@ -37,12 +37,18 @@ representation part of the language, which is why the code does not.
    and this ticket does not choose between them.
 3. A `zel` block is not needed, since the rule has no source form that fails. If one is wanted, it
    is `expect=fragment`.
+4. State the `nan` ruling above in the same place.
 
-This ticket does not decide what `compare` answers for a `Float` that is `nan`, nor how `min` and
-`max` treat one. That is a separate ruling the language owner has been asked for on the `LANG-42`
-PR, and a sentence for it goes beside this one only once it is made.
+**The `nan` ruling, made by the language owner on the `LANG-42` PR:** `compare` answers `GT` for
+any pair holding a `Float` that is `nan`, on either side. `lt` and `le` read `compare a b`, and
+`gt` and `ge` read `compare b a`, so `<`, `<=`, `>` and `>=` are all `False` against a `nan`, as
+[*Numbers*](../spec/evaluation-semantics.md#numbers) already says. `std/core/src/Basics.zel`
+documents it on `Comparable`. What a chapter has to state beyond the four operators: `compare`
+is not antisymmetric on a `nan` (`compare nan 1.5` and `compare 1.5 nan` are both `GT`), and
+`min` and `max` depend on argument order (`min nan 1.5` is `1.5`, `min 1.5 nan` is `nan`). The
+ruling is made; this ticket writes it down, beside the code-point rule.
 
 **Acceptance:** `grep -n "code point" docs/spec/type-classes.md docs/spec/evaluation-semantics.md`
 finds a sentence stating the order of `Char` and `String` under `Comparable`;
-`cargo test --test spec` passes; `std/core/tests/ComparableTests.zel`'s code-point cases, already
+a sentence stating that `compare` answers `GT` for a `nan` on either side; `cargo test --test spec` passes; `std/core/tests/ComparableTests.zel`'s code-point cases, already
 passing, are unchanged.
