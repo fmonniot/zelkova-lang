@@ -17,7 +17,7 @@
 use log::debug;
 
 use super::{
-    occurs, Constraint, ErrorKind, FieldConstraint, Side, Substitution, Supplier, Type,
+    occurs, Binder, Constraint, ErrorKind, FieldConstraint, Side, Substitution, Supplier, Type,
     TypeLiteral, TypeVariable,
 };
 use std::collections::HashSet;
@@ -143,6 +143,8 @@ fn unify_one_constraint(constraint: &Constraint) -> Result<Substitution, ErrorKi
         (Type::Variable(rigid), tpe) | (tpe, Type::Variable(rigid)) => {
             Err(ErrorKind::RigidVariable {
                 variable: rigid.spelling(),
+                // The guards above leave only a rigid variable here.
+                binder: rigid.binder().unwrap_or(Binder::Annotation),
                 tpe: Box::new(tpe.clone()),
                 origin: Box::new(constraint.origin.clone()),
             })

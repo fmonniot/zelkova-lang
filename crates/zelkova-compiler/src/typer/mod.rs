@@ -431,6 +431,8 @@ pub enum ErrorKind {
     RigidVariable {
         /// The variable as the source wrote it, `a`.
         variable: String,
+        /// What the variable was written in.
+        binder: Binder,
         /// What the body would need it to be, written with the source's names for the
         /// other rigid variables it holds. Boxed for the reason `UnificationFailed`'s
         /// types are.
@@ -607,11 +609,37 @@ impl ErrorKind {
                     format!("cannot match `{}` with `{}`", left, right)
                 }
             }
-            ErrorKind::RigidVariable { variable, tpe, .. } => format!(
-                "`{}` stands for any type, but here it would have to be `{}`",
+            ErrorKind::RigidVariable {
                 variable,
-                Spelled(tpe, spellings)
-            ),
+                binder,
+                tpe,
+                ..
+            } => {
+                // An instance's head and the member signature its binding is held to each
+                // write their own variables, and may write one alike: then the message says
+                // whose each is, or `b` would have to be `b`.
+                let other = free_variables_in_order(tpe).into_iter().find_map(|found| {
+                    let found_binder = found.binder()?;
+                    (found.spelling() == *variable && found_binder != *binder)
+                        .then_some(found_binder)
+                });
+
+                match other {
+                    Some(other) => format!(
+                        "`{}` of {} stands for any type, but here it would have to be `{}`, where `{}` is {}",
+                        variable,
+                        binder.of_phrase(),
+                        Spelled(tpe, spellings),
+                        variable,
+                        other.possessive()
+                    ),
+                    None => format!(
+                        "`{}` stands for any type, but here it would have to be `{}`",
+                        variable,
+                        Spelled(tpe, spellings)
+                    ),
+                }
+            }
             // One type, but it can hold the collision on its own: the variable's
             // solution is built out of whatever it was unified against, which may
             // be two same-named unions from two modules.
@@ -845,13 +873,19 @@ impl PhaseError for Error {
                     notes.push(difference);
                 }
             }
-            ErrorKind::RigidVariable { variable, .. } => notes.push(match &self.within {
-                Within::Binding(_) | Within::Instance => format!(
+            ErrorKind::RigidVariable {
+                variable, binder, ..
+            } => notes.push(match binder {
+                Binder::InstanceHead => format!(
                     "a type variable of an instance stands for every type the instance may be used at, so its bindings cannot rely on `{}` being one particular type",
                     variable
                 ),
-                Within::Value | Within::Derivation(_) => format!(
+                Binder::Annotation => format!(
                     "a type variable in an annotation stands for every type a caller may choose, so the body cannot rely on `{}` being one particular type",
+                    variable
+                ),
+                Binder::MemberSignature => format!(
+                    "a type variable of a member's signature stands for every type a caller of the member may choose, so a binding cannot rely on `{}` being one particular type",
                     variable
                 ),
             }),
@@ -1519,7 +1553,7 @@ impl InstanceCheck<'_> {
 
         let mut variables: HashMap<String, TypeVariable> = HashMap::new();
         let head = instance_head_type(&signature.head, &mut variables, counter);
-        let head = make_rigid(head, &mut variables);
+        let head = make_rigid(head, &mut variables, Binder::InstanceHead);
         let given: Vec<(QualName, TypeVariable)> = signature
             .context
             .iter()
@@ -1652,7 +1686,7 @@ impl InstanceCheck<'_> {
         // other variable of the signature stays one of its own.
         let mut variables: HashMap<String, TypeVariable> = HashMap::new();
         let signature = canonical_type_to_typer_type(&member.tpe, &mut variables, counter)?;
-        let signature = make_rigid(signature, &mut variables);
+        let signature = make_rigid(signature, &mut variables, Binder::MemberSignature);
         let class_variable = variables.get(class.variable.as_str())?;
         let tpe = Substitution::substitute(signature, class_variable, scope.head);
 
@@ -1724,7 +1758,8 @@ impl DerivationCheck<'_> {
     ///
     /// No context is given to a binding: none of them mentions the class variable, so each
     /// stands for every type that derives the class, and what one needs of a type is an
-    /// instance in scope or an error. `Comparable`'s `differed i j = compare i j` needs
+    /// instance in scope or an error. A variable the answer type holds is the member
+    /// signature's own, and is rigid. `Comparable`'s `differed i j = compare i j` needs
     /// `Comparable Position`.
     fn of(&self, module: &Module, counter: &mut u32, errors: &mut Vec<Error>) -> Vec<Name> {
         let mut classes: Vec<_> = module.classes.iter().collect();
@@ -1766,6 +1801,10 @@ impl DerivationCheck<'_> {
         else {
             return;
         };
+        // A variable of the answer type is one the member's signature binds beyond the
+        // class's, which every caller of the member chooses for itself: a binding is held
+        // to every type it may stand for.
+        let answer = make_rigid(answer, &mut variables, Binder::MemberSignature);
         let function = |parameters: Vec<Type>, result: Type| {
             parameters
                 .into_iter()
@@ -2186,16 +2225,18 @@ pub(crate) fn canonical_type_to_typer_type(
 /// `tpe` and `variables` are what [`canonical_type_to_typer_type`] built for a type the
 /// declaration being checked is quantified over: an annotation, an instance's head, the
 /// member signature an instance's binding is held to. Each variable keeps its `id` and
-/// takes the name it was written by, so a given built from `variables` afterwards is on the
-/// variable the type holds, and `unify` will solve none of them. A variable already rigid
-/// is left as it is.
-fn make_rigid(tpe: Type, variables: &mut HashMap<String, TypeVariable>) -> Type {
+/// takes the name it was written by and the `binder` it was written in, so a given built from
+/// `variables` afterwards is on the variable the type holds, and `unify` will solve none of
+/// them. A variable already rigid is left as it is.
+fn make_rigid(tpe: Type, variables: &mut HashMap<String, TypeVariable>, binder: Binder) -> Type {
     let mut tpe = tpe;
     for (written, variable) in variables.iter_mut() {
         if variable.is_rigid() {
             continue;
         }
-        let rigid = variable.clone().into_rigid(Name::new(written.clone()));
+        let rigid = variable
+            .clone()
+            .into_rigid(Name::new(written.clone()), binder);
         tpe = Substitution::substitute(tpe, variable, &Type::Variable(rigid.clone()));
         *variable = rigid;
     }
@@ -2648,11 +2689,10 @@ fn translate_sub_pattern(
 /// An instance's binding has no annotation of its own: the member's signature at the
 /// instance's type stands in for one, and the head line of the instance for its span.
 ///
-/// The variables of `tpe` are rigid ([`make_rigid`]) for a declaration's annotation and for an
-/// instance's binding, head and member signature alike. A derivation's binding is the one
-/// kind of annotation that leaves them flexible: its type is the chapter's role type over the
-/// derivation's answer type, which the member's signature gives and which a derived instance
-/// is checked against again, rigidly, in the member it was placed in.
+/// The variables of `tpe` are rigid ([`make_rigid`]) for a declaration's annotation, for an
+/// instance's binding, head and member signature alike, and for a derivation's binding, whose
+/// type is the chapter's role type over the derivation's answer type: the variables there
+/// are the member signature's own.
 struct Annotation {
     tpe: Type,
     span: NodeSpan,
@@ -2708,7 +2748,7 @@ fn value_to_term_and_annotation(
             let term = wrap_with_patterns(pattern_iter, body_term, translation, counter)?;
             let mut var_map = HashMap::new();
             let tpe = canonical_type_to_typer_type(tpe, &mut var_map, counter)?;
-            let tpe = make_rigid(tpe, &mut var_map);
+            let tpe = make_rigid(tpe, &mut var_map, Binder::Annotation);
             let given = context
                 .iter()
                 .filter_map(|constraint| {
@@ -2859,8 +2899,40 @@ pub(crate) use classes::{head_of, instance_head_type};
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct TypeVariable {
     id: u32,
-    /// The name the source wrote this variable by, when it is rigid.
-    rigid: Option<Name>,
+    /// The name the source wrote this variable by and what it wrote it in, when it is rigid.
+    rigid: Option<(Name, Binder)>,
+}
+
+/// What a rigid variable was written in: the three kinds of declared type a body is held to.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub enum Binder {
+    /// A declaration's annotation, or the answer type of a derivation's binding.
+    Annotation,
+    /// An instance's head.
+    InstanceHead,
+    /// The signature of a class member, for the variables it binds beyond the class's own:
+    /// the signature an instance's binding is held to.
+    MemberSignature,
+}
+
+impl Binder {
+    /// `of` this binder, as a message writes whose a variable is.
+    fn of_phrase(self) -> &'static str {
+        match self {
+            Binder::Annotation => "the annotation",
+            Binder::InstanceHead => "the instance head",
+            Binder::MemberSignature => "the member's signature",
+        }
+    }
+
+    /// What a message calls this binder's variable when it says which of two alike it means.
+    fn possessive(self) -> &'static str {
+        match self {
+            Binder::Annotation => "the annotation's",
+            Binder::InstanceHead => "the instance head's",
+            Binder::MemberSignature => "the member signature's",
+        }
+    }
 }
 
 impl TypeVariable {
@@ -2871,11 +2943,16 @@ impl TypeVariable {
 
     /// This variable made rigid under `name`: same `id`, so it is the variable the
     /// annotation's type was translated with, now one `unify` will not solve.
-    fn into_rigid(self, name: Name) -> TypeVariable {
+    fn into_rigid(self, name: Name, binder: Binder) -> TypeVariable {
         TypeVariable {
             id: self.id,
-            rigid: Some(name),
+            rigid: Some((name, binder)),
         }
+    }
+
+    /// What this variable was written in, when it is rigid.
+    fn binder(&self) -> Option<Binder> {
+        self.rigid.as_ref().map(|(_, binder)| *binder)
     }
 
     /// Whether `unify` may not solve this variable to another type.
@@ -2888,7 +2965,7 @@ impl TypeVariable {
     /// `Display` does.
     fn spelling(&self) -> String {
         match &self.rigid {
-            Some(name) => name.to_string(),
+            Some((name, _)) => name.to_string(),
             None => format!("t{}", self.id),
         }
     }
@@ -2898,7 +2975,7 @@ impl std::fmt::Debug for TypeVariable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.rigid {
             None => write!(f, "TypeVariable#{}", self.id),
-            Some(name) => write!(f, "TypeVariable#{}(rigid {})", self.id, name),
+            Some((name, _)) => write!(f, "TypeVariable#{}(rigid {})", self.id, name),
         }
     }
 }
@@ -3086,7 +3163,7 @@ impl std::fmt::Debug for Type {
             Type::Variable(TypeVariable { id, rigid: None }) => write!(f, "Var(#{})", id),
             Type::Variable(TypeVariable {
                 id,
-                rigid: Some(name),
+                rigid: Some((name, _)),
             }) => write!(f, "Rigid({}#{})", name, id),
             Type::Fun {
                 param_tpe,
@@ -4178,8 +4255,8 @@ pub fn infer(term: Term, global: HashMap<String, Type>) -> Result<Type, ErrorKin
 ///
 /// The term handed back is zonked — see [`Substitution::apply_term`] — so every node
 /// carries the type inference solved for it and not the variable `annotate` gave it.
-/// Beside it comes the context the annotation required of its variables, zonked the same
-/// way.
+/// Beside it comes the context the annotation required of its variables, each on the
+/// rigid variable it was given on.
 ///
 /// # The order of the steps
 ///

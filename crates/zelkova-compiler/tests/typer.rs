@@ -2232,6 +2232,30 @@ fn a_record_cannot_hold_its_own_type() {
     }
 }
 
+/// An annotation's variable is not solved to a record either: `a` would have to be `{ x : a }`,
+/// and that is a rigid variable the body cannot make something of its own, not a circular
+/// type.
+///
+/// Mutation-checked by not making an annotation's variables rigid in
+/// `value_to_term_and_annotation` (leaving out its `make_rigid`): the error is then a
+/// `CircularType` and `rigid_variable_of` panics.
+#[test]
+fn an_annotation_variable_is_not_solved_to_a_record_holding_it() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        loop : a -> a
+        loop r =
+          { x = r }
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(
+        rigid_variable_of(&error),
+        ("a".to_string(), "{ x : a }".to_string())
+    );
+}
+
 /// An access has the type of the field it reads, and a field read at another type is
 /// an error under the access, explained by the annotation the record type came from.
 ///
@@ -4827,6 +4851,56 @@ fn an_instance_binding_cannot_force_a_member_signature_variable_to_a_type() {
             range_of(&source, "instance Container (Box a) where"),
         ]
     );
+    assert_eq!(
+        error.message(),
+        "`b` stands for any type, but here it would have to be `Int`"
+    );
+    assert!(
+        error.notes().iter().any(|note| note.starts_with(
+            "a type variable of a member's signature stands for every type a caller of the member may choose"
+        )),
+        "{:?}",
+        error.notes()
+    );
+}
+
+/// An instance's head and the member signature its binding is held to may write a variable
+/// alike, and the message says whose each is: without it, `b` would have to be `b`. The note
+/// is the one for the variable the message is about, here the head's.
+///
+/// Mutation-checked by reading no other variable of the same spelling in `ErrorKind::message`
+/// (`let other = None`): the message reads "`b` stands for any type, but here it would have
+/// to be `b`" and the first assertion goes red.
+#[test]
+fn two_rigid_variables_written_alike_are_told_apart() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Holder a where
+          hold : a -> b -> b
+
+        type Box c
+          = Box c
+
+        instance Holder (Box b) where
+          hold bx y =
+            case bx of
+              Box z ->
+                z
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(
+        error.message(),
+        "`b` of the instance head stands for any type, but here it would have to be `b`, where `b` is the member signature's"
+    );
+    assert!(
+        error.notes().iter().any(|note| note.starts_with(
+            "a type variable of an instance stands for every type the instance may be used at"
+        )),
+        "{:?}",
+        error.notes()
+    );
 }
 
 /// A constrained declaration whose body uses only what its context provides checks, and is
@@ -5137,6 +5211,64 @@ fn a_derivation_that_needs_a_class_of_a_variable_it_is_not_given_is_missing_a_co
             .any(|note| note.contains("a derivation's bindings carry no context")),
         "{:?}",
         error.notes()
+    );
+}
+
+/// A variable the member's signature binds beyond the class's is in the answer type `R` too,
+/// and a derivation's binding is held to every type it may stand for: `Just 0` is not a
+/// `Maybe b` for every `b`. The error is at the class, under the use that needs the `Int`, and
+/// it is there whether or not any instance derives the class.
+///
+/// Mutation-checked by not making the answer's variables rigid in `DerivationCheck::binding`:
+/// `b` is solved to `Int`, the class checks and `one_type_error` panics.
+#[test]
+fn a_derivation_cannot_force_a_member_signature_variable_to_a_type() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Maybe2 a
+          = Nothing2
+          | Just2 a
+
+        class Tag a where
+          tag : a -> a -> Maybe2 b
+
+          derived tag
+            matched = Just2 0
+            differed _ _ = Nothing2
+            combine x y = x
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(
+        rigid_variable_of(&error),
+        ("b".to_string(), "Int".to_string())
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_within(source, "matched = Just2 0", "0"),
+            range_of(source, "derived tag"),
+        ]
+    );
+    assert!(
+        error
+            .notes()
+            .contains(&"in the binding `matched` of the derivation of `tag`".to_owned()),
+        "{:?}",
+        error.notes()
+    );
+
+    // An instance derived from the class has nothing to add: the class has the error.
+    let derived = format!(
+        "{}\ntype Colour\n  = Red\n  | Green\n\ninstance Tag Colour where\n  derived\n",
+        source
+    );
+    assert_eq!(
+        type_errors(&derived).len(),
+        1,
+        "{:?}",
+        type_errors(&derived)
     );
 }
 
