@@ -29,9 +29,11 @@ nowhere in the user's source while giving it the span of the `-`. A type error m
 label `ERR-4` set out to eliminate.
 
 **Approach:** desugar to an application of `Basics.negate` rather than to a subtraction —
-`negate` already exists, is already exposed, and is already typed `number -> number`. That
-makes the desugaring name something real, so the invented node's span points at a function
-the reader can look up.
+`negate` already exists and is already exposed. [`LANG-42`](README.md) made it a member of
+`Number` (`negate : a -> a`), with an instance for `Int` and one for `Float`, so the
+desugaring has a `Float`-capable function to name and a negated `Float` needs `Number Float`,
+which an instance answers. That makes the desugaring name something real, so the invented
+node's span points at a function the reader can look up.
 
 The catch is that it makes the grammar depend on a name from `Basics`, which the `-` version
 also does (it invents `Variable("-")`) but less visibly, since an operator reads as built-in.
@@ -42,9 +44,8 @@ rather than inventing an answer.
 
 **Acceptance:** `-3.14` type-checks as a `Float` with no `Int` anywhere in the constraints,
 and a deliberate type error involving a negated expression produces a label that does not
-mention a literal zero. `negate n = -n` in `std/core/src/Basics.zel` must still compile —
-note it would then be defined in terms of itself, which is fine as a runtime matter but worth
-a glance.
+mention a literal zero. `std/core/src/Basics.zel` must still compile: its `Number` instances
+define `negate` through `Js.Basics`, and none is written as `-n`.
 
 The syntax block in `docs/spec/lexical-structure.md`'s *Prefix negation* section stays green
 across this fix by design — it pins the syntax, which does not change — so the
