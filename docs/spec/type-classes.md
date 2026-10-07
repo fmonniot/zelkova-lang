@@ -567,7 +567,7 @@ does. In particular a class owes no `Position` instance for the positions `diffe
 `atConstructor` receive: what a class makes of them is written in its own bindings.
 
 Where an argument's type is a variable, the requirement becomes a **constraint on the derived
-instance**, inferred rather than written:
+instance**, inferred when the instance writes no context:
 
 ```zel expect=ok
 module Example exposing (Box)
@@ -601,11 +601,11 @@ Eq a => Eq (Box a)
 Two `Box`es are equal when their contents are, which is only a definition of equality once the
 contents have one. A parameter no variant uses carries no constraint.
 
-The context is never written. A context written on a `derived` instance is an error, and what one
-would mean beside the inferred one is [an open question](#open-questions):
+A derived instance may write its context, and the context it writes is then the whole of the
+instance's. It may ask more than the type's arguments need:
 
 ```zel expect=canonical-error:DerivedInstanceWritesContext
-module Example exposing (Box)
+module Example exposing (Box, Hash)
 
 type Box a
   = Box a
@@ -624,9 +624,50 @@ class Eq a where
         False ->
           False
 
-instance Eq a => Eq (Box a) where
+class Hash a where
+  hash : a -> Int
+
+instance (Eq a, Hash a) => Eq (Box a) where
   derived
 ```
+
+An `Eq (Box a)` then requires a `Hash a` wherever it is used, and goes on requiring exactly
+`Eq a` and `Hash a` whatever `Box` later comes to hold. The written context must provide every
+constraint the arguments need. It provides the constraints it writes and the
+[superclasses](#superclasses) of each, so `Comparable a` provides `Eq a`. A context that leaves a
+needed constraint out is an error, naming the constraint and the variant that needs it:
+
+```zel expect=canonical-error:DerivedInstanceWritesContext
+module Example exposing (Box, Hash)
+
+type Box a
+  = Box a
+
+class Eq a where
+  eq : a -> a -> Bool
+
+  derived eq
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True ->
+          y
+
+        False ->
+          False
+
+class Hash a where
+  hash : a -> Int
+
+instance Hash a => Eq (Box a) where
+  derived
+```
+
+**Not implemented:** the compiler rejects every context written on a `derived` instance. The
+first block above should be accepted and is rejected, the second is rejected for carrying a
+context at all, and the `Phantom` instance below is rejected with its context written
+([`LANG-90`](../tickets/lang-90.md)).
 
 Where the argument's type is concrete, the requirement is checked at the declaration, and an
 argument whose type has no instance is an error there, naming the variant and the type:
@@ -664,13 +705,17 @@ function type [has no useful equality at all](evaluation-semantics.md#functions-
 
 A superclass obligation is unchanged: a derived `Comparable Colour` is rejected unless an
 `Eq Colour` instance exists, derived in its turn or written out. For a type with parameters the
-obligation is held to the context the derived instance was inferred, as a written instance's is: a
-derived `Comparable (Phantom a)` for `type Phantom a = Phantom Int` has no constraint on `a`, so it
-is an error beside `instance Eq a => Eq (Phantom a)`, which needs one.
+obligation is held to the derived instance's context, inferred or written, as a written
+instance's is. `instance Comparable (Phantom a) where derived` for `type Phantom a = Phantom Int`
+infers no constraint on `a`, so it is an error beside `instance Eq a => Eq (Phantom a)`, which
+needs one. Written `instance Eq a => Comparable (Phantom a) where derived`, it is accepted.
 
-The type's constructors must be in scope where the instance is written, since the walk is read
-off them: a derived instance for a type imported [without its
-constructors](modules.md#the-exposing-list) is an error.
+The walk is read off the type's constructors, so the module that declares the type must
+[expose them](modules.md#the-exposing-list). How the instance's module imports the type makes no
+difference: `import Colour`, `import Colour exposing (Colour)` and
+`import Colour exposing (Colour(..))` all reach the constructors of a `Colour` exposed as
+`Colour(..)`, [qualified](modules.md#imports) at the least, and a derived instance is accepted
+under each. A derived instance for an opaque type of another module is an error.
 
 ```zel expect=ok package=opaque
 module Colour exposing (Colour)
@@ -1229,18 +1274,6 @@ waits on them.
 
 ## Open questions
 
-- **A context written on a `derived` instance.** `instance Eq a => Eq (Box a) where derived`
-  parses, and the context of a derived instance is
-  [inferred](#what-a-derived-instance-requires). Whether a written context may stand beside the
-  inferred one, has to equal it, bounds it from above or is an error is unanswered. The compiler
-  rejects one, which is the choice a later answer cannot break.
-  [`SPEC-39`](../tickets/spec-39.md) carries it.
-- **Which constructors a derived instance needs in scope.**
-  [*What a derived instance requires*](#what-a-derived-instance-requires) rejects a derived
-  instance for a type imported [without its constructors](modules.md#the-exposing-list). Whether
-  that is read off the import list (`import Colour exposing (Colour)`) or off what the declaring
-  module exposes (`Colour(..)`) is unanswered; the compiler reads the second.
-  [`SPEC-39`](../tickets/spec-39.md) carries it.
 - **What lists add.** Having them makes an n-ary `combine : List R -> R` writable, which would
   let a class see how many answers it is folding and retire
   [the law above](#what-a-derivation-is-trusted-to-keep) by making the fold the class's to

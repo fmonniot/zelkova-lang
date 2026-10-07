@@ -8234,8 +8234,8 @@ const EQ_INT: &str = indoc::indoc! {r#"
 
 "#};
 
-/// A derived instance for a type imported without its constructors is an error: the walk is
-/// read off the constructors, and there are none to read. Imported with them, the same
+/// A derived instance for a type its module exposes without its constructors is an error: the
+/// walk is read off the constructors, and there are none to read. Exposed with them, the same
 /// instance is fine.
 ///
 /// Mutation-checked by switching the check for a union with no variants in `plan` off: the
@@ -8266,21 +8266,21 @@ fn a_derived_instance_for_a_type_imported_opaquely_is_an_error() {
         vec![(true, nth_range(&source, "derived", 1))]
     );
 
-    // With its constructors in reach the same instance has a shape.
+    // With its constructors exposed the same instance has a shape.
     let mut interfaces = scalar_interfaces();
     publish(
         "module Colour exposing (Colour(..))\n\ntype Colour\n  = Red\n",
         &mut interfaces,
     );
     let module = canonicalize_with_interfaces(&source, &interfaces)
-        .expect("a type imported with its constructors is derived");
+        .expect("a type exposed with its constructors is derived");
     assert_eq!(module.instances.len(), 1);
 }
 
 /// A derived instance for a type imported by name alone, `exposing (Colour)`, or not at all and
 /// named qualified, is accepted when the declaring module exposes `Colour(..)`: "constructors in
-/// scope" is read as what the declaring module exposes and not as what the import list names.
-/// Which reading the language means is `SPEC-39`'s, so this pins the one the compiler has.
+/// scope" is read as what the declaring module exposes and not as what the import list names
+/// ([*What a derived instance requires*](../../../docs/spec/type-classes.md#what-a-derived-instance-requires)).
 ///
 /// Mutation-checked by treating every type of another module as having no constructors in
 /// `plan` (`|| declaring_module(name) != *env.module_name()` added to the test for a union with
