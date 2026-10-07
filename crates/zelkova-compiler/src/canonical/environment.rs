@@ -172,6 +172,12 @@ impl InfixDeclaration {
 /// already recorded independently), but keeping them rather than a bare count is
 /// what the entry would need were a form with a body — a type alias — to reuse this
 /// same map.
+///
+/// Nothing on the entry says whether the module under check declared the type or an
+/// import brought it in, because `name` already does: it is the declaration's own, so
+/// its module is the module under check for a declaration and another module for an
+/// import. `do_exports` reads it that way (`declares_type`), as it reads a class's
+/// qualified name — where `ValueType` needs variants, a type's entry carries the answer.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TypeArity {
     pub name: QualName,

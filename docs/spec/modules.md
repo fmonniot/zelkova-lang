@@ -215,13 +215,6 @@ Every entry in a module's own `exposing` list names one of that module's declara
 A module may not re-export something it imported: a name that reaches other modules
 through `Widget` is a name `Widget` declared.
 
-**Known gap:** the last of the three blocks below should also be rejected — it exposes a
-name it only imported, not one it declared itself. A name nothing declares at all is now an
-error, the same way an undeclared operator entry already was. But a name an
-`import ... exposing (...)` brought in still reads exactly like one the module wrote itself,
-so the last block is tagged for what it still does
-([`docs/tickets/bug-31.md`](../tickets/bug-31.md)).
-
 ```zel expect=canonical-error:ExportNotFound
 module Widget exposing (missing)
 
@@ -238,7 +231,7 @@ label : Size
 label = Small
 ```
 
-```zel expect=ok package=reexport
+```zel expect=canonical-error:ExportNotFound package=reexport
 module Facade exposing (label)
 
 import Widget exposing (label)

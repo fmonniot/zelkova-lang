@@ -131,7 +131,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-28 | bug | low | closed 2026-09-30 | The `Tokenizer` never terminates on an unterminated character literal |
 | BUG-29 | bug | medium | closed 2026-09-30 | A top-level declaration whose first token is not at column 1 fails to parse |
 | BUG-30 | bug | medium | closed 2026-10-01 | An `Upper(..)` import entry does not check the type was exposed transparently |
-| [BUG-31](bug-31.md) | bug | medium | open | `do_exports` accepts a `Lower`/`Upper` name that resolves only through an import |
+| BUG-31 | bug | medium | closed 2026-10-07 | `do_exports` accepts a `Lower`/`Upper` name that resolves only through an import |
 | [BUG-32](bug-32.md) | bug | medium | open | An exposed infix's unannotated backing function is silently dropped from the interface |
 | [BUG-33](bug-33.md) | bug | low | open | `SourceFileError::notes()` dumps `io::Error`'s `Debug` form instead of its `Display` form |
 | BUG-34 | bug | low | closed 2026-10-01 | A failed sub-pass in `canonicalize` reports as if it found nothing, cascading into spurious errors from every later pass that depended on it |

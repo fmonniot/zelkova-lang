@@ -454,6 +454,177 @@ fn export_nonexistent_type_is_error() {
     );
 }
 
+// ── Scenario 7a: re-exporting an imported name (`BUG-31`) ───────────────────
+
+const REEXPORT_WIDGET: &str = indoc::indoc! {r#"
+    module Widget exposing (Size(..), label)
+
+    type Size
+      = Small
+
+    label : Size
+    label = Small
+"#};
+
+/// The interfaces a module importing `Widget` is checked against.
+fn interfaces_with_widget() -> HashMap<zelkova_compiler::name::Name, Interface> {
+    let mut interfaces = scalar_interfaces();
+    publish(REEXPORT_WIDGET, &mut interfaces);
+    interfaces
+}
+
+/// A value an `import ... exposing (...)` brought in is not one the importing module
+/// declares, so exposing it is `ExportNotFound`, underlined at the exposed name. A value
+/// the module declares itself, beside it in the same header, is still exposed.
+///
+/// Mutation-checked by accepting `ValueType::Foreign(..)` in `do_exports`' `Lower` arm
+/// (the check the arm made before this, `find_value(..).is_some()`): the module
+/// canonicalizes without an error and this goes red.
+#[test]
+fn exposing_an_imported_value_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Facade exposing (label, own)
+
+        import Widget exposing (label)
+
+        own : Int
+        own = 1
+    "#};
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &interfaces_with_widget());
+
+    let [error @ canonical::Error::ExportNotFound(name, canonical::ExportType::Value, _)] =
+        errors.as_slice()
+    else {
+        panic!("expected one ExportNotFound for a value, got {:?}", errors);
+    };
+    assert_eq!(name.as_str(), "label");
+    assert_eq!(sole_label(error), nth_range(source, "label", 0));
+
+    let interface = module.to_interface(None);
+    assert!(interface.values.contains_key(&"own".into()));
+    assert!(!interface.values.contains_key(&"label".into()));
+}
+
+/// The same for a name two unqualified imports both bring in, which the environment holds
+/// as `ValueType::Foreigns`.
+///
+/// Mutation-checked by accepting `ValueType::Foreigns(..)` in `do_exports`' `Lower` arm:
+/// the module canonicalizes without an error and this goes red.
+#[test]
+fn exposing_a_value_two_imports_bring_in_is_an_error() {
+    let mut interfaces = interfaces_with_widget();
+    publish(
+        indoc::indoc! {r#"
+            module Gadget exposing (label)
+
+            label : Int
+            label = 1
+        "#},
+        &mut interfaces,
+    );
+
+    let source = indoc::indoc! {r#"
+        module Facade exposing (label)
+
+        import Widget exposing (label)
+        import Gadget exposing (label)
+    "#};
+    let canonical::Canonicalized { errors, .. } =
+        canonicalize_recovering_with_interfaces(source, &interfaces);
+
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [canonical::Error::ExportNotFound(name, canonical::ExportType::Value, _)]
+                if name.as_str() == "label"
+        ),
+        "got {:?}",
+        errors
+    );
+}
+
+/// A type an import brought in is not one the importing module declares, with either
+/// spelling of the entry: the error names the entry's own `ExportType`, and underlines
+/// the whole entry, `(..)` included.
+///
+/// Mutation-checked by making `declares_type` answer `find_type(name).is_some()` (the
+/// check `do_exports` made before this): both modules canonicalize and this goes red.
+#[test]
+fn exposing_an_imported_type_is_an_error() {
+    let interfaces = interfaces_with_widget();
+
+    let private = indoc::indoc! {r#"
+        module Facade exposing (Size)
+
+        import Widget exposing (Size)
+    "#};
+    let canonical::Canonicalized { errors, .. } =
+        canonicalize_recovering_with_interfaces(private, &interfaces);
+    let [error @ canonical::Error::ExportNotFound(name, canonical::ExportType::UnionPrivate, _)] =
+        errors.as_slice()
+    else {
+        panic!("expected one ExportNotFound for a type, got {:?}", errors);
+    };
+    assert_eq!(name.as_str(), "Size");
+    assert_eq!(sole_label(error), nth_range(private, "Size", 0));
+
+    let public = indoc::indoc! {r#"
+        module Facade exposing (Size(..))
+
+        import Widget exposing (Size(..))
+    "#};
+    let canonical::Canonicalized { errors, .. } =
+        canonicalize_recovering_with_interfaces(public, &interfaces);
+    let [error @ canonical::Error::ExportNotFound(name, canonical::ExportType::UnionPublic, _)] =
+        errors.as_slice()
+    else {
+        panic!("expected one ExportNotFound for a type, got {:?}", errors);
+    };
+    assert_eq!(name.as_str(), "Size");
+    assert_eq!(sole_label(error), nth_range(public, "Size(..)", 0));
+}
+
+/// A module that both imports a name unqualified and declares it exposes its own
+/// declaration: the declaration replaces the import's entry in the environment, so the
+/// export check sees a local name and the interface carries the module's own.
+///
+/// That the collision is accepted at all is not decided here — a declaration and an
+/// unqualified import of one name are an error under
+/// `docs/spec/name-resolution.md#a-top-level-name-comes-from-exactly-one-place`, which
+/// `LANG-29` implements; this pins what the export check does until then, and goes red
+/// (rightly) when `LANG-29` rejects the module.
+///
+/// Mutation-checked by making `insert_top_level_value` and `insert_declared_type` keep
+/// an entry an import already put under the name (`entry(..).or_insert(..)`): the import
+/// wins, both entries become `ExportNotFound` and this goes red.
+#[test]
+fn exposing_a_name_declared_and_also_imported_exposes_the_declaration() {
+    let source = indoc::indoc! {r#"
+        module Facade exposing (Size(..), label)
+
+        import Widget exposing (Size(..), label)
+
+        type Size
+          = Big
+
+        label : Size
+        label = Big
+    "#};
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &interfaces_with_widget());
+    assert!(errors.is_empty(), "got {:?}", errors);
+
+    let interface = module.to_interface(None);
+    let facade_size = interface
+        .unions
+        .get(&"Size".into())
+        .expect("the declared `Size` is exposed");
+    assert_eq!(facade_size.variants.len(), 1);
+    assert_eq!(facade_size.variants[0].name.as_str(), "Big");
+    assert!(interface.values.contains_key(&"label".into()));
+}
+
 // ── Scenario 7b: an exposed value with no annotation (`BUG-14`) ─────────────
 
 /// `SPEC-5`: a value named in the `exposing` list must carry a type
