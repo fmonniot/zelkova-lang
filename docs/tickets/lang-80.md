@@ -22,10 +22,13 @@ kept, so the rules below are implemented and not specified.
 the table, but three inputs are left open, and `consume_escape` answers each one:
 
 1. **An unknown escape**, such as `"C:\docs"`. The tokenizer rejects it with `InvalidEscape`.
-2. **A surrogate**, `"\u{D800}"`. The table says a `\u{H…}` is "the character with the given
-   hexadecimal code point", and *Characters* says a literal "holds one Unicode code point".
-   A surrogate is a code point but not a scalar value. The tokenizer rejects it with
-   `UnicodeError`, which narrows what the chapter reads as allowing.
+2. **A surrogate**, `"\u{D800}"`. **Decided** (`SPEC-40`, by the language owner;
+   [`DEC-28` decision 4](../decisions/dec-28.md#4--a-char-is-a-unicode-scalar-value-and-a-string-a-sequence-of-them)):
+   a `Char` is a Unicode scalar value, so a surrogate escape is an error.
+   [*Scalar types*](../spec/types.md#scalar-types) states the rule and *Characters* now says a
+   literal holds one scalar value. The tokenizer already rejects it with `UnicodeError`. What
+   is left for this ticket is the escape table's `\u{H…}` row, which still reads "the given
+   hexadecimal code point", and the example pinning the rejection.
 3. **How many digits a `\u{…}` may have.** The tokenizer accepts one to six and rejects a
    seventh, so `"\u{0000041}"` is a `UnicodeError` although it names U+0041. The review of
    `LANG-77` raised this as a contradiction with the (removed) sentence that only a
@@ -33,12 +36,12 @@ the table, but three inputs are left open, and `consume_escape` answers each one
    choice is open: cap the digits at six, as Rust and Elm do, or accept any number of digits
    and reject only a value above `0x10FFFF`, which has to watch `u32` overflow.
 
-Elm and Rust make the first answer to 1 and 2 and the cap in 3, so these are probably the
-right ones. This ticket does not pick: it is the place someone does, on purpose.
+Elm and Rust reject 1 and cap 3 at six, so these are probably the right answers. This ticket
+does not pick either: it is the place someone does, on purpose.
 
 **Approach:**
 
-1. Decide the three rules, in a `docs/decisions/` entry if the digit-count choice is argued
+1. Decide rules 1 and 3, in a `docs/decisions/` entry if the digit-count choice is argued
    rather than copied.
 2. Write them into *Characters* and *Strings*, stating whether a character literal follows
    them once it tokenizes escapes.

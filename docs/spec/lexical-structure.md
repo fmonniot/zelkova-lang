@@ -415,7 +415,8 @@ newline = '\n'
 **Not implemented:** a character literal recognises no escape sequence. It must currently hold
 exactly one character between the quotes, so `'\n'` is rejected as an unclosed literal.
 
-A character literal holds one Unicode code point. `'\u{1F600}'` is a single character.
+A character literal holds one [Unicode scalar value](types.md#scalar-types). `'\u{1F600}'` is a
+single character.
 
 ### Strings
 

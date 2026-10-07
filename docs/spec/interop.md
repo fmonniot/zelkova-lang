@@ -105,8 +105,8 @@ mechanisms:
 | `Int` | the value is a `bigint` the [64-bit range](evaluation-semantics.md#numbers) holds | `s64` |
 | `Float` | the value is a number | `f64` |
 | `Bool` | the value is a boolean | `bool` |
-| `Char` | the value is a string of one character | `char` |
-| `String` | the value is a string | `string` |
+| `Char` | the value is a string holding one [Unicode scalar value](types.md#scalar-types) | `char` |
+| `String` | the value is a string with no surrogate outside a pair | `string` |
 | `()` | the value is `undefined`; a result is [discarded](#the-unit-value-crosses-as-undefined) | nothing: no parameter, and no result |
 | A tuple | the value is an array of the tuple's length, each element satisfying its component's predicate | `tuple` of its components' spellings |
 | A record | the value is an object with exactly the record's fields, each field satisfying its own predicate | a `record` of the same fields |
@@ -117,6 +117,14 @@ An `Int` crosses as a `BigInt` and not as a number: a JavaScript number is a bin
 integers only to `2^53`, and [`Int`'s range](evaluation-semantics.md#numbers) is wider. A
 companion holding a number converts before returning it, and one taking an `Int` is handed a
 `BigInt`.
+
+A JavaScript string is a sequence of UTF-16 units and may hold a surrogate that is half of no
+pair. Such a string is no `String`, and a lone surrogate no `Char`, so both fail their checks.
+
+**Known gap:** a string holding a lone surrogate should fail the `String` check, and a lone
+surrogate the `Char` check. Both pass today, and
+[`Comparable` orders the value](evaluation-semantics.md#ordering) above every character up to
+U+FFFF. [`docs/tickets/lang-91.md`](../tickets/lang-91.md) tracks it.
 
 The first five rows are [the scalar types](types.md#scalar-types), which the compiler knows by
 the qualified name of each declaration. They are admitted by identity and not by spelling: a
