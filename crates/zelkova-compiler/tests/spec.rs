@@ -443,7 +443,7 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             DerivedInstanceNotDerivable(..) => vec!["DerivedInstanceNotDerivable"],
             DerivedInstanceNoShape(..) => vec!["DerivedInstanceNoShape"],
             DerivedInstanceRequires(..) => vec!["DerivedInstanceRequires"],
-            DerivedInstanceWritesContext(..) => vec!["DerivedInstanceWritesContext"],
+            DerivedInstanceContextTooNarrow(..) => vec!["DerivedInstanceContextTooNarrow"],
             ClassDeclared(..) => vec!["ClassDeclared"],
             InstanceDeclared(..) => vec!["InstanceDeclared"],
             InfixDeclared(..) => vec!["InfixDeclared"],

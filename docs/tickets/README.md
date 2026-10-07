@@ -302,7 +302,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-87](lang-87.md) | task | — | open | A derivation binding written with more parameters than the walk supplies is rejected |
 | [LANG-88](lang-88.md) | task | — | open | A derived member's size is exponential in a constructor's arity when `combine` names its second parameter more than once |
 | [LANG-89](lang-89.md) | task | — | open | A tuple pattern's element and a record pattern's entry reject a bare applied constructor |
-| [LANG-90](lang-90.md) | task | — | open | A context written on a `derived` instance is rejected, where the chapter makes it the instance's context |
+| LANG-90 | task | — | closed 2026-10-06 | A context written on a `derived` instance is rejected, where the chapter makes it the instance's context |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [SITE-3](site-3.md) | task | — | open | A doc comment's link into `docs/` resolves nowhere, and nothing checks it |

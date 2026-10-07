@@ -252,9 +252,10 @@ a member is a top-level value of its class's module, and an instance reaches eve
 imports its declaring one, transitively, through `Interface::instances`. A use of a member or of
 a constrained function is checked against the instances in scope, and an instance's bindings
 against its class's signatures. A derivation is checked where it is written, and a `derived`
-instance is given the context its type's arguments need (a context written on one is an error)
-and the members its class's derivation stands for, as canonical code placed where a written
-instance's bindings would be (`canonical/derivation.rs`; its module doc comment is the account),
+instance is given the context its type's arguments need, or keeps the one it writes when that
+provides it, and the members its class's derivation stands for, as canonical code placed where a
+written instance's bindings would be (`canonical/derivation.rs`; its module doc comment is the
+account),
 so the typer and the IR read it as they read any other instance. A use of a member or of a
 constrained function is resolved once the whole build has checked, by `ir::specialise`, which
 reads every module at once: no dictionary is passed, a constrained function is copied per
