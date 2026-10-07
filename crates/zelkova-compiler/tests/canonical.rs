@@ -8964,6 +8964,61 @@ fn a_written_context_provides_through_a_superclass() {
     );
 }
 
+/// A written context stays what was written inside a group of types that ask for each other's
+/// instances. `Tree` and `Forest` are mutually recursive, `Tree` writes `Sorted a` where its
+/// own argument needs `Eq a`, and `Forest` infers: it needs what `Tree` wrote, `Sorted a` and
+/// no `Eq a` beside it. `Rose` asks for its own instance and writes its context too.
+///
+/// Mutation-checked by dropping the `continue` of `derive_all`'s fixed point, so that a written
+/// context grows: `Forest`'s context gains `Eq a` and its assertion goes red.
+#[test]
+fn a_written_context_is_fixed_in_a_recursive_group() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            class Eq a => Comparable a where
+              lessThan : a -> a -> Bool
+
+            class Comparable a => Sorted a where
+              sorted : a -> Bool
+
+            type Tree a
+              = Leaf
+              | Node a (Forest a)
+
+            type Forest a
+              = Forest (Tree a)
+
+            type Rose a
+              = Rose a (Rose a)
+
+            instance Sorted a => Eq (Tree a) where
+              derived
+
+            instance Eq (Forest a) where
+              derived
+
+            instance Sorted a => Eq (Rose a) where
+              derived
+        "#}
+    ));
+    let module = canonicalize_with_scalars(&source).expect("`Sorted a` provides `Eq a`");
+
+    assert_eq!(
+        context_of(instance_for(&module, "Tree")),
+        pairs(&[("Sorted", "a")])
+    );
+    assert_eq!(
+        context_of(instance_for(&module, "Forest")),
+        pairs(&[("Sorted", "a")])
+    );
+    assert_eq!(
+        context_of(instance_for(&module, "Rose")),
+        pairs(&[("Sorted", "a")])
+    );
+}
+
 /// What a derived instance writes is what another derived instance needs of it: a `Wrap` of a
 /// `Box` whose derived instance wrote `(Other a, Eq a)` needs both, where a `Box` that wrote
 /// nothing would have asked `Eq a` alone.

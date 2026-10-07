@@ -29,15 +29,15 @@
 //!
 //! A recursive type asks for its own instance, and a group of types may ask for each
 //! other's, so the instances being derived count as in scope with the contexts being
-//! inferred, and the contexts are computed together as a fixed point: each starts empty and
-//! grows by what the others' contexts ask, until nothing grows. A written context is where
-//! its instance starts and stays. A context holds pairs of a
-//! class and one of the head's variables, and the classes that can appear in one are not
-//! only the derived one: a written or imported instance's context names whatever its
-//! parameters need, and that is followed too. The set of such pairs is finite, the classes
-//! in scope times the head's variables, so it stops. What the instance ends with
-//! is read off once more from scratch, which is what makes its order the order the type's
-//! arguments are written in and not the order the iteration happened to find them.
+//! inferred, and the contexts are computed together as a fixed point: each starts empty
+//! and grows by what the others' contexts ask, until nothing grows. A written context is
+//! where its instance starts and stays. A context holds pairs of a class and one of the
+//! head's variables, and the classes that can appear in one are not only the derived one:
+//! a written or imported instance's context names whatever its parameters need, and that
+//! is followed too. The set of such pairs is finite, the classes in scope times the
+//! head's variables, so it stops. What the instance ends with is read off once more from
+//! scratch, which is what makes its order the order the type's arguments are written in
+//! and not the order the iteration happened to find them.
 //!
 //! # A derived instance is given its members
 //!

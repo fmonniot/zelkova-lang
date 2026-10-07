@@ -4604,6 +4604,69 @@ fn a_derived_instance_is_held_to_its_superclass_context() {
     ));
 }
 
+/// A context written on a derived instance is the one its superclasses are held to: the bare
+/// `Comparable (Phantom a)` of the test above infers no context and is a `MissingConstraint`
+/// for the `Eq a` its superclass instance needs, and `Eq a => Comparable (Phantom a)` with the
+/// same `derived` is accepted.
+///
+/// Mutation-checked by returning the inferred context from `derive_all` whatever the candidate
+/// writes: the written form infers nothing, and the `is_ok` assertion goes red with the same
+/// `MissingConstraint` as the bare form.
+#[test]
+fn a_written_context_provides_a_derived_instances_superclass_context() {
+    let declarations = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        type Phantom a
+          = Phantom Int
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Eq a => Comparable a where
+          lt : a -> a -> Bool
+
+          derived lt
+            matched = False
+            differed _ _ = False
+            combine x y =
+              case x of
+                True ->
+                  y
+
+                False ->
+                  False
+
+        instance Eq Int where
+          eq a b =
+            True
+
+        instance Comparable Int where
+          lt a b =
+            True
+
+        instance Eq a => Eq (Phantom a) where
+          eq a b =
+            True
+
+    "#};
+
+    let bare = format!(
+        "{}instance Comparable (Phantom a) where\n  derived\n",
+        declarations
+    );
+    assert!(matches!(
+        one_type_error(&bare).kind,
+        typer::ErrorKind::MissingConstraint { .. }
+    ));
+
+    let written = format!(
+        "{}instance Eq a => Comparable (Phantom a) where\n  derived\n",
+        declarations
+    );
+    assert!(run(&written).is_ok(), "{:?}", run(&written).err());
+}
+
 /// In an instance's binding, a constraint on a variable the member's signature binds is a
 /// `MissingConstraint` written as `MemberSignature`, and the note does not tell the user to
 /// put it in the instance's context: the head does not bind the variable, so canonicalization
