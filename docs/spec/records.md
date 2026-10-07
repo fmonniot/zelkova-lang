@@ -310,7 +310,7 @@ nameOf { name } =
   name
 ```
 
-Sub-patterns are whole patterns, so record patterns [nest](patterns.md#patterns-nest) the way
+An entry takes any pattern, so record patterns [nest](patterns.md#patterns-nest) the way
 every other form does, in both directions — a record pattern inside a constructor pattern, and a
 constructor or record pattern inside a field.
 
@@ -329,6 +329,30 @@ depth r =
     Reading { centre = { x } } ->
       x
 ```
+
+An entry's pattern ends at the `,` or the `}` after it, so it is written
+[without parentheses](patterns.md#where-a-pattern-is-parenthesised) whatever its form:
+
+```zel expect=unimplemented
+module Example exposing (Count, Celsius, degrees)
+
+type Count
+  = One
+  | Many
+
+type Celsius
+  = Celsius Count
+
+degrees : { taken : Celsius } -> Count
+degrees reading =
+  case reading of
+    { taken = Celsius n } ->
+      n
+```
+
+**Not implemented:** an entry's pattern is read as an argument position is, so an applied
+constructor there is a syntax error and `{ taken = (Celsius n) }` is the spelling that parses.
+[`docs/tickets/lang-89.md`](../tickets/lang-89.md) is the ticket.
 
 A record pattern has **one or more entries**, as a record has at least one field, and a trailing
 comma is an error, as it is in a record expression. `{}` is therefore not a pattern, and neither

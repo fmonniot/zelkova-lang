@@ -27,16 +27,20 @@ reports `UnexpectedToken` expecting `)` or `,`.
 
 **Approach:** add both productions. The bracket form is a comma-separated sequence of whole
 patterns, zero or more, with no trailing comma — the same shape
-[`LANG-44`](lang-44.md) adds one level over. The cons form is `Pattern :: Pattern`, grouping
-rightward, and both of its sides are whole patterns, so `a :: b :: rest` and `Circle n :: rest`
-both parse.
+[`LANG-44`](lang-44.md) adds one level over. The cons form groups rightward and binds more
+loosely than a constructor's arguments, so `a :: b :: rest` and `Circle n :: rest` both parse,
+the second as `(Circle n) :: rest`.
 
-Two placement questions the grammar decides rather than the chapter. A bracket pattern is
-delimited, so it belongs at the same level a tuple pattern does and needs no parentheses in a
-declaration head. A cons pattern is *not* delimited, so it goes where an applied constructor
-pattern goes: bare at the head of a `case` branch, parenthesised as a sub-pattern and in a
-declaration head, which is the rule
-[Patterns](../spec/patterns.md#constructor-patterns) already states for the same reason.
+Where each form sits is [*Where a pattern is
+parenthesised*](../spec/patterns.md#where-a-pattern-is-parenthesised)
+([`DEC-26`](../decisions/dec-26.md)). A bracket pattern is delimited, so it belongs at the same
+level a tuple pattern does and needs no parentheses in a declaration head; its elements are
+whole patterns, so `[Circle n, _]` is written bare. A cons pattern is *not* delimited: it is a
+tier of its own between an applied constructor and the whole pattern, bare at the head of a
+`case` branch and as a tuple's element, a record pattern's entry or a bracket pattern's element,
+and parenthesised in an argument position. [`LANG-89`](lang-89.md) splits `Pattern` into the
+atom and whole-pattern tiers this one slots into; if this ticket lands first, it makes that
+split for its own positions.
 
 **Desugar in canonicalization**, as [`LANG-44`](lang-44.md) does for the expression half: `[]`
 becomes the `Nil` pattern, `first :: rest` becomes `Cons first rest`, `[a, b]` becomes
@@ -49,8 +53,9 @@ Note that `Cons first rest` is a constructor pattern *nested inside* another one
 literal past length one. A nested constructor pattern parses and type checks (`LANG-16`,
 closed), so `[a, b]` desugars to a pattern every later phase already handles.
 
-**Acceptance:** `[]`, `[a]`, `[_, b]`, `first :: rest` and `a :: b :: rest` all parse in a
-`case` branch, and the parenthesised forms parse in a declaration head. Tests in the parser's
+**Acceptance:** `[]`, `[a]`, `[_, b]`, `first :: rest`, `a :: b :: rest` and `Circle n :: rest`
+all parse in a `case` branch, the last to a cons whose first element is a constructor pattern
+with one argument, and the parenthesised forms parse in a declaration head. Tests in the parser's
 own test module assert the resulting `PatternKind` nesting, and a canonicalization test asserts
 the `Cons`/`Nil` pattern chain. The `expect=unimplemented` block in
 [Lists](../spec/lists.md#lists-in-patterns) goes red and is retagged `expect=ok`, as do the

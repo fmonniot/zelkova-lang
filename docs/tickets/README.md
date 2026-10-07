@@ -172,6 +172,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-20](err-20.md) | task | — | open | A body using a name a record pattern binds at the wrong type is reported at the pattern |
 | [ERR-21](err-21.md) | task | — | open | A four-element tuple type at the front of an annotation is reported as a missing `=>` |
 | [ERR-22](err-22.md) | task | — | open | A type error between a scalar and a same-named union spells both types alike |
+| [ERR-23](err-23.md) | task | — | open | An unknown constructor in a pattern is underlined with its arguments |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
@@ -209,7 +210,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-35 | task | — | closed 2026-09-27 | A package cannot be tested with a library that depends on it |
 | SPEC-36 | task | — | closed 2026-10-06 | The `double` block in `expressions.md` cannot go red for the reason its paragraph gives |
 | SPEC-37 | task | — | closed 2026-09-28 | How a `Task` is represented and run is undesigned, on either target |
-| [SPEC-38](spec-38.md) | task | — | open | `patterns.md` parenthesises every sub-pattern and also writes `Circle n :: rest` bare |
+| SPEC-38 | task | — | closed 2026-10-06 | `patterns.md` parenthesises every sub-pattern and also writes `Circle n :: rest` bare |
 | [SPEC-39](spec-39.md) | task | — | open | The chapter does not say what a context written on a `derived` instance means, or which constructors a `derived` instance needs in scope |
 | [SPEC-40](spec-40.md) | task | — | open | No chapter says how `Comparable` orders a `Char`, a `String` or a `nan` |
 | LANG-1 | task | — | closed 2026-10-01 | Remove the `true`/`false` keywords; booleans are ordinary constructors |
@@ -300,6 +301,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-86](lang-86.md) | task | — | open | There is no `type alias` production, so a type cannot be given a second name |
 | [LANG-87](lang-87.md) | task | — | open | A derivation binding written with more parameters than the walk supplies is rejected |
 | [LANG-88](lang-88.md) | task | — | open | A derived member's size is exponential in a constructor's arity when `combine` names its second parameter more than once |
+| [LANG-89](lang-89.md) | task | — | open | A tuple pattern's element and a record pattern's entry reject a bare applied constructor |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [SITE-3](site-3.md) | task | — | open | A doc comment's link into `docs/` resolves nowhere, and nothing checks it |
