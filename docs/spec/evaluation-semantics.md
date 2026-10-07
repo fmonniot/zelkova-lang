@@ -98,9 +98,8 @@ through non-termination: it settles which of two diverging subexpressions hangs 
 
 ## Conditional evaluation
 
-`if` evaluates its condition, then exactly one of its arms — never both. `case` evaluates its
-scrutinee, then tries its branches in the order written and evaluates the body of the first one
-that matches — never another.
+`if` evaluates its condition, then exactly one of its arms. `case` evaluates its scrutinee, then
+tries its branches in the order written and evaluates the body of the first one that matches.
 
 These are the only two forms in the language that evaluate one subexpression and not another.
 
@@ -232,8 +231,8 @@ x =
   x
 ```
 
-`a = b` beside `b = a` is rejected the same way: the cycle runs through two bindings instead of
-one, but neither has a value the other can use. So is a cycle that runs through a function:
+`a = b` beside `b = a` is rejected the same way: the cycle runs through two bindings, and
+neither has a value the other can use. So is a cycle that runs through a function:
 
 ```zel expect=canonical-error:SelfDependency
 module Example exposing ()
@@ -351,7 +350,7 @@ indistinguishable, and so are two occurrences of the same lambda.
 `==` is not built into the language. It is an [operator](expressions.md#an-operator-is-a-name),
 bound to a function, and that function is a member of the `Eq` class
 ([Type classes](type-classes.md#what-the-standard-library-declares)). What equality *means* is
-therefore a property of each instance rather than of the language.
+therefore a property of each instance.
 
 ```zel expect=ok
 module Example exposing ()
@@ -400,8 +399,8 @@ alike a b =
   eq a b
 ```
 
-A type asks for the definition above rather than writing it out by declaring an instance whose
-body is `derived` — and what that yields is the definition
+A type asks for the definition above by declaring an instance whose body is `derived`, and what
+that yields is the definition
 [`Eq`'s own declaration supplies](type-classes.md#a-class-says-how-it-is-derived), not one the
 compiler holds for a class it recognises.
 
@@ -470,9 +469,8 @@ Recursion is the only way to iterate. There is no loop form, and there is nothin
 that a loop would use.
 
 **A self tail call runs in constant stack.** A call to the enclosing declaration, in tail
-position, is compiled as a jump back to the top of that declaration with new arguments — so a
-recursion written this way is as deep as the compiler's stack allows, which is to say
-unbounded.
+position, is compiled as a jump back to the top of that declaration with new arguments, so a
+recursion written this way may be of any depth.
 
 ```zel expect=ok
 module Example exposing ()
@@ -497,8 +495,8 @@ Nothing else is — not an argument, not an operand, not a scrutinee, not an `if
 `count (Succ acc) m` above is in tail position; `Succ (count acc m)` would not be, and would
 use stack proportional to `n`.
 
-The guarantee covers a call to the declaration the call is written in, and nothing wider.
-Mutual tail recursion between two declarations carries no guarantee.
+The guarantee covers a call to the declaration the call is written in. Mutual tail recursion
+between two declarations carries no guarantee.
 
 ## Sharing
 
@@ -529,26 +527,26 @@ every compilation target, so a program computes the same answer wherever it is r
 
 **`Float` is an IEEE 754 binary64 number**, with IEEE's own answers throughout. `1.0 / 0.0` is
 positive infinity, `0.0 / 0.0` is `nan`, and
-[the ordering of a `nan`](#a-nan-is-ordered-against-nothing) against anything is `False`. Nothing about a `Float` operation is a failure; IEEE defines a result for every one of
-them, and those results are the language's.
+[the ordering of a `nan`](#a-nan-is-ordered-against-nothing) against anything is `False`.
+Nothing about a `Float` operation is a failure; IEEE defines a result for every one of them, and
+those results are the language's.
 
 A float literal denotes the binary64 value nearest to the decimal number it spells, rounding
 **to nearest, with ties going to the value whose final mantissa bit is even** — the rounding
 IEEE 754 specifies for every decimal-to-binary conversion. Rounding is total: every literal
 that [Lexical structure](lexical-structure.md#floats) accepts denotes some binary64 value, and
-none is rejected for the value it rounds to. A literal too large in magnitude for any finite binary64
-value denotes positive infinity; one too small to be distinguished from zero denotes positive
-zero. Both are the *positive* infinity and the *positive* zero, because a float literal's
+none is rejected for the value it rounds to. A literal too large in magnitude for any finite
+binary64 value denotes positive infinity; one too small to be distinguished from zero denotes
+positive zero. Both are the *positive* infinity and the *positive* zero, because a float literal's
 grammar never places a `-` before it — a literal is always non-negative — so a negative literal,
 a negative infinity and a negative zero are all reached the same way any other negative `Float`
 is: by [prefix negation](lexical-structure.md#prefix-negation) applied to a non-negative one.
 
-`nan` has no literal spelling at all — no run of digits denotes it — and is reached only
-through an operation IEEE defines to produce it, such as the `0.0 / 0.0` above. Once reached,
-`nan`, the infinities and the negative zero are ordinary `Float` values: every operation this
-section defines accepts them and returns IEEE's answer, and [structural
-equality](#what-structural-equality-computes) is the one place that answer is not the everyday
-one.
+`nan` has no literal spelling and is reached only through an operation IEEE defines to produce
+it, such as the `0.0 / 0.0` above. Once reached, `nan`, the infinities and the negative zero are
+ordinary `Float` values: every operation this section defines accepts them and returns IEEE's
+answer, and [structural equality](#what-structural-equality-computes) is the one place that
+answer is not the everyday one.
 
 ### An operation with no answer
 
@@ -563,10 +561,10 @@ reaches, and `isNaN` detects it. So a `Float` operation never invents a stand-in
 `sqrt (-1)` is `nan`, `logBase 0 0` is `nan`, `0.0 / 0.0` is `nan`, and a caller can ask
 afterwards whether an answer was ever found.
 
-Rounding is a different thing, and this rule does not reach it. An operation whose exact result
-is too small for binary64 *has* an answer — the nearest representable value, which is a zero —
-and returns it, so `1.0e-300 * 1.0e-300` is `0.0` rather than `nan`, and a literal too small to
-be distinguished from zero denotes positive zero for the same reason.
+This rule does not reach rounding. An operation whose exact result is too small for binary64
+*has* an answer — the nearest representable value, which is a zero — and returns it, so
+`1.0e-300 * 1.0e-300` is `0.0` rather than `nan`, and a literal too small to be distinguished
+from zero denotes positive zero for the same reason.
 
 `Int` has no such value. Every 64-bit two's-complement bit pattern is a number somebody might
 have meant, so whatever an integer operation returns is indistinguishable from a real result,
@@ -636,11 +634,11 @@ word buys is not a check but a place to look: the assertions a program makes abo
 the declarations carrying it, and a reader who wants to know what this language is trusting reads
 those.
 
-Purity is not the only rule an `unsafe` companion owes. **It also owes the answers
-[Numbers](#an-operation-with-no-answer) defines**: a `Float`-returning companion with no answer
-returns `nan`, an `Int`-returning one returns the value that section names, and a conversion
-returns a value the `Int` type can hold. Nothing checks that either, for the reason nothing
-checks purity: a type annotation with no body is all the compiler ever sees.
+**An `unsafe` companion also owes the answers [Numbers](#an-operation-with-no-answer)
+defines**: a `Float`-returning companion with no answer returns `nan`, an `Int`-returning one
+returns the value that section names, and a conversion returns a value the `Int` type can hold.
+Nothing checks that either, for the reason nothing checks purity: a type annotation with no body
+is all the compiler ever sees.
 
 ## Effects
 
