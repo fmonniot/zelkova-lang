@@ -631,9 +631,8 @@ instance (Eq a, Hash a) => Eq (Box a) where
   derived
 ```
 
-An `Eq (Box a)` then requires a `Hash a` wherever it is used, and goes on requiring exactly
-`Eq a` and `Hash a` whatever `Box` later comes to hold. The written context must provide every
-constraint the arguments need. It provides the constraints it writes and the
+An `Eq (Box a)` then requires a `Hash a` wherever it is used. The written context must provide
+every constraint the arguments need. It provides the constraints it writes and the
 [superclasses](#superclasses) of each, so `Comparable a` provides `Eq a`. A context that leaves a
 needed constraint out is an error, naming the constraint and the variant that needs it:
 
@@ -710,12 +709,12 @@ instance's is. `instance Comparable (Phantom a) where derived` for `type Phantom
 infers no constraint on `a`, so it is an error beside `instance Eq a => Eq (Phantom a)`, which
 needs one. Written `instance Eq a => Comparable (Phantom a) where derived`, it is accepted.
 
-The walk is read off the type's constructors, so the module that declares the type must
-[expose them](modules.md#the-exposing-list). How the instance's module imports the type makes no
-difference: `import Colour`, `import Colour exposing (Colour)` and
-`import Colour exposing (Colour(..))` all reach the constructors of a `Colour` exposed as
-`Colour(..)`, [qualified](modules.md#imports) at the least, and a derived instance is accepted
-under each. A derived instance for an opaque type of another module is an error.
+The walk is read off the type's constructors. A module other than the one that declares the type
+sees them only when that module [exposes them](modules.md#the-exposing-list), and how it imports
+the type makes no difference: a derived instance for a `Colour` exposed as `Colour(..)` is
+accepted under `import Colour`, `import Colour exposing (Colour)` and
+`import Colour exposing (Colour(..))` alike. A derived instance for an opaque type of another
+module is an error.
 
 ```zel expect=ok package=opaque
 module Colour exposing (Colour)
