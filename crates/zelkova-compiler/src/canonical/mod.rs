@@ -36,7 +36,8 @@ pub use classes::{
 };
 mod derivation;
 pub use derivation::{
-    DerivationSignatureProblem, DerivedPart, DerivedRequirement, DerivedShapeProblem,
+    DerivationSignatureProblem, DerivedContextGap, DerivedPart, DerivedRequirement,
+    DerivedShapeProblem,
 };
 mod environment;
 /// Part of [`Error::AmbiguousVariables`] and [`Error::AmbiguousVariants`]'s public
@@ -1813,9 +1814,10 @@ pub enum Error {
     /// A `derived` instance for a type holding an argument with no instance of the
     /// class: which argument, and the word `derived`.
     DerivedInstanceRequires(Box<DerivedRequirement>, NodeSpan),
-    /// A context written on a `derived` instance, whose context is inferred: the class,
-    /// the written context's span and the word `derived`.
-    DerivedInstanceWritesContext(Name, NodeSpan, NodeSpan),
+    /// A context written on a `derived` instance that does not provide a constraint the
+    /// type's arguments need: which constraint, the written context's span and the word
+    /// `derived`.
+    DerivedInstanceContextTooNarrow(Box<DerivedContextGap>, NodeSpan, NodeSpan),
     /// A type name applied to the wrong number of arguments: the name, its
     /// declaration's own arity, the number of arguments actually written, and
     /// `tpe.span` — the whole application, so the caret covers every argument
@@ -2356,10 +2358,16 @@ impl PhaseError for Error {
                     class
                 ),
             },
-            Error::DerivedInstanceWritesContext(class, _, _) => format!(
-                "the instance of `{}` is derived, and a derived instance's context is inferred rather than written",
-                class
-            ),
+            Error::DerivedInstanceContextTooNarrow(gap, _, _) => {
+                let part = match &gap.part {
+                    DerivedPart::Variant(variant) => format!("`{}`", variant),
+                    DerivedPart::Element(position) => format!("element {} of the tuple", position),
+                };
+                format!(
+                    "{} holds a `{}`, which needs `{}` for the derived instance of `{}`, and the instance's context does not provide it",
+                    part, gap.argument, gap.missing, gap.class
+                )
+            }
             Error::DerivedInstanceRequires(requirement, _) => {
                 let part = match &requirement.part {
                     DerivedPart::Variant(variant) => format!("`{}`", variant),
@@ -2819,11 +2827,14 @@ impl PhaseError for Error {
                 &format!("`{}` does not say how it is derived", class),
             ),
             Error::DerivedInstanceNoShape(_, span) => primary(span, "nothing to walk"),
-            Error::DerivedInstanceWritesContext(_, context, derived) => {
-                let mut labels = primary(context, "this context is written on a derived instance");
+            Error::DerivedInstanceContextTooNarrow(gap, context, derived) => {
+                let mut labels = primary(
+                    context,
+                    &format!("this context does not provide `{}`", gap.missing),
+                );
                 labels.extend(secondary(
                     derived,
-                    "the context of this instance is inferred".to_owned(),
+                    format!("the derivation needs `{}`", gap.missing),
                 ));
                 labels
             }

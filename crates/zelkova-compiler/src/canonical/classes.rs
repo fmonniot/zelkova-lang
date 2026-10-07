@@ -295,8 +295,8 @@ pub struct InstanceSignature {
     pub class: QualName,
     pub head: InstanceHead,
     /// What the instance needs of the head's variables, each on a variable the head
-    /// binds: the constraints written in front of its `=>`, and, for a derived instance,
-    /// the ones inferred from what the type holds
+    /// binds: the constraints written in front of its `=>`, and, for a derived instance
+    /// that writes none, the ones inferred from what the type holds
     /// ([*What a derived instance requires*](../../docs/spec/type-classes.md#what-a-derived-instance-requires)).
     pub context: Vec<Constraint>,
     /// The module that declared the instance. An instance that reaches a module by two
@@ -840,16 +840,15 @@ pub(super) fn do_instances(
 
     // Every instance with the context it writes, which a derived one may need of its type's
     // arguments.
-    let written: Vec<WrittenInstance> = instances
+    let written: Vec<WrittenInstance> = heads
         .iter()
-        .zip(&heads)
         .zip(&contexts)
-        .filter_map(|((instance, head), context)| {
+        .filter_map(|(head, context)| {
             let (class, head) = head.as_ref().ok()?;
-            // A derived instance's context is inferred and never written, so whatever was
-            // written on one is not what it needs; the written one is an error of its own.
-            let context = match (&instance.body, context) {
-                (parser::InstanceBody::Bindings(_), Some(Ok(context))) => context
+            // A context that did not resolve is reported in its instance's turn, and reads
+            // as none here.
+            let context = match context {
+                Some(Ok(context)) => context
                     .iter()
                     .map(|constraint| (constraint.class.clone(), constraint.variable.clone()))
                     .collect(),
@@ -867,18 +866,24 @@ pub(super) fn do_instances(
     let candidates: Vec<(usize, Candidate)> = instances
         .iter()
         .zip(&heads)
+        .zip(&contexts)
         .enumerate()
-        .filter_map(|(index, (instance, head))| {
+        .filter_map(|(index, ((instance, head), context))| {
             let parser::InstanceBody::Derived(span) = &instance.body else {
                 return None;
             };
             let (class, head) = head.as_ref().ok()?;
+            let context = match (&instance.context, context) {
+                (Some(written), Some(Ok(context))) => Some((context.as_slice(), written.span)),
+                _ => None,
+            };
 
             Some((
                 index,
                 Candidate {
                     class,
                     head,
+                    context,
                     span: *span,
                 },
             ))
@@ -923,16 +928,9 @@ pub(super) fn do_instances(
         };
 
         let bindings = match &instance.body {
-            parser::InstanceBody::Derived(derived_span) => {
-                // The context of a derived instance is what its type's arguments need and
-                // nothing the instance writes, so one that is written is an error.
-                if let Some(written) = &instance.context {
-                    instance_errors.push(Error::DerivedInstanceWritesContext(
-                        class.unqualified_name(),
-                        written.span,
-                        *derived_span,
-                    ));
-                }
+            parser::InstanceBody::Derived(_) => {
+                // The context is the one the instance writes, which `derive_all` held to
+                // what its type's arguments need, or the one it inferred.
                 match derived.remove(&index) {
                     Some(Ok(derived)) => {
                         context = derived.context;

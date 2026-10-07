@@ -22,16 +22,22 @@
 //! instance in scope, and one that is an application needs the instance of its head and
 //! whatever that instance's context asks of the arguments, down to the variables.
 //!
+//! An instance that writes a context has that context and no other. What its arguments
+//! need is still read, and each constraint of it has to be one the written context
+//! provides, itself or through a class it is a superclass of ([`provides`]); one that is
+//! not is [`Error::DerivedInstanceContextTooNarrow`].
+//!
 //! A recursive type asks for its own instance, and a group of types may ask for each
 //! other's, so the instances being derived count as in scope with the contexts being
-//! inferred, and the contexts are computed together as a fixed point: each starts empty and
-//! grows by what the others' contexts ask, until nothing grows. A context holds pairs of a
-//! class and one of the head's variables, and the classes that can appear in one are not
-//! only the derived one: a written or imported instance's context names whatever its
-//! parameters need, and that is followed too. The set of such pairs is finite, the classes
-//! in scope times the head's variables, so it stops. What the instance ends with
-//! is read off once more from scratch, which is what makes its order the order the type's
-//! arguments are written in and not the order the iteration happened to find them.
+//! inferred, and the contexts are computed together as a fixed point: each starts empty
+//! and grows by what the others' contexts ask, until nothing grows. A written context is
+//! where its instance starts and stays. A context holds pairs of a class and one of the
+//! head's variables, and the classes that can appear in one are not only the derived one:
+//! a written or imported instance's context names whatever its parameters need, and that
+//! is followed too. The set of such pairs is finite, the classes in scope times the
+//! head's variables, so it stops. What the instance ends with is read off once more from
+//! scratch, which is what makes its order the order the type's arguments are written in
+//! and not the order the iteration happened to find them.
 //!
 //! # A derived instance is given its members
 //!
@@ -430,19 +436,36 @@ pub struct DerivedRequirement {
     pub declared: DeclarationSite,
 }
 
+/// A constraint a `derived` instance needs and the context written on it does not provide —
+/// see [`Error::DerivedInstanceContextTooNarrow`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct DerivedContextGap {
+    /// The class being derived.
+    pub class: Name,
+    /// The constraint the context does not provide, as a context writes it: `Eq a`.
+    pub missing: String,
+    /// The first argument that needs it was found in this.
+    pub part: DerivedPart,
+    /// The type of that argument, as written in the type's declaration.
+    pub argument: String,
+}
+
 /// A `derived` instance of the module under check, as [`derive_all`] reads it.
 pub(super) struct Candidate<'a> {
     /// The class being derived.
     pub class: &'a QualName,
     pub head: &'a InstanceHead,
+    /// The context written on the instance and where, when one is written and resolved.
+    pub context: Option<(&'a [Constraint], NodeSpan)>,
     /// Where the word `derived` was written.
     pub span: NodeSpan,
 }
 
-/// What a derived instance comes to: its inferred context and its members.
+/// What a derived instance comes to: its context and its members.
 pub(super) struct Derived {
-    /// The constraints the instance needs of its head's variables, in the order the type's
-    /// arguments are written in, each once.
+    /// The context the instance wrote, when it wrote one. Otherwise the constraints the
+    /// instance needs of its head's variables, in the order the type's arguments are
+    /// written in, each once.
     pub context: Vec<Constraint>,
     /// One binding per member of the class, in the order the class declares them.
     pub bindings: Vec<Value>,
@@ -516,7 +539,8 @@ struct Known {
 type Table = HashMap<(QualName, HeadName), Known>;
 
 /// An instance of the module under check as it is written: its class and head, and the
-/// context it writes of its own, which for a derived instance is a part of what it needs.
+/// context it writes of its own. A derived instance that writes none has an empty one here,
+/// which is where its inferred context starts.
 pub(super) struct WrittenInstance {
     pub class: QualName,
     pub head: InstanceHead,
@@ -583,11 +607,15 @@ pub(super) fn derive_all<'a>(
         .collect();
 
     // The fixed point. A context only grows, from nothing, by what an instance asks given
-    // every context as it stands.
+    // every context as it stands. A written context is the whole of its instance's and does
+    // not grow.
     loop {
         let mut grown = false;
 
         for plan in plans.iter().filter_map(|plan| plan.as_ref().ok()) {
+            if plan.candidate.context.is_some() {
+                continue;
+            }
             let mut needed = Vec::new();
             for requirement in &plan.requirements {
                 // A failure is the final pass's to report; here it asks nothing more.
@@ -621,9 +649,29 @@ pub(super) fn derive_all<'a>(
             let mut context: Vec<(QualName, Name)> = Vec::new();
             let mut errors = Vec::new();
             for requirement in &plan.requirements {
-                if let Err(missing) =
-                    reduce(&table, candidate.class, &requirement.tpe, &mut context)
-                {
+                let read = context.len();
+                let reduced = reduce(&table, candidate.class, &requirement.tpe, &mut context);
+
+                // `context` holds each constraint once, so what this argument added is what
+                // no earlier argument asked, and a gap is reported at the first that needs it.
+                if let Some((written, written_span)) = candidate.context {
+                    for (class, variable) in &context[read..] {
+                        if !provides(env, written, class, variable) {
+                            errors.push(Error::DerivedInstanceContextTooNarrow(
+                                Box::new(DerivedContextGap {
+                                    class: candidate.class.unqualified_name(),
+                                    missing: format!("{} {}", class.unqualified_name(), variable),
+                                    part: requirement.part.clone(),
+                                    argument: type_text(&requirement.tpe),
+                                }),
+                                written_span,
+                                candidate.span,
+                            ));
+                        }
+                    }
+                }
+
+                if let Err(missing) = reduced {
                     errors.push(Error::DerivedInstanceRequires(
                         Box::new(DerivedRequirement {
                             class: candidate.class.unqualified_name(),
@@ -651,18 +699,59 @@ pub(super) fn derive_all<'a>(
             let bindings = Generated::new(env, candidate, &plan.shape, signature).members();
 
             Ok(Derived {
-                context: context
-                    .into_iter()
-                    .map(|(class, variable)| Constraint {
-                        class,
-                        variable,
-                        span: candidate.span,
-                    })
-                    .collect(),
+                context: match candidate.context {
+                    Some((written, _)) => written.to_vec(),
+                    None => context
+                        .into_iter()
+                        .map(|(class, variable)| Constraint {
+                            class,
+                            variable,
+                            span: candidate.span,
+                        })
+                        .collect(),
+                },
                 bindings,
             })
         })
         .collect()
+}
+
+/// Whether `context` provides `class` of `variable`: it writes that constraint, or one on
+/// the same variable for a class `class` is a superclass of, however many classes away.
+///
+/// A class whose declaration is not in scope has no superclasses to follow here.
+fn provides(
+    env: &RootEnvironment,
+    context: &[Constraint],
+    class: &QualName,
+    variable: &Name,
+) -> bool {
+    let mut pending: Vec<&QualName> = context
+        .iter()
+        .filter(|constraint| &constraint.variable == variable)
+        .map(|constraint| &constraint.class)
+        .collect();
+    let mut seen: Vec<&QualName> = Vec::new();
+
+    while let Some(candidate) = pending.pop() {
+        if candidate == class {
+            return true;
+        }
+        if seen.contains(&candidate) {
+            continue;
+        }
+        seen.push(candidate);
+        if let Some(signature) = env.class_signature(candidate) {
+            pending.extend(
+                signature
+                    .superclasses
+                    .iter()
+                    .map(|superclass| &superclass.class),
+            );
+        }
+    }
+
+    false
 }
 
 /// Read one derived instance for its shape and what that shape asks, or say why it cannot

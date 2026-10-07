@@ -604,7 +604,7 @@ contents have one. A parameter no variant uses carries no constraint.
 A derived instance may write its context, and the context it writes is then the whole of the
 instance's. It may ask more than the type's arguments need:
 
-```zel expect=canonical-error:DerivedInstanceWritesContext
+```zel expect=ok
 module Example exposing (Box, Hash)
 
 type Box a
@@ -636,7 +636,7 @@ every constraint the arguments need. It provides the constraints it writes and t
 [superclasses](#superclasses) of each, so `Comparable a` provides `Eq a`. A context that leaves a
 needed constraint out is an error, naming the constraint and the variant that needs it:
 
-```zel expect=canonical-error:DerivedInstanceWritesContext
+```zel expect=canonical-error:DerivedInstanceContextTooNarrow
 module Example exposing (Box, Hash)
 
 type Box a
@@ -662,11 +662,6 @@ class Hash a where
 instance Hash a => Eq (Box a) where
   derived
 ```
-
-**Not implemented:** the compiler rejects every context written on a `derived` instance. The
-first block above should be accepted and is rejected, the second is rejected for carrying a
-context at all, and the `Phantom` instance below is rejected with its context written
-([`LANG-90`](../tickets/lang-90.md)).
 
 Where the argument's type is concrete, the requirement is checked at the declaration, and an
 argument whose type has no instance is an error there, naming the variant and the type:

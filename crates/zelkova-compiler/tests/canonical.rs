@@ -8827,16 +8827,44 @@ fn every_node_of_a_generated_member_is_blamed_on_the_word_derived() {
     }
 }
 
-/// A context written on a derived instance is an error at the context, with the word `derived`
-/// beside it: the context of a derived instance is inferred, and what a written one would
-/// mean beside the inferred one is not settled. A parenthesised context is underlined with its
-/// parentheses, and the instance is not kept.
+/// A context written on a derived instance is the instance's context, kept as written and in
+/// the order written, where inference alone would have found `Eq a` and no more.
 ///
-/// Mutation-checked by dropping the `DerivedInstanceWritesContext` push in `do_instances`: the
-/// module canonicalizes and `one_class_error` panics; and by swapping the two spans in the
-/// error's `labels()` arm: the range assertions go red.
+/// Mutation-checked by returning the inferred context from `derive_all` whatever the candidate
+/// writes: the context is `Eq a` alone and the assertion goes red.
 #[test]
-fn a_context_written_on_a_derived_instance_is_an_error() {
+fn a_context_written_on_a_derived_instance_is_its_context() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            class Other a where
+              other : a -> Bool
+
+            instance (Other a, Eq a) => Eq (Box a) where
+              derived
+        "#}
+    ));
+    let module = canonicalize_with_scalars(&source).expect("the written context covers `Eq a`");
+
+    assert_eq!(
+        context_of(instance_for(&module, "Box")),
+        pairs(&[("Other", "a"), ("Eq", "a")])
+    );
+}
+
+/// A written context that leaves out a constraint the type's arguments need is an error at the
+/// context, with the word `derived` beside it, naming the constraint and the variant that needs
+/// it. A parenthesised context is underlined with its parentheses, and a tuple's element is
+/// named by its place.
+///
+/// Mutation-checked by making `provides` answer `true`: the module canonicalizes and
+/// `one_class_error` panics; and by swapping the two spans in the error's `labels()` arm: the
+/// range assertions go red.
+#[test]
+fn a_written_context_that_lacks_a_needed_constraint_is_an_error() {
+    use zelkova_compiler::PhaseError;
+
     let source = with_derivation(&format!(
         "{}{}",
         EQ_DERIVED,
@@ -8850,10 +8878,15 @@ fn a_context_written_on_a_derived_instance_is_an_error() {
     ));
     let (error, labels) = one_class_error(&source);
 
-    let canonical::Error::DerivedInstanceWritesContext(class, _, _) = &error else {
-        panic!("expected DerivedInstanceWritesContext, got {:?}", error);
+    let canonical::Error::DerivedInstanceContextTooNarrow(gap, _, _) = &error else {
+        panic!("expected DerivedInstanceContextTooNarrow, got {:?}", error);
     };
-    assert_eq!(class.as_str(), "Eq");
+    assert_eq!(gap.class.as_str(), "Eq");
+    assert_eq!(gap.missing, "Eq a");
+    assert_eq!(
+        error.message(),
+        "`Box` holds a `a`, which needs `Eq a` for the derived instance of `Eq`, and the instance's context does not provide it"
+    );
     assert_eq!(
         labels,
         vec![
@@ -8869,37 +8902,47 @@ fn a_context_written_on_a_derived_instance_is_an_error() {
             class Other a where
               other : a -> Bool
 
-            instance (Other a, Other b) => Eq (a, b) where
+            instance (Other a, Eq b) => Eq (a, b) where
               derived
         "#}
     ));
-    let (_, labels) = one_class_error(&parenthesised);
+    let (error, labels) = one_class_error(&parenthesised);
+    let canonical::Error::DerivedInstanceContextTooNarrow(gap, _, _) = &error else {
+        panic!("expected DerivedInstanceContextTooNarrow, got {:?}", error);
+    };
+    assert_eq!(gap.missing, "Eq a");
+    assert_eq!(gap.part, canonical::DerivedPart::Element(1));
     assert_eq!(
         labels,
         vec![
-            (true, range_of(&parenthesised, "(Other a, Other b)")),
+            (true, range_of(&parenthesised, "(Other a, Eq b)")),
             (false, nth_range(&parenthesised, "derived", 1)),
         ]
     );
 }
 
-/// What a derived instance writes of its own does not seed what another derived instance needs
-/// of it: a `Wrap` of a `Box` whose derived instance wrote `Other a` needs `Eq a` and nothing
-/// of `Other`, since the written context is rejected and is not what the `Box` instance needs.
+/// A written context provides the superclasses of the classes it names, however many classes
+/// away: `Sorted a` provides the `Eq a` a derived `Eq (Box a)` needs through `Comparable`, and
+/// the context kept is the one written. It does not grow by what it provides, so a `Wrap` of
+/// that `Box` needs `Sorted a` and no `Eq a` beside it.
 ///
-/// Mutation-checked by reading the written context of a derived instance in `do_instances`'s
-/// `written` list (the `Bindings` arm's test dropped): `Wrap`'s context gains `Other a` and the
-/// assertion goes red.
+/// Mutation-checked by dropping the `pending.extend` of `provides`, so that only a constraint
+/// written outright counts: the module is rejected and the `expect` panics; and by dropping the
+/// `continue` of `derive_all`'s fixed point, so that a written context grows: `Wrap`'s context
+/// gains `Eq a` and its assertion goes red.
 #[test]
-fn a_rejected_written_context_is_not_what_another_derived_instance_needs() {
+fn a_written_context_provides_through_a_superclass() {
     let source = with_derivation(&format!(
         "{}{}",
         EQ_DERIVED,
         indoc::indoc! {r#"
-            class Other a where
-              other : a -> Bool
+            class Eq a => Comparable a where
+              lessThan : a -> a -> Bool
 
-            instance Other a => Eq (Box a) where
+            class Comparable a => Sorted a where
+              sorted : a -> Bool
+
+            instance Sorted a => Eq (Box a) where
               derived
 
             type Wrap a
@@ -8909,20 +8952,104 @@ fn a_rejected_written_context_is_not_what_another_derived_instance_needs() {
               derived
         "#}
     ));
-    let errors = class_errors(&source);
-    assert!(
-        matches!(
-            errors.as_slice(),
-            [canonical::Error::DerivedInstanceWritesContext(..)]
-        ),
-        "{:?}",
-        errors
-    );
+    let module = canonicalize_with_scalars(&source).expect("`Sorted a` provides `Eq a`");
 
-    // The module is recovered with `Wrap`'s instance, which needs the one thing `Box` does.
-    let recovered = canonicalize_recovering_with_interfaces(&source, &scalar_interfaces());
-    let wrap = instance_for(&recovered.module, "Wrap");
-    assert_eq!(context_of(wrap), pairs(&[("Eq", "a")]));
+    assert_eq!(
+        context_of(instance_for(&module, "Box")),
+        pairs(&[("Sorted", "a")])
+    );
+    assert_eq!(
+        context_of(instance_for(&module, "Wrap")),
+        pairs(&[("Sorted", "a")])
+    );
+}
+
+/// A written context stays what was written inside a group of types that ask for each other's
+/// instances. `Tree` and `Forest` are mutually recursive, `Tree` writes `Sorted a` where its
+/// own argument needs `Eq a`, and `Forest` infers: it needs what `Tree` wrote, `Sorted a` and
+/// no `Eq a` beside it. `Rose` asks for its own instance and writes its context too.
+///
+/// Mutation-checked by dropping the `continue` of `derive_all`'s fixed point, so that a written
+/// context grows: `Forest`'s context gains `Eq a` and its assertion goes red.
+#[test]
+fn a_written_context_is_fixed_in_a_recursive_group() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            class Eq a => Comparable a where
+              lessThan : a -> a -> Bool
+
+            class Comparable a => Sorted a where
+              sorted : a -> Bool
+
+            type Tree a
+              = Leaf
+              | Node a (Forest a)
+
+            type Forest a
+              = Forest (Tree a)
+
+            type Rose a
+              = Rose a (Rose a)
+
+            instance Sorted a => Eq (Tree a) where
+              derived
+
+            instance Eq (Forest a) where
+              derived
+
+            instance Sorted a => Eq (Rose a) where
+              derived
+        "#}
+    ));
+    let module = canonicalize_with_scalars(&source).expect("`Sorted a` provides `Eq a`");
+
+    assert_eq!(
+        context_of(instance_for(&module, "Tree")),
+        pairs(&[("Sorted", "a")])
+    );
+    assert_eq!(
+        context_of(instance_for(&module, "Forest")),
+        pairs(&[("Sorted", "a")])
+    );
+    assert_eq!(
+        context_of(instance_for(&module, "Rose")),
+        pairs(&[("Sorted", "a")])
+    );
+}
+
+/// What a derived instance writes is what another derived instance needs of it: a `Wrap` of a
+/// `Box` whose derived instance wrote `(Other a, Eq a)` needs both, where a `Box` that wrote
+/// nothing would have asked `Eq a` alone.
+///
+/// Mutation-checked by giving a derived instance no context in the `written` list of
+/// `do_instances`: `Wrap`'s context is empty and the assertion goes red.
+#[test]
+fn a_written_context_is_what_another_derived_instance_needs() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            class Other a where
+              other : a -> Bool
+
+            instance (Other a, Eq a) => Eq (Box a) where
+              derived
+
+            type Wrap a
+              = Wrap (Box a)
+
+            instance Eq (Wrap a) where
+              derived
+        "#}
+    ));
+    let module = canonicalize_with_scalars(&source).expect("both instances are derived");
+
+    assert_eq!(
+        context_of(instance_for(&module, "Wrap")),
+        pairs(&[("Other", "a"), ("Eq", "a")])
+    );
 }
 
 /// An instance whose class's declaration did not canonicalize has no members to keep. It is
