@@ -176,7 +176,9 @@ impl InfixDeclaration {
 /// Nothing on the entry says whether the module under check declared the type or an
 /// import brought it in, because `name` already does: it is the declaration's own, so
 /// its module is the module under check for a declaration and another module for an
-/// import. `do_exports` reads it that way (`declares_type`), as it reads a class's
+/// import. A third source of entries is `new_environment`'s seeding of the scalar
+/// types in `zelkova-core`, under the qualified names `scalars::SCALARS` holds; each
+/// records the module that declares that scalar, so the same reading holds. `do_exports` reads it that way (`declares_type`), as it reads a class's
 /// qualified name — where `ValueType` needs variants, a type's entry carries the answer.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TypeArity {

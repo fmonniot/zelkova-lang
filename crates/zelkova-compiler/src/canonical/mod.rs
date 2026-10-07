@@ -4764,10 +4764,13 @@ fn do_infixes(
     collect_partial(iter)
 }
 
-// Every arm below checks that the name it names is one this module declares: a
-// `Lower`/`Upper`/`Operator` name in a module's own `exposing (...)` header that nothing
-// declares, or that only an import brought into scope, is `Error::ExportNotFound`
-// (`docs/spec/modules.md#everything-exposed-must-be-declared-here`). `Upper`'s two arms
+// The `Lower` and `Upper` arms below check that the name they name is one this module
+// declares: such a name in a module's own `exposing (...)` header that nothing declares, or
+// that only an import brought into scope, is `Error::ExportNotFound`
+// (`docs/spec/modules.md#everything-exposed-must-be-declared-here`). The `Operator` arm
+// checks only that an `infix` of that name is in scope (`local_infix_exists`, which asks
+// whether the environment's `infixes` map has the key, and an import fills that map), so an
+// operator only an import brought in is accepted; `BUG-51` is the ticket. `Upper`'s two arms
 // differ only in which `ExportType` they report on success: `Privacy` governs whether the
 // type's constructors are exposed, not whether the type itself exists, so both check
 // existence the same way.
@@ -4784,14 +4787,10 @@ fn do_infixes(
 // (`docs/spec/name-resolution.md#a-top-level-name-comes-from-exactly-one-place`), not
 // something this function decides.
 //
-// `values` is this module's own declarations (from `do_values`/the
-// facade iterator above), separate from `env`: `env.find_value` also
-// answers `Some` for a name resolved through an import, and a re-exported
-// foreign value is already guaranteed typed by its own module's `do_exports`
-// (`SPEC-5` applies there, transitively, through `Interface::values` only
-// ever holding typed entries) — so `Lower`'s annotation check is scoped to a
-// name this module declares itself, and leaves a name it does not declare to
-// the existence check above.
+// `values` is this module's own declarations (from `do_values`/the facade iterator above),
+// separate from `env`: `env.find_value` also answers `Some` for a name resolved through an
+// import. A name reaches `Lower`'s annotation check only once the arm has established it is
+// `TopLevel`/`Local`, so that check never has to consider an imported name.
 //
 // `unannotated_broken` is the declarations of this module that were written with no
 // annotation and are in `Module::broken` — absent from `values`, so without it an exposed

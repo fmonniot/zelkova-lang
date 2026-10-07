@@ -151,6 +151,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-48 | bug | medium | closed 2026-10-05 | `Js.Utils`'s structural equality throws a `ReferenceError` on a value nested more than a hundred deep |
 | [BUG-49](bug-49.md) | bug | medium | open | A pattern variable that shadows an outer name drops the outer binder when its branch ends, so a valid declaration is left unchecked |
 | [BUG-50](bug-50.md) | bug | low | open | A cycle of parameterless bindings that runs through an instance member is accepted and fails when the module loads |
+| [BUG-51](bug-51.md) | bug | medium | open | `do_exports` accepts an exposed operator that resolves only through an import |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
