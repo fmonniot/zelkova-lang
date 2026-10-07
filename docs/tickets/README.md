@@ -212,7 +212,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-37 | task | — | closed 2026-09-28 | How a `Task` is represented and run is undesigned, on either target |
 | SPEC-38 | task | — | closed 2026-10-06 | `patterns.md` parenthesises every sub-pattern and also writes `Circle n :: rest` bare |
 | SPEC-39 | task | — | closed 2026-10-06 | The chapter does not say what a context written on a `derived` instance means, or which constructors a `derived` instance needs in scope |
-| [SPEC-40](spec-40.md) | task | — | open | No chapter says how `Comparable` orders a `Char`, a `String` or a `nan` |
+| SPEC-40 | task | — | closed 2026-10-06 | No chapter says how `Comparable` orders a `Char`, a `String` or a `nan` |
 | LANG-1 | task | — | closed 2026-10-01 | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
@@ -303,6 +303,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-88](lang-88.md) | task | — | open | A derived member's size is exponential in a constructor's arity when `combine` names its second parameter more than once |
 | [LANG-89](lang-89.md) | task | — | open | A tuple pattern's element and a record pattern's entry reject a bare applied constructor |
 | LANG-90 | task | — | closed 2026-10-06 | A context written on a `derived` instance is rejected, where the chapter makes it the instance's context |
+| [LANG-91](lang-91.md) | task | — | open | A lone surrogate passes the `Char` and `String` boundary checks, and `Comparable` misorders it |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [SITE-3](site-3.md) | task | — | open | A doc comment's link into `docs/` resolves nowhere, and nothing checks it |

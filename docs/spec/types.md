@@ -394,6 +394,11 @@ module Basics exposing (Int)
 type Int = I32
 ```
 
+**A `Char` is one Unicode scalar value**: a code point from U+0000 to U+10FFFF other than a
+surrogate, U+D800 to U+DFFF. **A `String` is a sequence of `Char`s**, the empty one included. A
+surrogate is a value of neither type on any target, whatever units that target's own strings are
+made of.
+
 **`Bool` is a scalar and an ordinary union.** `type Bool = True | False` in `Basics` is the
 whole of its definition, and `True` and `False` are constructors built and matched like any
 others — which is what [`true` and `false` not being reserved

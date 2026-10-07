@@ -412,6 +412,58 @@ whether two functions agree on every input is not something a program can do. So
 type error — an unsatisfied constraint, reported where every other unsatisfied constraint is
 reported.
 
+## Ordering
+
+`<`, `<=`, `>` and `>=` are not built into the language either. Each is an operator bound to a
+function written over `compare`, the one member of the `Comparable` class
+([Type classes](type-classes.md#what-the-standard-library-declares)), and `compare a b` answers
+`LT`, `EQ` or `GT`. What an ordering *means* is a property of each instance.
+
+### What the standard library's instances compute
+
+- Two `Int`s are ordered as numbers.
+- Two `Char`s are ordered by code point: `'Z'` comes before `'a'`, and `'\u{E000}'` before
+  `'\u{1F600}'`.
+- Two `String`s are ordered lexicographically. The first position at which they differ decides,
+  by the code points of the two characters there, and a string that another begins with comes
+  first, so `""` comes before every other string.
+- Two tuples are ordered lexicographically, element by element, and two `Position`s by where
+  their constructors are declared. Both are what
+  [a derived instance computes](type-classes.md#what-a-derived-instance-computes).
+- Two `Float`s are ordered as [IEEE 754](#numbers) orders them, with `0.0` and `-0.0` answering
+  `EQ`. A `nan` is [ordered against nothing](#a-nan-is-ordered-against-nothing).
+
+A `Char` is [a Unicode scalar value](types.md#scalar-types), and its code point is all an
+ordering reads. No locale takes part and nothing is normalised: `"\u{E9}"` and `"e\u{301}"`
+spell one letter with different code points, so they are two strings, unequal, and the second
+comes first.
+
+The order is the same on every compilation target, including one whose own string comparison
+reads UTF-16 units and would place `'\u{1F600}'` before `'\u{E000}'`.
+
+`compare a b` is `EQ` exactly when `a == b`, in every instance `std/core` declares.
+
+### A `nan` is ordered against nothing
+
+`<`, `<=`, `>` and `>=` are each `False` when either side is a `nan`, a `nan` against itself
+included. **`compare` answers `GT` for a pair holding a `nan` on either side.** `a < b` and
+`a <= b` read `compare a b`, `a > b` and `a >= b` read `compare b a`, and `GT` is the one answer
+all four read as `False`.
+
+`compare` is therefore not antisymmetric on a `nan`: `compare nan 1.5`, `compare 1.5 nan` and
+`compare nan nan` are all `GT`. Every function written over `compare` inherits that:
+
+- `min x y` and `max x y` answer `y` when either argument is a `nan`. `min nan 1.5` is `1.5`,
+  and `min 1.5 nan` is `nan`.
+- `clamp low high x` answers `x` when `x` is a `nan`, and a bound that is a `nan` bounds
+  nothing.
+- A `nan` inside a tuple, or inside a value of a type whose instance is derived, decides only
+  when the walk reaches it. `(1.0, nan) < (2.0, nan)` is `True`, the first elements having
+  decided; `(nan, 1) < (nan, 2)` is `False`.
+
+A program that needs one answer whichever side a `nan` is on tests with `isNaN` before
+comparing.
+
 ## Recursion and tail calls
 
 Recursion is the only way to iterate. There is no loop form, and there is nothing to mutate
@@ -476,8 +528,8 @@ count for any operation — only that reusing an existing value is free.
 every compilation target, so a program computes the same answer wherever it is run.
 
 **`Float` is an IEEE 754 binary64 number**, with IEEE's own answers throughout. `1.0 / 0.0` is
-positive infinity, `0.0 / 0.0` is `nan`, and the ordering of a `nan` against anything is
-`False`. Nothing about a `Float` operation is a failure; IEEE defines a result for every one of
+positive infinity, `0.0 / 0.0` is `nan`, and
+[the ordering of a `nan`](#a-nan-is-ordered-against-nothing) against anything is `False`. Nothing about a `Float` operation is a failure; IEEE defines a result for every one of
 them, and those results are the language's.
 
 A float literal denotes the binary64 value nearest to the decimal number it spells, rounding

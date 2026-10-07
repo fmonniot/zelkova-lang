@@ -1250,6 +1250,11 @@ four: both need a zero, and [a literal is an `Int`](#numeric-literals).
 The tuple and `()` instances are [declared beside the class](#where-an-instance-may-be-declared)
 and are [derived](#deriving-for-a-tuple).
 
+What `eq` computes for each of those types is
+[*Equality*](evaluation-semantics.md#what-structural-equality-computes). What `compare` computes
+— the code point order of a `Char` and a `String`, and its answer for a `Float` that is `nan` —
+is [*Ordering*](evaluation-semantics.md#ordering).
+
 Two of the four carry [derivations](#a-class-says-how-it-is-derived): `Eq` and `Comparable`.
 `Number` and `Appendable` carry none and could not — `add` and `append` return the class
 variable, which no walk over a value has a way to produce. A program's own class is derivable on
