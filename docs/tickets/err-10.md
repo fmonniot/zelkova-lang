@@ -42,10 +42,10 @@ in.
 Two things to decide and write down before writing the checker, this ticket does not pick
 either:
 
-1. **What counts as "used."** A name reference during canonicalization is the obvious signal,
-   but re-exporting an imported name (`exposing (Widget)` in a module that only imports
-   `Widget` to re-expose its type) arguably should also count — otherwise a legitimate
-   re-export pattern warns.
+1. **What counts as "used."** A name reference during canonicalization is the obvious signal.
+   An `exposing` entry is not one: a module may not re-export what it imported
+   ([*Everything exposed must be declared here*](../spec/modules.md#everything-exposed-must-be-declared-here)),
+   and `do_exports` now rejects such an entry, so no export refers to an import.
 2. **Granularity of the warning.** Per-import (`import Widget exposing (map, view)` where
    neither is used → one warning on the `import` line) versus per-name (one warning per unused
    name in the exposing list, each with its own span, mirroring how `ERR-9` gave

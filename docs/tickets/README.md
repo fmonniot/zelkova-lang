@@ -131,7 +131,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-28 | bug | low | closed 2026-09-30 | The `Tokenizer` never terminates on an unterminated character literal |
 | BUG-29 | bug | medium | closed 2026-09-30 | A top-level declaration whose first token is not at column 1 fails to parse |
 | BUG-30 | bug | medium | closed 2026-10-01 | An `Upper(..)` import entry does not check the type was exposed transparently |
-| [BUG-31](bug-31.md) | bug | medium | open | `do_exports` accepts a `Lower`/`Upper` name that resolves only through an import |
+| BUG-31 | bug | medium | closed 2026-10-07 | `do_exports` accepts a `Lower`/`Upper` name that resolves only through an import |
 | [BUG-32](bug-32.md) | bug | medium | open | An exposed infix's unannotated backing function is silently dropped from the interface |
 | [BUG-33](bug-33.md) | bug | low | open | `SourceFileError::notes()` dumps `io::Error`'s `Debug` form instead of its `Display` form |
 | BUG-34 | bug | low | closed 2026-10-01 | A failed sub-pass in `canonicalize` reports as if it found nothing, cascading into spurious errors from every later pass that depended on it |
@@ -151,6 +151,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-48 | bug | medium | closed 2026-10-05 | `Js.Utils`'s structural equality throws a `ReferenceError` on a value nested more than a hundred deep |
 | [BUG-49](bug-49.md) | bug | medium | open | A pattern variable that shadows an outer name drops the outer binder when its branch ends, so a valid declaration is left unchecked |
 | [BUG-50](bug-50.md) | bug | low | open | A cycle of parameterless bindings that runs through an instance member is accepted and fails when the module loads |
+| [BUG-51](bug-51.md) | bug | medium | open | `do_exports` accepts an exposed operator that resolves only through an import |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -173,6 +174,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-21](err-21.md) | task | — | open | A four-element tuple type at the front of an annotation is reported as a missing `=>` |
 | [ERR-22](err-22.md) | task | — | open | A type error between a scalar and a same-named union spells both types alike |
 | [ERR-23](err-23.md) | task | — | open | An unknown constructor in a pattern is underlined with its arguments |
+| [ERR-24](err-24.md) | task | — | open | An exposed name that was imported is reported as "not declared anywhere in this module" |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |

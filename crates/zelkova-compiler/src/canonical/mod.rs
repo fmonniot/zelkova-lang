@@ -4764,22 +4764,33 @@ fn do_infixes(
     collect_partial(iter)
 }
 
-// Every arm below checks that the name it names actually resolves in `env`
-// before accepting it — a `Lower`/`Upper`/`Operator` name in a module's own
-// `exposing (...)` header that nothing declares is `Error::ExportNotFound`
-// rather than silently accepted (`BUG-8`). `Upper`'s two arms differ only in
-// which `ExportType` they report on success: `Privacy` governs whether the
-// type's constructors are exposed, not whether the type itself exists, so
-// both check existence with `find_type` the same way.
+// The `Lower` and `Upper` arms below check that the name they name is one this module
+// declares: such a name in a module's own `exposing (...)` header that nothing declares, or
+// that only an import brought into scope, is `Error::ExportNotFound`
+// (`docs/spec/modules.md#everything-exposed-must-be-declared-here`). The `Operator` arm
+// checks only that an `infix` of that name is in scope (`local_infix_exists`, which asks
+// whether the environment's `infixes` map has the key, and an import fills that map), so an
+// operator only an import brought in is accepted; `BUG-51` is the ticket. `Upper`'s two arms
+// differ only in which `ExportType` they report on success: `Privacy` governs whether the
+// type's constructors are exposed, not whether the type itself exists, so both check
+// existence the same way.
 //
-// `values` is this module's own declarations (from `do_values`/the
-// facade iterator above), separate from `env`: `env.find_value` also
-// answers `Some` for a name resolved through an import, and a re-exported
-// foreign value is already guaranteed typed by its own module's `do_exports`
-// (`SPEC-5` applies there, transitively, through `Interface::values` only
-// ever holding typed entries) — so `Lower`'s annotation check is scoped to a
-// name this module declares itself, and leaves a name it does not declare to
-// the existence check above.
+// What tells a declaration from an import differs by kind, each by what the environment
+// already records. A value is `ValueType::Local`/`TopLevel` when this module declares it
+// and `Foreign`/`Foreigns` when an import brought it in. A type and a class carry the
+// qualified name of their declaration, and `declaring_module` of it is this module only
+// for a declaration of its own (`declares_type`, `classes::declaring_module`).
+//
+// A declaration and an unqualified import of one name do not reach this check as two
+// candidates: the declaration replaces the import's entry in `env` before any export is
+// read, so such a name counts as declared here. That collision is an error of its own
+// (`docs/spec/name-resolution.md#a-top-level-name-comes-from-exactly-one-place`), not
+// something this function decides.
+//
+// `values` is this module's own declarations (from `do_values`/the facade iterator above),
+// separate from `env`: `env.find_value` also answers `Some` for a name resolved through an
+// import. A name reaches `Lower`'s annotation check only once the arm has established it is
+// `TopLevel`/`Local`, so that check never has to consider an imported name.
 //
 // `unannotated_broken` is the declarations of this module that were written with no
 // annotation and are in `Module::broken` — absent from `values`, so without it an exposed
@@ -4793,10 +4804,6 @@ fn do_infixes(
 //
 // `member_classes` is each member of this module's own classes, to its class. A member is
 // exposed with its class, and an entry naming one alone is an error.
-//
-// A class entry is checked for where the class was declared, which a value or type entry
-// is not yet (`BUG-31`): `find_class` answers with the declaring `QualName`, so a class
-// this module only imported is `ExportNotFound`.
 fn do_exports(
     source_exposing: &parser::Exposing,
     env: &RootEnvironment,
@@ -4840,7 +4847,13 @@ fn do_exports(
                             ));
                         }
 
-                        if env.find_value(name).is_none() {
+                        // Only a declaration of this module is exposed by it: a name an
+                        // `import ... exposing (...)` brought in is `Foreign`/`Foreigns`,
+                        // and is as much `ExportNotFound` as one nothing declares.
+                        if !matches!(
+                            env.find_value(name),
+                            Some(ValueType::Local | ValueType::TopLevel)
+                        ) {
                             return Err(Error::ExportNotFound(
                                 name.clone(),
                                 ExportType::Value,
@@ -4861,8 +4874,9 @@ fn do_exports(
                                 Error::ExportedValueNotAnnotated(name.clone(), exposed.span, *span),
                             ),
                             // `Some(TypedValue)` is declared locally and annotated;
-                            // `None` is resolved through an import instead of a
-                            // local declaration, already covered above.
+                            // `None` is a local declaration that is not in `values`
+                            // (one whose annotation was rejected, say), whose own error
+                            // is already reported.
                             Some(Value::TypedValue { .. }) | None => {
                                 Ok((name.clone(), ExportType::Value))
                             }
@@ -4873,7 +4887,7 @@ fn do_exports(
                     // existence the same way, and only the `ExportType` they
                     // report on success differs.
                     parser::ExposedKind::Upper(name, parser::Privacy::Public) => {
-                        if env.find_type(name).is_some() {
+                        if declares_type(env, name) {
                             Ok((name.clone(), ExportType::UnionPublic))
                         } else if env.find_class(name).is_some() {
                             Err(Error::ClassExposedWithConstructors(
@@ -4889,7 +4903,7 @@ fn do_exports(
                         }
                     }
                     parser::ExposedKind::Upper(name, parser::Privacy::Private) => {
-                        if env.find_type(name).is_some() {
+                        if declares_type(env, name) {
                             Ok((name.clone(), ExportType::UnionPrivate))
                         } else if let Some(class) = env.find_class(name) {
                             // A class an import brought into scope is one this module
@@ -4930,6 +4944,15 @@ fn do_exports(
             (Exports::Specifics(specifics), errors)
         }
     }
+}
+
+/// Whether `name` is a type this module declares, as opposed to one an import brought
+/// into scope under that spelling: the [`TypeArity`](environment::TypeArity) a lookup
+/// finds records the declaration's qualified name, so it is this module's when the module
+/// that name carries is this one.
+fn declares_type(env: &RootEnvironment, name: &Name) -> bool {
+    env.find_type(name)
+        .is_some_and(|declared| classes::declaring_module(&declared.name) == *env.module_name())
 }
 
 #[cfg(test)]

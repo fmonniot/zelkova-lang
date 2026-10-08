@@ -75,3 +75,8 @@ fail before the fix. `cargo run -- compile std/core` still prints `parsed 8 modu
 all eight: `std/core` imports `Basics` openly in every module, so this check is the first thing
 that would notice a
 collision there.
+
+`exposing_a_name_declared_and_also_imported_exposes_the_declaration` in
+`crates/zelkova-compiler/tests/canonical.rs` pins today's behaviour for a name both imported and
+declared (`BUG-31`'s change left it accepted), so it goes red when this lands: invert it to
+expect the new error.
