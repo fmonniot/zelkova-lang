@@ -1,0 +1,496 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/zelkova-compiler/src/ir/decision.rs`."><title>decision.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-0c87338a.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="zelkova_compiler" data-themes="" data-resource-suffix="" data-rustdoc-version="1.99.0 (b940084d7 2026-09-28)" data-channel="1.99.0" data-search-js="search-cf4fc35e.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../../../static.files/src-script-813739b1.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">zelkova_compiler/ir/</div>decision.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! Lowers a `case`'s branches into an explicit decision tree, so a backend walks one
+<a href=#2 id=2 data-nosnippet>2</a>//! rather than re-deriving, at emission time, which test distinguishes which branch and
+<a href=#3 id=3 data-nosnippet>3</a>//! what order they run in (`GEN-5`; see `docs/tickets/README.md`'s tombstone row).
+<a href=#4 id=4 data-nosnippet>4</a>//!
+<a href=#5 id=5 data-nosnippet>5</a>//! [`build`] is the pass. It reads a `case`'s branches exactly as
+<a href=#6 id=6 data-nosnippet>6</a>//! [`super::TypedTermKind::Case`] carries them — a `Vec&lt;(TermPattern, Box&lt;TypedTerm&gt;)&gt;`
+<a href=#7 id=7 data-nosnippet>7</a>//! in source order — and answers with the [`Decision`] a backend walks instead.
+<a href=#8 id=8 data-nosnippet>8</a>//! `TypedTermKind::Case`'s own shape does not change: the typer still wants a flat list,
+<a href=#9 id=9 data-nosnippet>9</a>//! to generate one set of constraints per branch, all against the same scrutinee type,
+<a href=#10 id=10 data-nosnippet>10</a>//! with an order that does not matter to it. This is a second, additional view of the
+<a href=#11 id=11 data-nosnippet>11</a>//! same branches, built once a backend is ready to emit them.
+<a href=#12 id=12 data-nosnippet>12</a>//!
+<a href=#13 id=13 data-nosnippet>13</a>//! # A chain, not a table
+<a href=#14 id=14 data-nosnippet>14</a>//!
+<a href=#15 id=15 data-nosnippet>15</a>//! [Conditional evaluation](../../../docs/spec/evaluation-semantics.md#conditional-evaluation)
+<a href=#16 id=16 data-nosnippet>16</a>//! tries a `case`'s branches in the order written and commits to the first that
+<a href=#17 id=17 data-nosnippet>17</a>//! matches, never another. [`build`] follows that literally. A [`Decision::Test`] checks
+<a href=#18 id=18 data-nosnippet>18</a>//! one value against one [`Outcome`]: `matched` is the rest of the same branch, and
+<a href=#19 id=19 data-nosnippet>19</a>//! `default` is the tree for every branch after it — a chain, not a table grouping every
+<a href=#20 id=20 data-nosnippet>20</a>//! branch that tests the same value into one node. A backend that wants a `switch` can
+<a href=#21 id=21 data-nosnippet>21</a>//! flatten a run of `Test`s on the same occurrence itself.
+<a href=#22 id=22 data-nosnippet>22</a>//!
+<a href=#23 id=23 data-nosnippet>23</a>//! Two branches naming the same constructor, `Cons a _ -&gt; a` then `Cons _ b -&gt; b`, each
+<a href=#24 id=24 data-nosnippet>24</a>//! get a `Test` of their own, the second in the first's `default`. The second is dead —
+<a href=#25 id=25 data-nosnippet>25</a>//! any `Cons` value takes the first — but it is still built: telling that it is dead is
+<a href=#26 id=26 data-nosnippet>26</a>//! coverage checking's question (`LANG-19`), not this pass's.
+<a href=#27 id=27 data-nosnippet>27</a>//!
+<a href=#28 id=28 data-nosnippet>28</a>//! # Recursive over a pattern's sub-patterns
+<a href=#29 id=29 data-nosnippet>29</a>//!
+<a href=#30 id=30 data-nosnippet>30</a>//! A branch's pattern is lowered by walking it, and then its sub-patterns, depth first
+<a href=#31 id=31 data-nosnippet>31</a>//! and left to right, each at the [`Occurrence`] that leads to it from the scrutinee. A
+<a href=#32 id=32 data-nosnippet>32</a>//! wildcard tests nothing and binds nothing, and neither does `()`, whose type has
+<a href=#33 id=33 data-nosnippet>33</a>//! one value, nor a constructor that did not resolve, which has no case to test for and
+<a href=#34 id=34 data-nosnippet>34</a>//! is never emitted. A variable binds the value at its occurrence. A tuple tests nothing,
+<a href=#35 id=35 data-nosnippet>35</a>//! since a value of a tuple type is always a tuple, and goes on to its elements; a record
+<a href=#36 id=36 data-nosnippet>36</a>//! pattern tests nothing either, a record having one shape, and goes on to each entry's
+<a href=#37 id=37 data-nosnippet>37</a>//! field by its label, in the order the entries were written. A
+<a href=#38 id=38 data-nosnippet>38</a>//! literal or a constructor is a `Test` at its occurrence; a constructor then goes on
+<a href=#39 id=39 data-nosnippet>39</a>//! to its arguments. Every `Test` on the way down falls back, as its `default`, to the
+<a href=#40 id=40 data-nosnippet>40</a>//! tree for the branches after this one: a pattern that fails part-way through fails as
+<a href=#41 id=41 data-nosnippet>41</a>//! a whole.
+<a href=#42 id=42 data-nosnippet>42</a>//!
+<a href=#43 id=43 data-nosnippet>43</a>//! That fallback tree is copied into each such `default` rather than shared, since a
+<a href=#44 id=44 data-nosnippet>44</a>//! [`Decision`] is a tree and not a graph. A branch with `k` refutable parts (each
+<a href=#45 id=45 data-nosnippet>45</a>//! constructor or literal anywhere in its pattern) holds `k` copies of the tree for the
+<a href=#46 id=46 data-nosnippet>46</a>//! branches after it, and those branches were built the same way, so the tree's size is
+<a href=#47 id=47 data-nosnippet>47</a>//! the *product* over the branches of each one's `k`, not the sum. A pattern that tests
+<a href=#48 id=48 data-nosnippet>48</a>//! at most one value, as every branch did while a sub-pattern below the top could only
+<a href=#49 id=49 data-nosnippet>49</a>//! be irrefutable, keeps that linear. A `case` over a tuple of constructors does not:
+<a href=#50 id=50 data-nosnippet>50</a>//! eight branches over `(Flag, Flag, Flag)` come to 3^8 copies of the final `Fail` and
+<a href=#51 id=51 data-nosnippet>51</a>//! 2.2 MB of JavaScript, and sixteen over a `(Msg, State)` pair to 2^16 copies and about
+<a href=#52 id=52 data-nosnippet>52</a>//! 40 MB. Nothing bounds it or reports it. `GEN-26` tracks the fix; this pass does not
+<a href=#53 id=53 data-nosnippet>53</a>//! do it.
+<a href=#54 id=54 data-nosnippet>54</a>//!
+<a href=#55 id=55 data-nosnippet>55</a>//! A sub-pattern may be any pattern, so a constructor or a literal nested inside another
+<a href=#56 id=56 data-nosnippet>56</a>//! pattern is a `Test` below [`Occurrence::Root`], and a binding may sit any number of
+<a href=#57 id=57 data-nosnippet>57</a>//! steps down. `crates/zelkova-compiler/tests/ir.rs` pins the tree built from source for
+<a href=#58 id=58 data-nosnippet>58</a>//! one; this module's own tests build the patterns by hand, to pin the walk alone.
+<a href=#59 id=59 data-nosnippet>59</a>
+<a href=#60 id=60 data-nosnippet>60</a></span><span class="kw">use </span><span class="kw">crate</span>::name::Name;
+<a href=#61 id=61 data-nosnippet>61</a>
+<a href=#62 id=62 data-nosnippet>62</a><span class="kw">use super</span>::{Constructor, LiteralValue, TermPattern, TermPatternKind, Type, TypedTerm};
+<a href=#63 id=63 data-nosnippet>63</a>
+<a href=#64 id=64 data-nosnippet>64</a><span class="doccomment">/// A path to one value reached from a `case`'s scrutinee: the scrutinee itself, or one
+<a href=#65 id=65 data-nosnippet>65</a>/// step inside another occurrence. A pattern nested `n` deep is reached by a path of `n`
+<a href=#66 id=66 data-nosnippet>66</a>/// [`Step`]s.
+<a href=#67 id=67 data-nosnippet>67</a></span><span class="attr">#[derive(Debug, Clone, PartialEq, Eq)]
+<a href=#68 id=68 data-nosnippet>68</a></span><span class="kw">pub enum </span>Occurrence {
+<a href=#69 id=69 data-nosnippet>69</a>    <span class="doccomment">/// The scrutinee itself.
+<a href=#70 id=70 data-nosnippet>70</a>    </span>Root,
+<a href=#71 id=71 data-nosnippet>71</a>    <span class="doccomment">/// The value one step inside another occurrence.
+<a href=#72 id=72 data-nosnippet>72</a>    </span>At(Box&lt;Occurrence&gt;, Step),
+<a href=#73 id=73 data-nosnippet>73</a>}
+<a href=#74 id=74 data-nosnippet>74</a>
+<a href=#75 id=75 data-nosnippet>75</a><span class="kw">impl </span>Occurrence {
+<a href=#76 id=76 data-nosnippet>76</a>    <span class="doccomment">/// The occurrence one step further in: `self` is a constructor, a tuple or a record,
+<a href=#77 id=77 data-nosnippet>77</a>    /// and `step` says which of its positions.
+<a href=#78 id=78 data-nosnippet>78</a>    </span><span class="kw">pub fn </span>field(<span class="kw-2">&amp;</span><span class="self">self</span>, step: Step) -&gt; Occurrence {
+<a href=#79 id=79 data-nosnippet>79</a>        Occurrence::At(Box::new(<span class="self">self</span>.clone()), step)
+<a href=#80 id=80 data-nosnippet>80</a>    }
+<a href=#81 id=81 data-nosnippet>81</a>}
+<a href=#82 id=82 data-nosnippet>82</a>
+<a href=#83 id=83 data-nosnippet>83</a><span class="doccomment">/// One step of an [`Occurrence`]: which sub-value of a constructor, a tuple or a record.
+<a href=#84 id=84 data-nosnippet>84</a>/// A constructor's argument and a tuple's element are counted from zero the way
+<a href=#85 id=85 data-nosnippet>85</a>/// [`Constructor::index`] counts a case; a record's field is named by its label.
+<a href=#86 id=86 data-nosnippet>86</a></span><span class="attr">#[derive(Debug, Clone, PartialEq, Eq)]
+<a href=#87 id=87 data-nosnippet>87</a></span><span class="kw">pub enum </span>Step {
+<a href=#88 id=88 data-nosnippet>88</a>    ConstructorArgument(usize),
+<a href=#89 id=89 data-nosnippet>89</a>    TupleElement(usize),
+<a href=#90 id=90 data-nosnippet>90</a>    <span class="doccomment">/// The field of a record with this label: where a [record
+<a href=#91 id=91 data-nosnippet>91</a>    /// pattern](super::TermPatternKind::Record)'s entry is matched.
+<a href=#92 id=92 data-nosnippet>92</a>    ///
+<a href=#93 id=93 data-nosnippet>93</a>    /// By label and not by position, since a record type is a set of fields with no
+<a href=#94 id=94 data-nosnippet>94</a>    /// order of its own (`typer::Type::Record`); the `ir` module's doc comment, *What
+<a href=#95 id=95 data-nosnippet>95</a>    /// this shape owes WebAssembly*, says which order a positional target reads them in.
+<a href=#96 id=96 data-nosnippet>96</a>    /// Reading one is a backend's to emit: `zelkova_js::emit` writes it as a property read.
+<a href=#97 id=97 data-nosnippet>97</a>    </span>Field(Name),
+<a href=#98 id=98 data-nosnippet>98</a>}
+<a href=#99 id=99 data-nosnippet>99</a>
+<a href=#100 id=100 data-nosnippet>100</a><span class="doccomment">/// The value a [`Decision::Test`] checks for.
+<a href=#101 id=101 data-nosnippet>101</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#102 id=102 data-nosnippet>102</a></span><span class="kw">pub enum </span>Outcome {
+<a href=#103 id=103 data-nosnippet>103</a>    <span class="doccomment">/// The value was built by this constructor.
+<a href=#104 id=104 data-nosnippet>104</a>    </span>Constructor(Constructor),
+<a href=#105 id=105 data-nosnippet>105</a>    <span class="doccomment">/// The value equals this `Int`, `Float`, `Char`, `String` or `Bool`.
+<a href=#106 id=106 data-nosnippet>106</a>    </span>Literal(LiteralValue),
+<a href=#107 id=107 data-nosnippet>107</a>}
+<a href=#108 id=108 data-nosnippet>108</a>
+<a href=#109 id=109 data-nosnippet>109</a><span class="doccomment">/// One name a [`Decision::Leaf`] binds: the value at `occurrence`, of type `tpe`.
+<a href=#110 id=110 data-nosnippet>110</a>///
+<a href=#111 id=111 data-nosnippet>111</a>/// The type is the solved one the pattern carried. It is here because a backend with
+<a href=#112 id=112 data-nosnippet>112</a>/// more than one representation — WebAssembly's `i64`, `f64` and reference — reads
+<a href=#113 id=113 data-nosnippet>113</a>/// which one a value has off its type, and the leaf gives it no other way back to that
+<a href=#114 id=114 data-nosnippet>114</a>/// type short of working it out again from the scrutinee's.
+<a href=#115 id=115 data-nosnippet>115</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#116 id=116 data-nosnippet>116</a></span><span class="kw">pub struct </span>Binding {
+<a href=#117 id=117 data-nosnippet>117</a>    <span class="kw">pub </span>name: String,
+<a href=#118 id=118 data-nosnippet>118</a>    <span class="kw">pub </span>occurrence: Occurrence,
+<a href=#119 id=119 data-nosnippet>119</a>    <span class="kw">pub </span>tpe: Type,
+<a href=#120 id=120 data-nosnippet>120</a>}
+<a href=#121 id=121 data-nosnippet>121</a>
+<a href=#122 id=122 data-nosnippet>122</a><span class="doccomment">/// The tree a `case`'s branches lower to: what test distinguishes which branch, in what
+<a href=#123 id=123 data-nosnippet>123</a>/// order they are tried, and the names each leaf binds.
+<a href=#124 id=124 data-nosnippet>124</a>///
+<a href=#125 id=125 data-nosnippet>125</a>/// `'a` is the lifetime of the [`TypedTerm`] the branches were built from: a leaf
+<a href=#126 id=126 data-nosnippet>126</a>/// borrows its branch's body rather than cloning it, since [`TypedTerm`] carries no
+<a href=#127 id=127 data-nosnippet>127</a>/// `Clone` impl. A body can appear in more than one leaf once a fallback tree is copied
+<a href=#128 id=128 data-nosnippet>128</a>/// (see this module's doc comment), which a borrow makes free in the IR; a backend that
+<a href=#129 id=129 data-nosnippet>129</a>/// writes each leaf out writes the body once per leaf (`GEN-26`).
+<a href=#130 id=130 data-nosnippet>130</a>///
+<a href=#131 id=131 data-nosnippet>131</a>/// Two trees are equal when they have the same shape and each pair of leaves borrows
+<a href=#132 id=132 data-nosnippet>132</a>/// the *same* body — compared by address, since [`TypedTerm`] has no `PartialEq`. That
+<a href=#133 id=133 data-nosnippet>133</a>/// is the equality a test wants: the leaf is the one built from this branch.
+<a href=#134 id=134 data-nosnippet>134</a></span><span class="attr">#[derive(Debug, Clone)]
+<a href=#135 id=135 data-nosnippet>135</a></span><span class="kw">pub enum </span>Decision&lt;<span class="lifetime">'a</span>&gt; {
+<a href=#136 id=136 data-nosnippet>136</a>    <span class="doccomment">/// Check the value at `scrutinee` against `outcome`: `matched` if it is that value,
+<a href=#137 id=137 data-nosnippet>137</a>    /// `default` if it is not.
+<a href=#138 id=138 data-nosnippet>138</a>    </span>Test {
+<a href=#139 id=139 data-nosnippet>139</a>        scrutinee: Occurrence,
+<a href=#140 id=140 data-nosnippet>140</a>        outcome: Outcome,
+<a href=#141 id=141 data-nosnippet>141</a>        matched: Box&lt;Decision&lt;<span class="lifetime">'a</span>&gt;&gt;,
+<a href=#142 id=142 data-nosnippet>142</a>        default: Box&lt;Decision&lt;<span class="lifetime">'a</span>&gt;&gt;,
+<a href=#143 id=143 data-nosnippet>143</a>    },
+<a href=#144 id=144 data-nosnippet>144</a>    <span class="doccomment">/// A branch matched: its bindings, each already named and given the occurrence to
+<a href=#145 id=145 data-nosnippet>145</a>    /// read it from, and its body.
+<a href=#146 id=146 data-nosnippet>146</a>    </span>Leaf {
+<a href=#147 id=147 data-nosnippet>147</a>        bindings: Vec&lt;Binding&gt;,
+<a href=#148 id=148 data-nosnippet>148</a>        body: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>TypedTerm,
+<a href=#149 id=149 data-nosnippet>149</a>    },
+<a href=#150 id=150 data-nosnippet>150</a>    <span class="doccomment">/// No branch matches.
+<a href=#151 id=151 data-nosnippet>151</a>    ///
+<a href=#152 id=152 data-nosnippet>152</a>    /// [Coverage is checked, so no such `case`
+<a href=#153 id=153 data-nosnippet>153</a>    /// compiles](../../../docs/spec/evaluation-semantics.md#two-outcomes) — but nothing
+<a href=#154 id=154 data-nosnippet>154</a>    /// checks it yet (`LANG-19`), so a `case` missing a branch compiles today and
+<a href=#155 id=155 data-nosnippet>155</a>    /// reaches this leaf at runtime. It is not deleted the day `LANG-19` lands: an
+<a href=#156 id=156 data-nosnippet>156</a>    /// unreachable leaf still has to
+<a href=#157 id=157 data-nosnippet>157</a>    /// [abort](../../../docs/spec/evaluation-semantics.md#when-a-program-aborts) rather
+<a href=#158 id=158 data-nosnippet>158</a>    /// than fall through to whatever follows it, and this is that leaf — merely one
+<a href=#159 id=159 data-nosnippet>159</a>    /// exhaustiveness will have made unreachable, rather than one still worth reaching
+<a href=#160 id=160 data-nosnippet>160</a>    /// for.
+<a href=#161 id=161 data-nosnippet>161</a>    </span>Fail {
+<a href=#162 id=162 data-nosnippet>162</a>        <span class="doccomment">/// The declaration the `case` was written in: what the description `$abort`
+<a href=#163 id=163 data-nosnippet>163</a>        /// takes (`runtime/js/zelkova.mjs`, added by `GEN-8`) is built from.
+<a href=#164 id=164 data-nosnippet>164</a>        ///
+<a href=#165 id=165 data-nosnippet>165</a>        /// This is whatever [`build`]'s caller passed, not something the tree finds:
+<a href=#166 id=166 data-nosnippet>166</a>        /// nothing in a `case`'s branches says which declaration they sit in, so naming
+<a href=#167 id=167 data-nosnippet>167</a>        /// it is the caller's contract — a backend walking a declaration's body has
+<a href=#168 id=168 data-nosnippet>168</a>        /// that declaration's name at hand. Neither the `$abort` call nor the
+<a href=#169 id=169 data-nosnippet>169</a>        /// description's exact wording is this pass's to write; walking a `Decision`
+<a href=#170 id=170 data-nosnippet>170</a>        /// to build them is `zelkova_js::emit`'s.
+<a href=#171 id=171 data-nosnippet>171</a>        </span>declaration: Name,
+<a href=#172 id=172 data-nosnippet>172</a>    },
+<a href=#173 id=173 data-nosnippet>173</a>}
+<a href=#174 id=174 data-nosnippet>174</a>
+<a href=#175 id=175 data-nosnippet>175</a><span class="kw">impl </span>PartialEq <span class="kw">for </span>Decision&lt;<span class="lifetime">'_</span>&gt; {
+<a href=#176 id=176 data-nosnippet>176</a>    <span class="kw">fn </span>eq(<span class="kw-2">&amp;</span><span class="self">self</span>, other: <span class="kw-2">&amp;</span><span class="self">Self</span>) -&gt; bool {
+<a href=#177 id=177 data-nosnippet>177</a>        <span class="kw">match </span>(<span class="self">self</span>, other) {
+<a href=#178 id=178 data-nosnippet>178</a>            (
+<a href=#179 id=179 data-nosnippet>179</a>                Decision::Test {
+<a href=#180 id=180 data-nosnippet>180</a>                    scrutinee,
+<a href=#181 id=181 data-nosnippet>181</a>                    outcome,
+<a href=#182 id=182 data-nosnippet>182</a>                    matched,
+<a href=#183 id=183 data-nosnippet>183</a>                    default,
+<a href=#184 id=184 data-nosnippet>184</a>                },
+<a href=#185 id=185 data-nosnippet>185</a>                Decision::Test {
+<a href=#186 id=186 data-nosnippet>186</a>                    scrutinee: other_scrutinee,
+<a href=#187 id=187 data-nosnippet>187</a>                    outcome: other_outcome,
+<a href=#188 id=188 data-nosnippet>188</a>                    matched: other_matched,
+<a href=#189 id=189 data-nosnippet>189</a>                    default: other_default,
+<a href=#190 id=190 data-nosnippet>190</a>                },
+<a href=#191 id=191 data-nosnippet>191</a>            ) =&gt; {
+<a href=#192 id=192 data-nosnippet>192</a>                scrutinee == other_scrutinee
+<a href=#193 id=193 data-nosnippet>193</a>                    &amp;&amp; outcome == other_outcome
+<a href=#194 id=194 data-nosnippet>194</a>                    &amp;&amp; matched == other_matched
+<a href=#195 id=195 data-nosnippet>195</a>                    &amp;&amp; default == other_default
+<a href=#196 id=196 data-nosnippet>196</a>            }
+<a href=#197 id=197 data-nosnippet>197</a>            (
+<a href=#198 id=198 data-nosnippet>198</a>                Decision::Leaf { bindings, body },
+<a href=#199 id=199 data-nosnippet>199</a>                Decision::Leaf {
+<a href=#200 id=200 data-nosnippet>200</a>                    bindings: other_bindings,
+<a href=#201 id=201 data-nosnippet>201</a>                    body: other_body,
+<a href=#202 id=202 data-nosnippet>202</a>                },
+<a href=#203 id=203 data-nosnippet>203</a>            ) =&gt; bindings == other_bindings &amp;&amp; std::ptr::eq(<span class="kw-2">*</span>body, <span class="kw-2">*</span>other_body),
+<a href=#204 id=204 data-nosnippet>204</a>            (
+<a href=#205 id=205 data-nosnippet>205</a>                Decision::Fail { declaration },
+<a href=#206 id=206 data-nosnippet>206</a>                Decision::Fail {
+<a href=#207 id=207 data-nosnippet>207</a>                    declaration: other_declaration,
+<a href=#208 id=208 data-nosnippet>208</a>                },
+<a href=#209 id=209 data-nosnippet>209</a>            ) =&gt; declaration == other_declaration,
+<a href=#210 id=210 data-nosnippet>210</a>            <span class="kw">_ </span>=&gt; <span class="bool-val">false</span>,
+<a href=#211 id=211 data-nosnippet>211</a>        }
+<a href=#212 id=212 data-nosnippet>212</a>    }
+<a href=#213 id=213 data-nosnippet>213</a>}
+<a href=#214 id=214 data-nosnippet>214</a>
+<a href=#215 id=215 data-nosnippet>215</a><span class="doccomment">/// Lower one `case`'s branches, in source order, into the [`Decision`] a backend walks.
+<a href=#216 id=216 data-nosnippet>216</a>///
+<a href=#217 id=217 data-nosnippet>217</a>/// `scrutinee` is the type of the value the `case` matches on — the solved type of
+<a href=#218 id=218 data-nosnippet>218</a>/// [`super::TypedTermKind::Case`]'s own `scrutinee` — which a variable written as a
+<a href=#219 id=219 data-nosnippet>219</a>/// whole branch's pattern binds. `branches` is that `case`'s own, in the same order. And
+<a href=#220 id=220 data-nosnippet>220</a>/// `declaration` names the value the `case` was written inside of, which is what a
+<a href=#221 id=221 data-nosnippet>221</a>/// [`Decision::Fail`] leaf, if the tree needs one, carries (see that field's doc).
+<a href=#222 id=222 data-nosnippet>222</a></span><span class="kw">pub fn </span>build&lt;<span class="lifetime">'a</span>&gt;(
+<a href=#223 id=223 data-nosnippet>223</a>    scrutinee: <span class="kw-2">&amp;</span>Type,
+<a href=#224 id=224 data-nosnippet>224</a>    branches: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>[(TermPattern, Box&lt;TypedTerm&gt;)],
+<a href=#225 id=225 data-nosnippet>225</a>    declaration: <span class="kw-2">&amp;</span>Name,
+<a href=#226 id=226 data-nosnippet>226</a>) -&gt; Decision&lt;<span class="lifetime">'a</span>&gt; {
+<a href=#227 id=227 data-nosnippet>227</a>    <span class="kw">let </span><span class="prelude-val">Some</span>(((pattern, body), rest)) = branches.split_first() <span class="kw">else </span>{
+<a href=#228 id=228 data-nosnippet>228</a>        <span class="kw">return </span>Decision::Fail {
+<a href=#229 id=229 data-nosnippet>229</a>            declaration: declaration.clone(),
+<a href=#230 id=230 data-nosnippet>230</a>        };
+<a href=#231 id=231 data-nosnippet>231</a>    };
+<a href=#232 id=232 data-nosnippet>232</a>
+<a href=#233 id=233 data-nosnippet>233</a>    <span class="kw">let </span>on_fail = build(scrutinee, rest, declaration);
+<a href=#234 id=234 data-nosnippet>234</a>    lower(
+<a href=#235 id=235 data-nosnippet>235</a>        <span class="macro">vec!</span>[(Occurrence::Root, scrutinee.clone(), pattern)],
+<a href=#236 id=236 data-nosnippet>236</a>        Vec::new(),
+<a href=#237 id=237 data-nosnippet>237</a>        body,
+<a href=#238 id=238 data-nosnippet>238</a>        <span class="kw-2">&amp;</span>on_fail,
+<a href=#239 id=239 data-nosnippet>239</a>    )
+<a href=#240 id=240 data-nosnippet>240</a>}
+<a href=#241 id=241 data-nosnippet>241</a>
+<a href=#242 id=242 data-nosnippet>242</a><span class="doccomment">/// One branch's pattern, still to be lowered: the sub-patterns not yet walked, each at
+<a href=#243 id=243 data-nosnippet>243</a>/// its occurrence and with the type of the value there, as a stack whose next entry is
+<a href=#244 id=244 data-nosnippet>244</a>/// its last; the bindings gathered so far; the branch's body; and the tree for the
+<a href=#245 id=245 data-nosnippet>245</a>/// branches after it, which every `Test` falls back to.
+<a href=#246 id=246 data-nosnippet>246</a></span><span class="kw">fn </span>lower&lt;<span class="lifetime">'a</span>&gt;(
+<a href=#247 id=247 data-nosnippet>247</a>    <span class="kw-2">mut </span>pending: Vec&lt;(Occurrence, Type, <span class="kw-2">&amp;</span><span class="lifetime">'a </span>TermPattern)&gt;,
+<a href=#248 id=248 data-nosnippet>248</a>    <span class="kw-2">mut </span>bindings: Vec&lt;Binding&gt;,
+<a href=#249 id=249 data-nosnippet>249</a>    body: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>TypedTerm,
+<a href=#250 id=250 data-nosnippet>250</a>    on_fail: <span class="kw-2">&amp;</span>Decision&lt;<span class="lifetime">'a</span>&gt;,
+<a href=#251 id=251 data-nosnippet>251</a>) -&gt; Decision&lt;<span class="lifetime">'a</span>&gt; {
+<a href=#252 id=252 data-nosnippet>252</a>    <span class="kw">let </span><span class="prelude-val">Some</span>((occurrence, tpe, pattern)) = pending.pop() <span class="kw">else </span>{
+<a href=#253 id=253 data-nosnippet>253</a>        <span class="kw">return </span>Decision::Leaf { bindings, body };
+<a href=#254 id=254 data-nosnippet>254</a>    };
+<a href=#255 id=255 data-nosnippet>255</a>
+<a href=#256 id=256 data-nosnippet>256</a>    <span class="kw">match </span><span class="kw-2">&amp;</span>pattern.kind {
+<a href=#257 id=257 data-nosnippet>257</a>        <span class="comment">// The unit type has one value, so a value of it always matches `()`: no test,
+<a href=#258 id=258 data-nosnippet>258</a>        // and nothing to bind. A constructor that did not resolve has no case to test
+<a href=#259 id=259 data-nosnippet>259</a>        // for; no backend emits a tree built from one, since an error stands behind it.
+<a href=#260 id=260 data-nosnippet>260</a>        </span>TermPatternKind::Anything | TermPatternKind::Unit | TermPatternKind::Hole { .. } =&gt; {
+<a href=#261 id=261 data-nosnippet>261</a>            lower(pending, bindings, body, on_fail)
+<a href=#262 id=262 data-nosnippet>262</a>        }
+<a href=#263 id=263 data-nosnippet>263</a>        TermPatternKind::Bind(name) =&gt; {
+<a href=#264 id=264 data-nosnippet>264</a>            bindings.push(Binding {
+<a href=#265 id=265 data-nosnippet>265</a>                name: name.clone(),
+<a href=#266 id=266 data-nosnippet>266</a>                occurrence,
+<a href=#267 id=267 data-nosnippet>267</a>                tpe,
+<a href=#268 id=268 data-nosnippet>268</a>            });
+<a href=#269 id=269 data-nosnippet>269</a>            lower(pending, bindings, body, on_fail)
+<a href=#270 id=270 data-nosnippet>270</a>        }
+<a href=#271 id=271 data-nosnippet>271</a>        TermPatternKind::Tuple { elements } =&gt; {
+<a href=#272 id=272 data-nosnippet>272</a>            <span class="kw">let </span>elements: Vec&lt;<span class="kw">_</span>&gt; = elements.iter().enumerate().collect();
+<a href=#273 id=273 data-nosnippet>273</a>            <span class="kw">for </span>(position, element) <span class="kw">in </span>elements.into_iter().rev() {
+<a href=#274 id=274 data-nosnippet>274</a>                pending.push((
+<a href=#275 id=275 data-nosnippet>275</a>                    occurrence.field(Step::TupleElement(position)),
+<a href=#276 id=276 data-nosnippet>276</a>                    element.tpe.clone(),
+<a href=#277 id=277 data-nosnippet>277</a>                    <span class="kw-2">&amp;</span>element.pattern,
+<a href=#278 id=278 data-nosnippet>278</a>                ));
+<a href=#279 id=279 data-nosnippet>279</a>            }
+<a href=#280 id=280 data-nosnippet>280</a>            lower(pending, bindings, body, on_fail)
+<a href=#281 id=281 data-nosnippet>281</a>        }
+<a href=#282 id=282 data-nosnippet>282</a>        <span class="comment">// Reversed for the reason a tuple's elements are: the next entry walked is the
+<a href=#283 id=283 data-nosnippet>283</a>        // first written.
+<a href=#284 id=284 data-nosnippet>284</a>        </span>TermPatternKind::Record { fields } =&gt; {
+<a href=#285 id=285 data-nosnippet>285</a>            <span class="kw">for </span>field <span class="kw">in </span>fields.iter().rev() {
+<a href=#286 id=286 data-nosnippet>286</a>                pending.push((
+<a href=#287 id=287 data-nosnippet>287</a>                    occurrence.field(Step::Field(field.label.clone())),
+<a href=#288 id=288 data-nosnippet>288</a>                    field.value.tpe.clone(),
+<a href=#289 id=289 data-nosnippet>289</a>                    <span class="kw-2">&amp;</span>field.value.pattern,
+<a href=#290 id=290 data-nosnippet>290</a>                ));
+<a href=#291 id=291 data-nosnippet>291</a>            }
+<a href=#292 id=292 data-nosnippet>292</a>            lower(pending, bindings, body, on_fail)
+<a href=#293 id=293 data-nosnippet>293</a>        }
+<a href=#294 id=294 data-nosnippet>294</a>        TermPatternKind::Literal { value, .. } =&gt; Decision::Test {
+<a href=#295 id=295 data-nosnippet>295</a>            matched: Box::new(lower(pending, bindings, body, on_fail)),
+<a href=#296 id=296 data-nosnippet>296</a>            default: Box::new(on_fail.clone()),
+<a href=#297 id=297 data-nosnippet>297</a>            outcome: Outcome::Literal(value.clone()),
+<a href=#298 id=298 data-nosnippet>298</a>            scrutinee: occurrence,
+<a href=#299 id=299 data-nosnippet>299</a>        },
+<a href=#300 id=300 data-nosnippet>300</a>        TermPatternKind::Constructor { ctor, args, .. } =&gt; {
+<a href=#301 id=301 data-nosnippet>301</a>            <span class="kw">for </span>(position, arg) <span class="kw">in </span>args.iter().enumerate().rev() {
+<a href=#302 id=302 data-nosnippet>302</a>                pending.push((
+<a href=#303 id=303 data-nosnippet>303</a>                    occurrence.field(Step::ConstructorArgument(position)),
+<a href=#304 id=304 data-nosnippet>304</a>                    arg.tpe.clone(),
+<a href=#305 id=305 data-nosnippet>305</a>                    <span class="kw-2">&amp;</span>arg.pattern,
+<a href=#306 id=306 data-nosnippet>306</a>                ));
+<a href=#307 id=307 data-nosnippet>307</a>            }
+<a href=#308 id=308 data-nosnippet>308</a>            Decision::Test {
+<a href=#309 id=309 data-nosnippet>309</a>                matched: Box::new(lower(pending, bindings, body, on_fail)),
+<a href=#310 id=310 data-nosnippet>310</a>                default: Box::new(on_fail.clone()),
+<a href=#311 id=311 data-nosnippet>311</a>                outcome: Outcome::Constructor(ctor.clone()),
+<a href=#312 id=312 data-nosnippet>312</a>                scrutinee: occurrence,
+<a href=#313 id=313 data-nosnippet>313</a>            }
+<a href=#314 id=314 data-nosnippet>314</a>        }
+<a href=#315 id=315 data-nosnippet>315</a>    }
+<a href=#316 id=316 data-nosnippet>316</a>}
+<a href=#317 id=317 data-nosnippet>317</a>
+<a href=#318 id=318 data-nosnippet>318</a><span class="attr">#[cfg(test)]
+<a href=#319 id=319 data-nosnippet>319</a></span><span class="kw">mod </span>tests {
+<a href=#320 id=320 data-nosnippet>320</a>    <span class="doccomment">//! These build each [`TermPattern`] by hand, the shape `typer::translate_pattern`
+<a href=#321 id=321 data-nosnippet>321</a>    //! produces, and pin what [`build`] makes of it with no typer in the way.
+<a href=#322 id=322 data-nosnippet>322</a>    //! `crates/zelkova-compiler/tests/ir.rs` builds the same kind of tree from source.
+<a href=#323 id=323 data-nosnippet>323</a>
+<a href=#324 id=324 data-nosnippet>324</a>    </span><span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#325 id=325 data-nosnippet>325</a>    <span class="kw">use </span><span class="kw">crate</span>::ir::{SubPattern, TypedTermKind};
+<a href=#326 id=326 data-nosnippet>326</a>    <span class="kw">use </span><span class="kw">crate</span>::name::QualName;
+<a href=#327 id=327 data-nosnippet>327</a>    <span class="kw">use </span><span class="kw">crate</span>::typer::TypeLiteral;
+<a href=#328 id=328 data-nosnippet>328</a>    <span class="kw">use </span><span class="kw">crate</span>::PackageName;
+<a href=#329 id=329 data-nosnippet>329</a>    <span class="kw">use </span>zelkova_syntax::position::NodeSpan;
+<a href=#330 id=330 data-nosnippet>330</a>    <span class="kw">use </span>zelkova_syntax::tuple::Tuple;
+<a href=#331 id=331 data-nosnippet>331</a>
+<a href=#332 id=332 data-nosnippet>332</a>    <span class="kw">fn </span>int() -&gt; Type {
+<a href=#333 id=333 data-nosnippet>333</a>        Type::Literal(TypeLiteral::Int)
+<a href=#334 id=334 data-nosnippet>334</a>    }
+<a href=#335 id=335 data-nosnippet>335</a>
+<a href=#336 id=336 data-nosnippet>336</a>    <span class="kw">fn </span>maybe(of: Type) -&gt; Type {
+<a href=#337 id=337 data-nosnippet>337</a>        Type::Adt(
+<a href=#338 id=338 data-nosnippet>338</a>            QualName::in_module(PackageName::core(), <span class="string">"Maybe"</span>, <span class="string">"Maybe"</span>),
+<a href=#339 id=339 data-nosnippet>339</a>            <span class="macro">vec!</span>[of],
+<a href=#340 id=340 data-nosnippet>340</a>        )
+<a href=#341 id=341 data-nosnippet>341</a>    }
+<a href=#342 id=342 data-nosnippet>342</a>
+<a href=#343 id=343 data-nosnippet>343</a>    <span class="kw">fn </span>pattern(kind: TermPatternKind) -&gt; TermPattern {
+<a href=#344 id=344 data-nosnippet>344</a>        TermPattern {
+<a href=#345 id=345 data-nosnippet>345</a>            span: NodeSpan::none(),
+<a href=#346 id=346 data-nosnippet>346</a>            kind,
+<a href=#347 id=347 data-nosnippet>347</a>        }
+<a href=#348 id=348 data-nosnippet>348</a>    }
+<a href=#349 id=349 data-nosnippet>349</a>
+<a href=#350 id=350 data-nosnippet>350</a>    <span class="kw">fn </span>sub(tpe: Type, kind: TermPatternKind) -&gt; SubPattern {
+<a href=#351 id=351 data-nosnippet>351</a>        SubPattern {
+<a href=#352 id=352 data-nosnippet>352</a>            tpe,
+<a href=#353 id=353 data-nosnippet>353</a>            pattern: pattern(kind),
+<a href=#354 id=354 data-nosnippet>354</a>        }
+<a href=#355 id=355 data-nosnippet>355</a>    }
+<a href=#356 id=356 data-nosnippet>356</a>
+<a href=#357 id=357 data-nosnippet>357</a>    <span class="kw">fn </span>just() -&gt; Constructor {
+<a href=#358 id=358 data-nosnippet>358</a>        Constructor {
+<a href=#359 id=359 data-nosnippet>359</a>            union: QualName::in_module(PackageName::core(), <span class="string">"Maybe"</span>, <span class="string">"Maybe"</span>),
+<a href=#360 id=360 data-nosnippet>360</a>            name: Name::new(<span class="string">"Just"</span>),
+<a href=#361 id=361 data-nosnippet>361</a>            index: <span class="number">0</span>,
+<a href=#362 id=362 data-nosnippet>362</a>            arity: <span class="number">1</span>,
+<a href=#363 id=363 data-nosnippet>363</a>        }
+<a href=#364 id=364 data-nosnippet>364</a>    }
+<a href=#365 id=365 data-nosnippet>365</a>
+<a href=#366 id=366 data-nosnippet>366</a>    <span class="kw">fn </span>just_pattern(of: Type, arg: SubPattern) -&gt; TermPatternKind {
+<a href=#367 id=367 data-nosnippet>367</a>        TermPatternKind::Constructor {
+<a href=#368 id=368 data-nosnippet>368</a>            ctor: just(),
+<a href=#369 id=369 data-nosnippet>369</a>            adt_args: <span class="macro">vec!</span>[of],
+<a href=#370 id=370 data-nosnippet>370</a>            args: <span class="macro">vec!</span>[arg],
+<a href=#371 id=371 data-nosnippet>371</a>        }
+<a href=#372 id=372 data-nosnippet>372</a>    }
+<a href=#373 id=373 data-nosnippet>373</a>
+<a href=#374 id=374 data-nosnippet>374</a>    <span class="kw">fn </span>body(value: i64) -&gt; Box&lt;TypedTerm&gt; {
+<a href=#375 id=375 data-nosnippet>375</a>        Box::new(TypedTerm {
+<a href=#376 id=376 data-nosnippet>376</a>            span: NodeSpan::none(),
+<a href=#377 id=377 data-nosnippet>377</a>            tpe: int(),
+<a href=#378 id=378 data-nosnippet>378</a>            kind: TypedTermKind::Int(value),
+<a href=#379 id=379 data-nosnippet>379</a>        })
+<a href=#380 id=380 data-nosnippet>380</a>    }
+<a href=#381 id=381 data-nosnippet>381</a>
+<a href=#382 id=382 data-nosnippet>382</a>    <span class="doccomment">/// `Just (Just x) -&gt; 1 ; _ -&gt; 0` on a `Maybe (Maybe Int)`: the inner `Just` is a
+<a href=#383 id=383 data-nosnippet>383</a>    /// `Test` of its own, one step below the root, whose `default` is the wildcard
+<a href=#384 id=384 data-nosnippet>384</a>    /// branch's leaf — the same tree the outer `Test` falls back to — and `x` is bound
+<a href=#385 id=385 data-nosnippet>385</a>    /// two steps down, at the inner argument's type.
+<a href=#386 id=386 data-nosnippet>386</a>    ///
+<a href=#387 id=387 data-nosnippet>387</a>    /// Mutation-checked by having `lower`'s `Constructor` arm bind each argument's
+<a href=#388 id=388 data-nosnippet>388</a>    /// sub-pattern at `occurrence` rather than at `occurrence.field(..)`: the inner
+<a href=#389 id=389 data-nosnippet>389</a>    /// `Test`'s scrutinee comes out as the root, and the assertion goes red.
+<a href=#390 id=390 data-nosnippet>390</a>    </span><span class="attr">#[test]
+<a href=#391 id=391 data-nosnippet>391</a>    </span><span class="kw">fn </span>a_nested_constructor_is_a_test_below_the_root() {
+<a href=#392 id=392 data-nosnippet>392</a>        <span class="kw">let </span>inner = sub(
+<a href=#393 id=393 data-nosnippet>393</a>            maybe(int()),
+<a href=#394 id=394 data-nosnippet>394</a>            just_pattern(int(), sub(int(), TermPatternKind::Bind(<span class="string">"x"</span>.to_string()))),
+<a href=#395 id=395 data-nosnippet>395</a>        );
+<a href=#396 id=396 data-nosnippet>396</a>        <span class="kw">let </span>branches = <span class="macro">vec!</span>[
+<a href=#397 id=397 data-nosnippet>397</a>            (pattern(just_pattern(maybe(int()), inner)), body(<span class="number">1</span>)),
+<a href=#398 id=398 data-nosnippet>398</a>            (pattern(TermPatternKind::Anything), body(<span class="number">0</span>)),
+<a href=#399 id=399 data-nosnippet>399</a>        ];
+<a href=#400 id=400 data-nosnippet>400</a>
+<a href=#401 id=401 data-nosnippet>401</a>        <span class="kw">let </span>tree = build(<span class="kw-2">&amp;</span>maybe(maybe(int())), <span class="kw-2">&amp;</span>branches, <span class="kw-2">&amp;</span>Name::new(<span class="string">"f"</span>));
+<a href=#402 id=402 data-nosnippet>402</a>
+<a href=#403 id=403 data-nosnippet>403</a>        <span class="kw">let </span>fallback = Decision::Leaf {
+<a href=#404 id=404 data-nosnippet>404</a>            bindings: <span class="macro">vec!</span>[],
+<a href=#405 id=405 data-nosnippet>405</a>            body: <span class="kw-2">&amp;</span>branches[<span class="number">1</span>].<span class="number">1</span>,
+<a href=#406 id=406 data-nosnippet>406</a>        };
+<a href=#407 id=407 data-nosnippet>407</a>        <span class="kw">let </span>argument = Occurrence::Root.field(Step::ConstructorArgument(<span class="number">0</span>));
+<a href=#408 id=408 data-nosnippet>408</a>        <span class="macro">assert_eq!</span>(
+<a href=#409 id=409 data-nosnippet>409</a>            tree,
+<a href=#410 id=410 data-nosnippet>410</a>            Decision::Test {
+<a href=#411 id=411 data-nosnippet>411</a>                scrutinee: Occurrence::Root,
+<a href=#412 id=412 data-nosnippet>412</a>                outcome: Outcome::Constructor(just()),
+<a href=#413 id=413 data-nosnippet>413</a>                matched: Box::new(Decision::Test {
+<a href=#414 id=414 data-nosnippet>414</a>                    scrutinee: argument.clone(),
+<a href=#415 id=415 data-nosnippet>415</a>                    outcome: Outcome::Constructor(just()),
+<a href=#416 id=416 data-nosnippet>416</a>                    matched: Box::new(Decision::Leaf {
+<a href=#417 id=417 data-nosnippet>417</a>                        bindings: <span class="macro">vec!</span>[Binding {
+<a href=#418 id=418 data-nosnippet>418</a>                            name: <span class="string">"x"</span>.to_string(),
+<a href=#419 id=419 data-nosnippet>419</a>                            occurrence: argument.field(Step::ConstructorArgument(<span class="number">0</span>)),
+<a href=#420 id=420 data-nosnippet>420</a>                            tpe: int(),
+<a href=#421 id=421 data-nosnippet>421</a>                        }],
+<a href=#422 id=422 data-nosnippet>422</a>                        body: <span class="kw-2">&amp;</span>branches[<span class="number">0</span>].<span class="number">1</span>,
+<a href=#423 id=423 data-nosnippet>423</a>                    }),
+<a href=#424 id=424 data-nosnippet>424</a>                    default: Box::new(fallback.clone()),
+<a href=#425 id=425 data-nosnippet>425</a>                }),
+<a href=#426 id=426 data-nosnippet>426</a>                default: Box::new(fallback),
+<a href=#427 id=427 data-nosnippet>427</a>            }
+<a href=#428 id=428 data-nosnippet>428</a>        );
+<a href=#429 id=429 data-nosnippet>429</a>    }
+<a href=#430 id=430 data-nosnippet>430</a>
+<a href=#431 id=431 data-nosnippet>431</a>    <span class="doccomment">/// `(1, y, 2) -&gt; 1 ; _ -&gt; 0` on an `(Int, Int, Int)`: the tuple itself is not
+<a href=#432 id=432 data-nosnippet>432</a>    /// tested, its first and third elements are, in that order, and `y` is bound only
+<a href=#433 id=433 data-nosnippet>433</a>    /// once both tests have passed. Each of the two `Test`s falls back to the wildcard
+<a href=#434 id=434 data-nosnippet>434</a>    /// branch's leaf, its own copy of it.
+<a href=#435 id=435 data-nosnippet>435</a>    ///
+<a href=#436 id=436 data-nosnippet>436</a>    /// Mutation-checked by pushing a tuple's elements onto `lower`'s stack in source
+<a href=#437 id=437 data-nosnippet>437</a>    /// order rather than reversed, so they are walked right to left: the third
+<a href=#438 id=438 data-nosnippet>438</a>    /// element's `Test` then comes first, and the assertion goes red.
+<a href=#439 id=439 data-nosnippet>439</a>    </span><span class="attr">#[test]
+<a href=#440 id=440 data-nosnippet>440</a>    </span><span class="kw">fn </span>literals_inside_a_tuple_are_tested_at_their_elements_left_to_right() {
+<a href=#441 id=441 data-nosnippet>441</a>        <span class="kw">let </span>literal = |value| {
+<a href=#442 id=442 data-nosnippet>442</a>            sub(
+<a href=#443 id=443 data-nosnippet>443</a>                int(),
+<a href=#444 id=444 data-nosnippet>444</a>                TermPatternKind::Literal {
+<a href=#445 id=445 data-nosnippet>445</a>                    tpe: int(),
+<a href=#446 id=446 data-nosnippet>446</a>                    value: LiteralValue::Int(value),
+<a href=#447 id=447 data-nosnippet>447</a>                },
+<a href=#448 id=448 data-nosnippet>448</a>            )
+<a href=#449 id=449 data-nosnippet>449</a>        };
+<a href=#450 id=450 data-nosnippet>450</a>        <span class="kw">let </span>tuple = TermPatternKind::Tuple {
+<a href=#451 id=451 data-nosnippet>451</a>            elements: Tuple::three(
+<a href=#452 id=452 data-nosnippet>452</a>                literal(<span class="number">1</span>),
+<a href=#453 id=453 data-nosnippet>453</a>                sub(int(), TermPatternKind::Bind(<span class="string">"y"</span>.to_string())),
+<a href=#454 id=454 data-nosnippet>454</a>                literal(<span class="number">2</span>),
+<a href=#455 id=455 data-nosnippet>455</a>            ),
+<a href=#456 id=456 data-nosnippet>456</a>        };
+<a href=#457 id=457 data-nosnippet>457</a>        <span class="kw">let </span>branches = <span class="macro">vec!</span>[
+<a href=#458 id=458 data-nosnippet>458</a>            (pattern(tuple), body(<span class="number">1</span>)),
+<a href=#459 id=459 data-nosnippet>459</a>            (pattern(TermPatternKind::Anything), body(<span class="number">0</span>)),
+<a href=#460 id=460 data-nosnippet>460</a>        ];
+<a href=#461 id=461 data-nosnippet>461</a>
+<a href=#462 id=462 data-nosnippet>462</a>        <span class="kw">let </span>tree = build(
+<a href=#463 id=463 data-nosnippet>463</a>            <span class="kw-2">&amp;</span>Type::Tuple(Tuple::three(int(), int(), int())),
+<a href=#464 id=464 data-nosnippet>464</a>            <span class="kw-2">&amp;</span>branches,
+<a href=#465 id=465 data-nosnippet>465</a>            <span class="kw-2">&amp;</span>Name::new(<span class="string">"f"</span>),
+<a href=#466 id=466 data-nosnippet>466</a>        );
+<a href=#467 id=467 data-nosnippet>467</a>
+<a href=#468 id=468 data-nosnippet>468</a>        <span class="kw">let </span>fallback = Decision::Leaf {
+<a href=#469 id=469 data-nosnippet>469</a>            bindings: <span class="macro">vec!</span>[],
+<a href=#470 id=470 data-nosnippet>470</a>            body: <span class="kw-2">&amp;</span>branches[<span class="number">1</span>].<span class="number">1</span>,
+<a href=#471 id=471 data-nosnippet>471</a>        };
+<a href=#472 id=472 data-nosnippet>472</a>        <span class="kw">let </span>element = |position| Occurrence::Root.field(Step::TupleElement(position));
+<a href=#473 id=473 data-nosnippet>473</a>        <span class="macro">assert_eq!</span>(
+<a href=#474 id=474 data-nosnippet>474</a>            tree,
+<a href=#475 id=475 data-nosnippet>475</a>            Decision::Test {
+<a href=#476 id=476 data-nosnippet>476</a>                scrutinee: element(<span class="number">0</span>),
+<a href=#477 id=477 data-nosnippet>477</a>                outcome: Outcome::Literal(LiteralValue::Int(<span class="number">1</span>)),
+<a href=#478 id=478 data-nosnippet>478</a>                matched: Box::new(Decision::Test {
+<a href=#479 id=479 data-nosnippet>479</a>                    scrutinee: element(<span class="number">2</span>),
+<a href=#480 id=480 data-nosnippet>480</a>                    outcome: Outcome::Literal(LiteralValue::Int(<span class="number">2</span>)),
+<a href=#481 id=481 data-nosnippet>481</a>                    matched: Box::new(Decision::Leaf {
+<a href=#482 id=482 data-nosnippet>482</a>                        bindings: <span class="macro">vec!</span>[Binding {
+<a href=#483 id=483 data-nosnippet>483</a>                            name: <span class="string">"y"</span>.to_string(),
+<a href=#484 id=484 data-nosnippet>484</a>                            occurrence: element(<span class="number">1</span>),
+<a href=#485 id=485 data-nosnippet>485</a>                            tpe: int(),
+<a href=#486 id=486 data-nosnippet>486</a>                        }],
+<a href=#487 id=487 data-nosnippet>487</a>                        body: <span class="kw-2">&amp;</span>branches[<span class="number">0</span>].<span class="number">1</span>,
+<a href=#488 id=488 data-nosnippet>488</a>                    }),
+<a href=#489 id=489 data-nosnippet>489</a>                    default: Box::new(fallback.clone()),
+<a href=#490 id=490 data-nosnippet>490</a>                }),
+<a href=#491 id=491 data-nosnippet>491</a>                default: Box::new(fallback),
+<a href=#492 id=492 data-nosnippet>492</a>            }
+<a href=#493 id=493 data-nosnippet>493</a>        );
+<a href=#494 id=494 data-nosnippet>494</a>    }
+<a href=#495 id=495 data-nosnippet>495</a>}
+</code></pre></div></section></main></body></html>

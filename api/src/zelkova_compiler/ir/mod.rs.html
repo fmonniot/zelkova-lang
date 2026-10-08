@@ -1,0 +1,1356 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/zelkova-compiler/src/ir/mod.rs`."><title>mod.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-0c87338a.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="zelkova_compiler" data-themes="" data-resource-suffix="" data-rustdoc-version="1.99.0 (b940084d7 2026-09-28)" data-channel="1.99.0" data-search-js="search-cf4fc35e.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../../../static.files/src-script-813739b1.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">zelkova_compiler/ir/</div>mod.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-4"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! The intermediate representation code generation reads.
+<a href=#2 id=2 data-nosnippet>2</a>//!
+<a href=#3 id=3 data-nosnippet>3</a>//! The typer produces it. It is the only phase that knows a node's type, and every node
+<a href=#4 id=4 data-nosnippet>4</a>//! here carries one ([`DEC-18` decision
+<a href=#5 id=5 data-nosnippet>5</a>//! 1](../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
+<a href=#6 id=6 data-nosnippet>6</a>//! [`Term`] is the untyped half — what the translation from the canonical AST builds —
+<a href=#7 id=7 data-nosnippet>7</a>//! and [`TypedTerm`] is the same tree once inference has solved a type for each of its
+<a href=#8 id=8 data-nosnippet>8</a>//! nodes. A [`Module`] holds the unions a module declares and one [`Declaration`] per
+<a href=#9 id=9 data-nosnippet>9</a>//! value: everything about a module that only emission asks for.
+<a href=#10 id=10 data-nosnippet>10</a>//!
+<a href=#11 id=11 data-nosnippet>11</a>//! It is not the whole of what a backend is handed. `check_module` answers with a
+<a href=#12 id=12 data-nosnippet>12</a>//! [`CheckedModule`](crate::CheckedModule), which is this beside the
+<a href=#13 id=13 data-nosnippet>13</a>//! [`canonical::Module`] it was built from, and two of the things emission needs are
+<a href=#14 id=14 data-nosnippet>14</a>//! still only on that half — a module's `exports`, which is what a JavaScript module has
+<a href=#15 id=15 data-nosnippet>15</a>//! to export, and `canonical::Value::TypedValue`'s `marked_unsafe`, which
+<a href=#16 id=16 data-nosnippet>16</a>//! `zelkova_js::emit` reads because an `unsafe`
+<a href=#17 id=17 data-nosnippet>17</a>//! signature and an effectful one emit differently. Nothing here duplicates them.
+<a href=#18 id=18 data-nosnippet>18</a>//!
+<a href=#19 id=19 data-nosnippet>19</a>//! The type language itself is still [`typer::Type`](crate::typer::Type). It is
+<a href=#20 id=20 data-nosnippet>20</a>//! the typer's own representation and unification is written against it, so it stays
+<a href=#21 id=21 data-nosnippet>21</a>//! there; this module names it and adds nothing to it.
+<a href=#22 id=22 data-nosnippet>22</a>//!
+<a href=#23 id=23 data-nosnippet>23</a>//! # What this shape owes WebAssembly
+<a href=#24 id=24 data-nosnippet>24</a>//!
+<a href=#25 id=25 data-nosnippet>25</a>//! One IR serves both targets and JavaScript is written first ([`DEC-18` decision
+<a href=#26 id=26 data-nosnippet>26</a>//! 2](../../docs/decisions/dec-18.md#2--one-ir-serves-both-targets-and-javascript-is-written-first)),
+<a href=#27 id=27 data-nosnippet>27</a>//! so a reader arriving while only the JavaScript backend exists will find things
+<a href=#28 id=28 data-nosnippet>28</a>//! JavaScript has no use for. None of them is spare:
+<a href=#29 id=29 data-nosnippet>29</a>//!
+<a href=#30 id=30 data-nosnippet>30</a>//! - **A type on every node, and what a constrained one asks of it.** JavaScript needs
+<a href=#31 id=31 data-nosnippet>31</a>//!   almost none of them: the canonical AST already separates an `Int` literal from a
+<a href=#32 id=32 data-nosnippet>32</a>//!   `Float` one, and arithmetic and equality are ordinary functions behind facades.
+<a href=#33 id=33 data-nosnippet>33</a>//!   WebAssembly is statically typed, and a node's representation class — an `i64`, an
+<a href=#34 id=34 data-nosnippet>34</a>//!   `f64`, a reference — is read off its type. Solved types are also what
+<a href=#35 id=35 data-nosnippet>35</a>//!   monomorphisation consumes, which is the only way polymorphism reaches a target where
+<a href=#36 id=36 data-nosnippet>36</a>//!   [a class dictionary is erased by specialisation and never
+<a href=#37 id=37 data-nosnippet>37</a>//!   passed](../../docs/decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed).
+<a href=#38 id=38 data-nosnippet>38</a>//!   A specialiser needs the other half of a constrained name too, and there are three
+<a href=#39 id=39 data-nosnippet>39</a>//!   places it is written. A [reference](TypedTermKind::Identifier) to a name whose type
+<a href=#40 id=40 data-nosnippet>40</a>//!   has a context carries that context as instantiated at the use, one [`Predicate`]
+<a href=#41 id=41 data-nosnippet>41</a>//!   per constraint, with the final substitution applied like every other type on the
+<a href=#42 id=42 data-nosnippet>42</a>//!   node: `eq` used at `Int` carries `Eq Int`. A [`Declaration`] carries its own
+<a href=#43 id=43 data-nosnippet>43</a>//!   context, read off its solved type the same way. And a [`Module`] carries its
+<a href=#44 id=44 data-nosnippet>44</a>//!   [`Instance`]s, each with its class, head, context and one checked body per member.
+<a href=#45 id=45 data-nosnippet>45</a>//!   A [hole](TypedTermKind::Hole), a name that did not resolve, has a type too: the one
+<a href=#46 id=46 data-nosnippet>46</a>//!   inference solved for its position, which is an unsolved variable when nothing
+<a href=#47 id=47 data-nosnippet>47</a>//!   around it constrains it.
+<a href=#48 id=48 data-nosnippet>48</a>//! - **A constructor's index within its declaration**, and not only its name. A union is
+<a href=#49 id=49 data-nosnippet>49</a>//!   a WIT `variant` with one case per constructor and a tuple is a `tuple` ([A union
+<a href=#50 id=50 data-nosnippet>50</a>//!   crosses as a tagged
+<a href=#51 id=51 data-nosnippet>51</a>//!   value](../../docs/spec/interop.md#a-union-crosses-as-a-tagged-value)), so a
+<a href=#52 id=52 data-nosnippet>52</a>//!   constructor is reached by its position there. JavaScript writes the name into the
+<a href=#53 id=53 data-nosnippet>53</a>//!   `$` field and never asks for the index.
+<a href=#54 id=54 data-nosnippet>54</a>//! - **Arity as a fact and saturation per call site.** A declaration emits as a plain
+<a href=#55 id=55 data-nosnippet>55</a>//!   n-ary function on both targets ([`DEC-18` decision
+<a href=#56 id=56 data-nosnippet>56</a>//!   3](../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)),
+<a href=#57 id=57 data-nosnippet>57</a>//!   and a facade's [plain parameter
+<a href=#58 id=58 data-nosnippet>58</a>//!   list](../../docs/spec/interop.md#the-javascript-companion) is the same call shape
+<a href=#59 id=59 data-nosnippet>59</a>//!   either way. WebAssembly has no closure primitive, so how a partial application is
+<a href=#60 id=60 data-nosnippet>60</a>//!   represented there is open — and an IR that made a call site's saturation something
+<a href=#61 id=61 data-nosnippet>61</a>//!   to re-derive would make that question harder rather than leaving it open.
+<a href=#62 id=62 data-nosnippet>62</a>//! - **A record's fields by label, and the order a positional target reads them in.** A
+<a href=#63 id=63 data-nosnippet>63</a>//!   record crosses as a WIT `record`, which reaches a field by position ([Which types may
+<a href=#64 id=64 data-nosnippet>64</a>//!   cross the boundary](../../docs/spec/interop.md#which-types-may-cross-the-boundary)),
+<a href=#65 id=65 data-nosnippet>65</a>//!   and a record type is a set of fields with no order of its own ([a record type is a
+<a href=#66 id=66 data-nosnippet>66</a>//!   set of fields](../../docs/spec/records.md#a-record-type-is-a-set-of-fields)), so
+<a href=#67 id=67 data-nosnippet>67</a>//!   nothing in the IR numbers them: [`TypedTermKind::Access`], [`TypedTermKind::Accessor`],
+<a href=#68 id=68 data-nosnippet>68</a>//!   [`TypedTermKind::Update`] and a record pattern's entries
+<a href=#69 id=69 data-nosnippet>69</a>//!   ([`Step::Field`]) name a field by its label, and JavaScript reads it as the property
+<a href=#70 id=70 data-nosnippet>70</a>//!   of that name. A positional target reads the order off the type, which is on the
+<a href=#71 id=71 data-nosnippet>71</a>//!   access node already — the [`Type::Record`] of the `record` operand, of the
+<a href=#72 id=72 data-nosnippet>72</a>//!   accessor's parameter, of the update's own type, of the value a pattern is matched
+<a href=#73 id=73 data-nosnippet>73</a>//!   against. That order is **label order**: the labels sorted by their characters, each
+<a href=#74 id=74 data-nosnippet>74</a>//!   compared by its code point, a label that another begins with first. It is the order
+<a href=#75 id=75 data-nosnippet>75</a>//!   a `Type::Record`'s map iterates in, and the one two spellings of one type agree on —
+<a href=#76 id=76 data-nosnippet>76</a>//!   `{ a : Int, b : Int }` and `{ b : Int, a : Int }` are one type and have one layout —
+<a href=#77 id=77 data-nosnippet>77</a>//!   which is why [Records and
+<a href=#78 id=78 data-nosnippet>78</a>//!   derivation](../../docs/spec/records.md#records-and-derivation) walks a record's
+<a href=#79 id=79 data-nosnippet>79</a>//!   fields in it too: sorting is the only order available that does. The order a
+<a href=#80 id=80 data-nosnippet>80</a>//!   record *expression*'s fields were written in is not a position. It is on the term
+<a href=#81 id=81 data-nosnippet>81</a>//!   ([`TypedTermKind::Record`], [`TypedTermKind::Update`]) as an order of evaluation, and
+<a href=#82 id=82 data-nosnippet>82</a>//!   a target evaluates in it and lays the value out in label order.
+<a href=#83 id=83 data-nosnippet>83</a>//!
+<a href=#84 id=84 data-nosnippet>84</a>//! [`GEN-15`](../../docs/tickets/gen-15.md) holds the questions a WebAssembly backend
+<a href=#85 id=85 data-nosnippet>85</a>//! still has to answer — linear memory or WasmGC, how a partial application is
+<a href=#86 id=86 data-nosnippet>86</a>//! represented, whether monomorphisation is whole-program — and is unscheduled. Nothing
+<a href=#87 id=87 data-nosnippet>87</a>//! in this module is a JavaScript decision, and a change that makes one of the facts
+<a href=#88 id=88 data-nosnippet>88</a>//! above unavailable is a change that closes that ticket's options.
+<a href=#89 id=89 data-nosnippet>89</a>//!
+<a href=#90 id=90 data-nosnippet>90</a>//! # What specialisation adds
+<a href=#91 id=91 data-nosnippet>91</a>//!
+<a href=#92 id=92 data-nosnippet>92</a>//! [`build`] knows one module and leaves each reference that carried obligations as the typer
+<a href=#93 id=93 data-nosnippet>93</a>//! solved it. [`specialise`] reads every module of a build, resolves each of them to the
+<a href=#94 id=94 data-nosnippet>94</a>//! instance's member or to a [`Specialisation`] of the module that uses it, and changes the
+<a href=#95 id=95 data-nosnippet>95</a>//! modules in place: a [`ReferenceKind::InstanceMember`] or a [`ReferenceKind::Specialised`]
+<a href=#96 id=96 data-nosnippet>96</a>//! replaces the name and its obligations, and [`Module::specialisations`] holds the copies. A
+<a href=#97 id=97 data-nosnippet>97</a>//! constrained [`Declaration`] and the members of an instance that has a context stay as they
+<a href=#98 id=98 data-nosnippet>98</a>//! were written: they are what is copied, and nothing emits them as they stand.
+<a href=#99 id=99 data-nosnippet>99</a>//! [`initialisation_items`] is the order of the parameterless items once those are among
+<a href=#100 id=100 data-nosnippet>100</a>//! them. The module doc comment of `specialise` is the account, and
+<a href=#101 id=101 data-nosnippet>101</a>//! [`GEN-15`](../../docs/tickets/gen-15.md) needs the same pass for a reason of its own.
+<a href=#102 id=102 data-nosnippet>102</a>//!
+<a href=#103 id=103 data-nosnippet>103</a>//! # What is not here yet
+<a href=#104 id=104 data-nosnippet>104</a>//!
+<a href=#105 id=105 data-nosnippet>105</a>//! One ticket adds to this shape and is deliberately not written into it yet: a self tail
+<a href=#106 id=106 data-nosnippet>106</a>//! call ([`GEN-6`](../../docs/tickets/gen-6.md)). [`Module`] holds its
+<a href=#107 id=107 data-nosnippet>107</a>//! declarations in a `Vec` sorted by name, which is a deterministic order and not an
+<a href=#108 id=108 data-nosnippet>108</a>//! evaluation order; [`Module::initialisation_order`] is the evaluation order, over the
+<a href=#109 id=109 data-nosnippet>109</a>//! parameterless declarations alone, and [`initialisation_items`] extends it to the items
+<a href=#110 id=110 data-nosnippet>110</a>//! specialisation adds; `zelkova_js::emit` emits them in it.
+<a href=#111 id=111 data-nosnippet>111</a>//!
+<a href=#112 id=112 data-nosnippet>112</a>//! A `case`'s branches keep [`TypedTermKind::Case`]'s own flat shape rather than
+<a href=#113 id=113 data-nosnippet>113</a>//! growing a tree in place: the typer still wants a flat list, since every branch is
+<a href=#114 id=114 data-nosnippet>114</a>//! checked against the same scrutinee type and order does not matter to it. The
+<a href=#115 id=115 data-nosnippet>115</a>//! `decision` module is a second, additional view of the same branches — built from
+<a href=#116 id=116 data-nosnippet>116</a>//! them on demand rather than stored alongside them — and [`Decision`] is the tree a
+<a href=#117 id=117 data-nosnippet>117</a>//! backend walks instead of re-deriving, at emission time, which test distinguishes
+<a href=#118 id=118 data-nosnippet>118</a>//! which branch (`GEN-5`). See that module's doc comment.
+<a href=#119 id=119 data-nosnippet>119</a>
+<a href=#120 id=120 data-nosnippet>120</a></span><span class="kw">use </span>std::collections::HashMap;
+<a href=#121 id=121 data-nosnippet>121</a>
+<a href=#122 id=122 data-nosnippet>122</a><span class="kw">use </span><span class="kw">super</span>::canonical::{<span class="self">self</span>, HeadName};
+<a href=#123 id=123 data-nosnippet>123</a><span class="kw">use </span><span class="kw">super</span>::name::{Name, QualName};
+<a href=#124 id=124 data-nosnippet>124</a><span class="kw">use </span><span class="kw">super</span>::typer::Type;
+<a href=#125 id=125 data-nosnippet>125</a><span class="kw">use super</span>::{ModuleName, PackageName};
+<a href=#126 id=126 data-nosnippet>126</a><span class="kw">use </span>zelkova_syntax::position::NodeSpan;
+<a href=#127 id=127 data-nosnippet>127</a><span class="kw">use </span>zelkova_syntax::tuple::Tuple;
+<a href=#128 id=128 data-nosnippet>128</a>
+<a href=#129 id=129 data-nosnippet>129</a><span class="kw">mod </span>decision;
+<a href=#130 id=130 data-nosnippet>130</a><span class="kw">pub use </span>decision::{build <span class="kw">as </span>decision_tree, Binding, Decision, Occurrence, Outcome, Step};
+<a href=#131 id=131 data-nosnippet>131</a>
+<a href=#132 id=132 data-nosnippet>132</a><span class="kw">mod </span>specialise;
+<a href=#133 id=133 data-nosnippet>133</a><span class="kw">pub use </span>specialise::{
+<a href=#134 id=134 data-nosnippet>134</a>    initialisation_items, mentioned_by_copies, specialise, Error <span class="kw">as </span>SpecialiseError, Item,
+<a href=#135 id=135 data-nosnippet>135</a>    ModuleErrors, SPECIALISATION_LIMIT,
+<a href=#136 id=136 data-nosnippet>136</a>};
+<a href=#137 id=137 data-nosnippet>137</a>
+<a href=#138 id=138 data-nosnippet>138</a><span class="comment">// ── A module ──────────────────────────────────────────────────────────────────
+<a href=#139 id=139 data-nosnippet>139</a>
+<a href=#140 id=140 data-nosnippet>140</a></span><span class="doccomment">/// One checked module's emittable shape: what a backend reads that no earlier phase
+<a href=#141 id=141 data-nosnippet>141</a>/// carried.
+<a href=#142 id=142 data-nosnippet>142</a>///
+<a href=#143 id=143 data-nosnippet>143</a>/// Not everything emission needs — `exports` and `marked_unsafe` stay on the
+<a href=#144 id=144 data-nosnippet>144</a>/// [`canonical::Module`] this was built from, and a backend is handed both halves as a
+<a href=#145 id=145 data-nosnippet>145</a>/// [`CheckedModule`](crate::CheckedModule). See this module's doc comment.
+<a href=#146 id=146 data-nosnippet>146</a></span><span class="attr">#[derive(Debug)]
+<a href=#147 id=147 data-nosnippet>147</a></span><span class="kw">pub struct </span>Module {
+<a href=#148 id=148 data-nosnippet>148</a>    <span class="kw">pub </span>name: ModuleName,
+<a href=#149 id=149 data-nosnippet>149</a>    <span class="doccomment">/// True when this module is a `module foreign` facade: every one of its
+<a href=#150 id=150 data-nosnippet>150</a>    /// declarations is a signature with no body, and the code behind them is in the
+<a href=#151 id=151 data-nosnippet>151</a>    /// companion beside it ([Foreign
+<a href=#152 id=152 data-nosnippet>152</a>    /// interoperability](../../docs/spec/interop.md)).
+<a href=#153 id=153 data-nosnippet>153</a>    </span><span class="kw">pub </span>foreign: bool,
+<a href=#154 id=154 data-nosnippet>154</a>    <span class="doccomment">/// The unions this module declares, sorted by name.
+<a href=#155 id=155 data-nosnippet>155</a>    </span><span class="kw">pub </span>unions: Vec&lt;Union&gt;,
+<a href=#156 id=156 data-nosnippet>156</a>    <span class="doccomment">/// The declarations this module can emit, sorted by name.
+<a href=#157 id=157 data-nosnippet>157</a>    ///
+<a href=#158 id=158 data-nosnippet>158</a>    /// Sorted so that two runs of the compiler over one unchanged module produce the
+<a href=#159 id=159 data-nosnippet>159</a>    /// same order — `canonical::Module::values` is a `HashMap` and yields none. It is
+<a href=#160 id=160 data-nosnippet>160</a>    /// not an evaluation order: [`initialisation_order`](Self::initialisation_order) is
+<a href=#161 id=161 data-nosnippet>161</a>    /// what works out which parameterless declaration has to be initialised before which.
+<a href=#162 id=162 data-nosnippet>162</a>    ///
+<a href=#163 id=163 data-nosnippet>163</a>    /// A declaration here may hold a [hole](TypedTermKind::Hole), with an error standing
+<a href=#164 id=164 data-nosnippet>164</a>    /// behind it, and a backend refuses it.
+<a href=#165 id=165 data-nosnippet>165</a>    </span><span class="kw">pub </span>declarations: Vec&lt;Declaration&gt;,
+<a href=#166 id=166 data-nosnippet>166</a>    <span class="doccomment">/// The declarations that have no IR, and therefore cannot be emitted.
+<a href=#167 id=167 data-nosnippet>167</a>    ///
+<a href=#168 id=168 data-nosnippet>168</a>    /// A backend handed only [`declarations`](Self::declarations) could not tell a module
+<a href=#169 id=169 data-nosnippet>169</a>    /// it may emit whole from one that quietly lost a declaration on the way here, which
+<a href=#170 id=170 data-nosnippet>170</a>    /// is the mistake [`DEC-18` decision
+<a href=#171 id=171 data-nosnippet>171</a>    /// 1](../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)
+<a href=#172 id=172 data-nosnippet>172</a>    /// is about. Every value of the canonical module, in `values` or in `broken`, is in
+<a href=#173 id=173 data-nosnippet>173</a>    /// exactly one of the two lists.
+<a href=#174 id=174 data-nosnippet>174</a>    ///
+<a href=#175 id=175 data-nosnippet>175</a>    /// Sorted by name, the same as [`declarations`](Self::declarations).
+<a href=#176 id=176 data-nosnippet>176</a>    </span><span class="kw">pub </span>unchecked: Vec&lt;Unchecked&gt;,
+<a href=#177 id=177 data-nosnippet>177</a>    <span class="doccomment">/// The instances this module declares, in the order they were written, each with the
+<a href=#178 id=178 data-nosnippet>178</a>    /// body it was checked with. An instance of another module that this one can use is
+<a href=#179 id=179 data-nosnippet>179</a>    /// that module's, and is not repeated here.
+<a href=#180 id=180 data-nosnippet>180</a>    ///
+<a href=#181 id=181 data-nosnippet>181</a>    /// An instance that failed canonicalization is in no list: it never became a
+<a href=#182 id=182 data-nosnippet>182</a>    /// [`canonical::Instance`], and the error behind it is canonicalization's.
+<a href=#183 id=183 data-nosnippet>183</a>    </span><span class="kw">pub </span>instances: Vec&lt;Instance&gt;,
+<a href=#184 id=184 data-nosnippet>184</a>    <span class="doccomment">/// The names of [`declarations`](Self::declarations) that take no parameter, in the
+<a href=#185 id=185 data-nosnippet>185</a>    /// order they must be initialised: each only after every parameterless declaration it
+<a href=#186 id=186 data-nosnippet>186</a>    /// depends on, whether its own body mentions that declaration or reaches it through a
+<a href=#187 id=187 data-nosnippet>187</a>    /// function it mentions
+<a href=#188 id=188 data-nosnippet>188</a>    /// (`docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once`).
+<a href=#189 id=189 data-nosnippet>189</a>    /// Empty for a module whose declarations all take parameters, and for a `module
+<a href=#190 id=190 data-nosnippet>190</a>    /// foreign` facade, whose constants are evaluated on whatever schedule the target
+<a href=#191 id=191 data-nosnippet>191</a>    /// gives them (`docs/spec/interop.md#facade-constants`).
+<a href=#192 id=192 data-nosnippet>192</a>    ///
+<a href=#193 id=193 data-nosnippet>193</a>    /// Sorted so that two runs of the compiler over one unchanged module produce the same
+<a href=#194 id=194 data-nosnippet>194</a>    /// order, same as [`declarations`](Self::declarations) above — including among
+<a href=#195 id=195 data-nosnippet>195</a>    /// bindings with no path between them, where dependencies alone leave the order
+<a href=#196 id=196 data-nosnippet>196</a>    /// unconstrained.
+<a href=#197 id=197 data-nosnippet>197</a>    ///
+<a href=#198 id=198 data-nosnippet>198</a>    /// `canonical::initialisation_order` computes it, from the same dependency graph
+<a href=#199 id=199 data-nosnippet>199</a>    /// `canonical::canonicalize` reads to reject a cycle (`LANG-35`) rather than a second
+<a href=#200 id=200 data-nosnippet>200</a>    /// one built from the same rule; see that function's doc comment for what it does with
+<a href=#201 id=201 data-nosnippet>201</a>    /// a module whose cycle was rejected.
+<a href=#202 id=202 data-nosnippet>202</a>    /// `zelkova_js::emit` is what emits declarations
+<a href=#203 id=203 data-nosnippet>203</a>    /// in this order — this only computes it.
+<a href=#204 id=204 data-nosnippet>204</a>    </span><span class="kw">pub </span>initialisation_order: Vec&lt;Name&gt;,
+<a href=#205 id=205 data-nosnippet>205</a>    <span class="doccomment">/// The copies of constrained declarations and of instance members with a context that
+<a href=#206 id=206 data-nosnippet>206</a>    /// this module needs, each at one assignment of ground types to its constrained
+<a href=#207 id=207 data-nosnippet>207</a>    /// variables, in the order [`specialise`] found them.
+<a href=#208 id=208 data-nosnippet>208</a>    ///
+<a href=#209 id=209 data-nosnippet>209</a>    /// Empty until [`specialise`] has run over the build: `build` knows one module and a
+<a href=#210 id=210 data-nosnippet>210</a>    /// specialisation is a fact about the whole of them. A reference to one is
+<a href=#211 id=211 data-nosnippet>211</a>    /// [`ReferenceKind::Specialised`], and its number is a place in this list.
+<a href=#212 id=212 data-nosnippet>212</a>    </span><span class="kw">pub </span>specialisations: Vec&lt;Specialisation&gt;,
+<a href=#213 id=213 data-nosnippet>213</a>}
+<a href=#214 id=214 data-nosnippet>214</a>
+<a href=#215 id=215 data-nosnippet>215</a><span class="doccomment">/// A union declaration: the type a constructor builds, and the constructors that build
+<a href=#216 id=216 data-nosnippet>216</a>/// it.
+<a href=#217 id=217 data-nosnippet>217</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#218 id=218 data-nosnippet>218</a></span><span class="kw">pub struct </span>Union {
+<a href=#219 id=219 data-nosnippet>219</a>    <span class="doccomment">/// The union, named by the package and module that declared it.
+<a href=#220 id=220 data-nosnippet>220</a>    </span><span class="kw">pub </span>name: QualName,
+<a href=#221 id=221 data-nosnippet>221</a>    <span class="doccomment">/// The type variables the declaration was written with, in order.
+<a href=#222 id=222 data-nosnippet>222</a>    </span><span class="kw">pub </span>variables: Vec&lt;Name&gt;,
+<a href=#223 id=223 data-nosnippet>223</a>    <span class="doccomment">/// Its constructors, in declaration order — which is the order
+<a href=#224 id=224 data-nosnippet>224</a>    /// [`Variant::index`] counts.
+<a href=#225 id=225 data-nosnippet>225</a>    </span><span class="kw">pub </span>variants: Vec&lt;Variant&gt;,
+<a href=#226 id=226 data-nosnippet>226</a>}
+<a href=#227 id=227 data-nosnippet>227</a>
+<a href=#228 id=228 data-nosnippet>228</a><span class="doccomment">/// One constructor of a [`Union`].
+<a href=#229 id=229 data-nosnippet>229</a></span><span class="attr">#[derive(Debug, Clone, PartialEq, Eq)]
+<a href=#230 id=230 data-nosnippet>230</a></span><span class="kw">pub struct </span>Variant {
+<a href=#231 id=231 data-nosnippet>231</a>    <span class="doccomment">/// The constructor's own name, unqualified: the value of the `$` field on
+<a href=#232 id=232 data-nosnippet>232</a>    /// JavaScript, and the WIT case name.
+<a href=#233 id=233 data-nosnippet>233</a>    </span><span class="kw">pub </span>name: Name,
+<a href=#234 id=234 data-nosnippet>234</a>    <span class="doccomment">/// Its position in the `type` declaration, counted from zero.
+<a href=#235 id=235 data-nosnippet>235</a>    </span><span class="kw">pub </span>index: usize,
+<a href=#236 id=236 data-nosnippet>236</a>    <span class="doccomment">/// How many arguments it takes.
+<a href=#237 id=237 data-nosnippet>237</a>    </span><span class="kw">pub </span>arity: usize,
+<a href=#238 id=238 data-nosnippet>238</a>}
+<a href=#239 id=239 data-nosnippet>239</a>
+<a href=#240 id=240 data-nosnippet>240</a><span class="doccomment">/// A class required of a type: `Eq Int`, `Comparable a`.
+<a href=#241 id=241 data-nosnippet>241</a>///
+<a href=#242 id=242 data-nosnippet>242</a>/// What a constrained name asks of its caller, once the variable its constraint was
+<a href=#243 id=243 data-nosnippet>243</a>/// written on has been replaced by the type it was used at. A class is always over a
+<a href=#244 id=244 data-nosnippet>244</a>/// complete type ([`DEC-2` decision
+<a href=#245 id=245 data-nosnippet>245</a>/// 5](../../docs/decisions/dec-2.md#5--no-higher-kinded-variables)), so a predicate is a
+<a href=#246 id=246 data-nosnippet>246</a>/// class and a type and never a partial application.
+<a href=#247 id=247 data-nosnippet>247</a></span><span class="attr">#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+<a href=#248 id=248 data-nosnippet>248</a></span><span class="kw">pub struct </span>Predicate {
+<a href=#249 id=249 data-nosnippet>249</a>    <span class="doccomment">/// The class, named by the package and module that declared it.
+<a href=#250 id=250 data-nosnippet>250</a>    </span><span class="kw">pub </span>class: QualName,
+<a href=#251 id=251 data-nosnippet>251</a>    <span class="doccomment">/// The type it is required of.
+<a href=#252 id=252 data-nosnippet>252</a>    </span><span class="kw">pub </span>tpe: Type,
+<a href=#253 id=253 data-nosnippet>253</a>}
+<a href=#254 id=254 data-nosnippet>254</a>
+<a href=#255 id=255 data-nosnippet>255</a><span class="doccomment">/// One `instance` declaration of a module: which class, which type, what it needs of that
+<a href=#256 id=256 data-nosnippet>256</a>/// type's arguments, and a checked body for each member.
+<a href=#257 id=257 data-nosnippet>257</a>///
+<a href=#258 id=258 data-nosnippet>258</a>/// A derived instance is one of these like any other. The bindings it was checked with are
+<a href=#259 id=259 data-nosnippet>259</a>/// the ones its class's derivation stands for, generated by canonicalization, and nothing
+<a href=#260 id=260 data-nosnippet>260</a>/// here says they were not written.
+<a href=#261 id=261 data-nosnippet>261</a>///
+<a href=#262 id=262 data-nosnippet>262</a>/// The types here and the types inside a member's [`Declaration`] are each their own
+<a href=#263 id=263 data-nosnippet>263</a>/// inference's. The variables of [`head`](Self::head) are the ones the instance's
+<a href=#264 id=264 data-nosnippet>264</a>/// [`context`](Self::context) is over; a member's declaration is solved on its own, so
+<a href=#265 id=265 data-nosnippet>265</a>/// its type and its own context name variables of that solve, and the two are related by
+<a href=#266 id=266 data-nosnippet>266</a>/// the member's signature at the head and not by sharing variable numbers.
+<a href=#267 id=267 data-nosnippet>267</a></span><span class="attr">#[derive(Debug)]
+<a href=#268 id=268 data-nosnippet>268</a></span><span class="kw">pub struct </span>Instance {
+<a href=#269 id=269 data-nosnippet>269</a>    <span class="doccomment">/// The class, named by the package and module that declared it.
+<a href=#270 id=270 data-nosnippet>270</a>    </span><span class="kw">pub </span>class: QualName,
+<a href=#271 id=271 data-nosnippet>271</a>    <span class="doccomment">/// The type the instance is for: a declared type applied to a distinct variable per
+<a href=#272 id=272 data-nosnippet>272</a>    /// parameter, a tuple of distinct variables, or `()`
+<a href=#273 id=273 data-nosnippet>273</a>    /// ([the head rule](../../docs/spec/type-classes.md#what-an-instance-is-declared-for)).
+<a href=#274 id=274 data-nosnippet>274</a>    </span><span class="kw">pub </span>head: Type,
+<a href=#275 id=275 data-nosnippet>275</a>    <span class="doccomment">/// The name at the front of [`head`](Self::head), which with the class identifies the
+<a href=#276 id=276 data-nosnippet>276</a>    /// instance: two instances of one class whose heads share it are one instance declared
+<a href=#277 id=277 data-nosnippet>277</a>    /// twice, and a use of a member is answered by the one that matches.
+<a href=#278 id=278 data-nosnippet>278</a>    </span><span class="kw">pub </span>head_name: HeadName,
+<a href=#279 id=279 data-nosnippet>279</a>    <span class="doccomment">/// What the instance needs of the head's variables, in the order written.
+<a href=#280 id=280 data-nosnippet>280</a>    </span><span class="kw">pub </span>context: Vec&lt;Predicate&gt;,
+<a href=#281 id=281 data-nosnippet>281</a>    <span class="doccomment">/// The bindings that checked, one for each member of the class, sorted by name. Each
+<a href=#282 id=282 data-nosnippet>282</a>    /// is a [`Declaration`] named for the member, whose [`context`](Declaration::context)
+<a href=#283 id=283 data-nosnippet>283</a>    /// is the instance's own.
+<a href=#284 id=284 data-nosnippet>284</a>    </span><span class="kw">pub </span>members: Vec&lt;Declaration&gt;,
+<a href=#285 id=285 data-nosnippet>285</a>    <span class="doccomment">/// The bindings that did not check, accounted for as [`Module::unchecked`] accounts
+<a href=#286 id=286 data-nosnippet>286</a>    /// for a value, sorted by name.
+<a href=#287 id=287 data-nosnippet>287</a>    </span><span class="kw">pub </span>unchecked: Vec&lt;Unchecked&gt;,
+<a href=#288 id=288 data-nosnippet>288</a>    <span class="doccomment">/// Whether the instance's own check failed: a superclass the instance cannot prove
+<a href=#289 id=289 data-nosnippet>289</a>    /// at its head. An error stands behind it, and a backend refuses it.
+<a href=#290 id=290 data-nosnippet>290</a>    </span><span class="kw">pub </span>rejected: bool,
+<a href=#291 id=291 data-nosnippet>291</a>    <span class="doccomment">/// Where the head line was written, `instance` through `where`.
+<a href=#292 id=292 data-nosnippet>292</a>    </span><span class="kw">pub </span>span: NodeSpan,
+<a href=#293 id=293 data-nosnippet>293</a>}
+<a href=#294 id=294 data-nosnippet>294</a>
+<a href=#295 id=295 data-nosnippet>295</a><span class="doccomment">/// One value of a module: what a backend emits as a named binding.
+<a href=#296 id=296 data-nosnippet>296</a></span><span class="attr">#[derive(Debug)]
+<a href=#297 id=297 data-nosnippet>297</a></span><span class="kw">pub struct </span>Declaration {
+<a href=#298 id=298 data-nosnippet>298</a>    <span class="kw">pub </span>name: Name,
+<a href=#299 id=299 data-nosnippet>299</a>    <span class="doccomment">/// How many arguments a call site has to supply for the call to be a direct call.
+<a href=#300 id=300 data-nosnippet>300</a>    ///
+<a href=#301 id=301 data-nosnippet>301</a>    /// For a declaration with a body this is the number of parameters it was written
+<a href=#302 id=302 data-nosnippet>302</a>    /// with, which is [`Body::parameters`]'s length — *not* the number of arrows in its
+<a href=#303 id=303 data-nosnippet>303</a>    /// type. `f : Int -&gt; Int -&gt; Int` written `f a = add a` has arity 1, and a call
+<a href=#304 id=304 data-nosnippet>304</a>    /// supplying two arguments is one direct call followed by one partial application.
+<a href=#305 id=305 data-nosnippet>305</a>    ///
+<a href=#306 id=306 data-nosnippet>306</a>    /// For a facade signature, which has no body to count parameters off, it is the
+<a href=#307 id=307 data-nosnippet>307</a>    /// number of arrows in the signature: the companion's export [takes a plain parameter
+<a href=#308 id=308 data-nosnippet>308</a>    /// list](../../docs/spec/interop.md#the-javascript-companion) of exactly that
+<a href=#309 id=309 data-nosnippet>309</a>    /// length, and a signature with no arrow at all is [a facade
+<a href=#310 id=310 data-nosnippet>310</a>    /// constant](../../docs/spec/interop.md#facade-constants).
+<a href=#311 id=311 data-nosnippet>311</a>    </span><span class="kw">pub </span>arity: usize,
+<a href=#312 id=312 data-nosnippet>312</a>    <span class="doccomment">/// The declaration's own type, as inference solved it — or, for a facade, as the
+<a href=#313 id=313 data-nosnippet>313</a>    /// signature declares it.
+<a href=#314 id=314 data-nosnippet>314</a>    </span><span class="kw">pub </span>tpe: Type,
+<a href=#315 id=315 data-nosnippet>315</a>    <span class="doccomment">/// What the declaration's annotation requires of its type variables, one
+<a href=#316 id=316 data-nosnippet>316</a>    /// [`Predicate`] per constraint written, in the order written — empty for a
+<a href=#317 id=317 data-nosnippet>317</a>    /// declaration whose annotation has no `=&gt;`, for every declaration with no
+<a href=#318 id=318 data-nosnippet>318</a>    /// annotation, and for a facade signature.
+<a href=#319 id=319 data-nosnippet>319</a>    ///
+<a href=#320 id=320 data-nosnippet>320</a>    /// Read off the declaration's solved type, as the types on its nodes are: each
+<a href=#321 id=321 data-nosnippet>321</a>    /// predicate's type is the variable the annotation constrained. The annotation's
+<a href=#322 id=322 data-nosnippet>322</a>    /// variables are rigid while the body is checked, so it is always a variable of
+<a href=#323 id=323 data-nosnippet>323</a>    /// [`tpe`](Self::tpe).
+<a href=#324 id=324 data-nosnippet>324</a>    ///
+<a href=#325 id=325 data-nosnippet>325</a>    /// A superclass the context implies is not listed.
+<a href=#326 id=326 data-nosnippet>326</a>    </span><span class="kw">pub </span>context: Vec&lt;Predicate&gt;,
+<a href=#327 id=327 data-nosnippet>327</a>    <span class="doccomment">/// The parameters and the expression they are in scope over, for a declaration that
+<a href=#328 id=328 data-nosnippet>328</a>    /// has a body.
+<a href=#329 id=329 data-nosnippet>329</a>    ///
+<a href=#330 id=330 data-nosnippet>330</a>    /// `None` is a `module foreign` facade's signature. It is the whole reason this is an
+<a href=#331 id=331 data-nosnippet>331</a>    /// `Option`: a facade declares what crosses the boundary and the code is in the
+<a href=#332 id=332 data-nosnippet>332</a>    /// companion, so there is nothing here to emit and
+<a href=#333 id=333 data-nosnippet>333</a>    /// `zelkova_js::emit` reads the signature
+<a href=#334 id=334 data-nosnippet>334</a>    /// instead.
+<a href=#335 id=335 data-nosnippet>335</a>    </span><span class="kw">pub </span>body: <span class="prelude-ty">Option</span>&lt;Body&gt;,
+<a href=#336 id=336 data-nosnippet>336</a>    <span class="doccomment">/// Where the declaration was written, annotation and body together.
+<a href=#337 id=337 data-nosnippet>337</a>    </span><span class="kw">pub </span>span: NodeSpan,
+<a href=#338 id=338 data-nosnippet>338</a>}
+<a href=#339 id=339 data-nosnippet>339</a>
+<a href=#340 id=340 data-nosnippet>340</a><span class="doccomment">/// A declaration's parameters and the expression they are in scope over.
+<a href=#341 id=341 data-nosnippet>341</a></span><span class="attr">#[derive(Debug)]
+<a href=#342 id=342 data-nosnippet>342</a></span><span class="kw">pub struct </span>Body {
+<a href=#343 id=343 data-nosnippet>343</a>    <span class="doccomment">/// The declaration's parameters, outermost first, each with the type inference
+<a href=#344 id=344 data-nosnippet>344</a>    /// solved for it.
+<a href=#345 id=345 data-nosnippet>345</a>    </span><span class="kw">pub </span>parameters: Vec&lt;TypeBinder&gt;,
+<a href=#346 id=346 data-nosnippet>346</a>    <span class="doccomment">/// What the declaration evaluates to once its parameters are bound.
+<a href=#347 id=347 data-nosnippet>347</a>    </span><span class="kw">pub </span>expression: TypedTerm,
+<a href=#348 id=348 data-nosnippet>348</a>}
+<a href=#349 id=349 data-nosnippet>349</a>
+<a href=#350 id=350 data-nosnippet>350</a><span class="doccomment">/// A declaration the typer did not type, and which therefore has no IR.
+<a href=#351 id=351 data-nosnippet>351</a>///
+<a href=#352 id=352 data-nosnippet>352</a>/// Why is decided in [`build`]. Canonicalization recorded it as broken
+<a href=#353 id=353 data-nosnippet>353</a>/// ([`canonical::Module::broken`]), or inference reported an error for it
+<a href=#354 id=354 data-nosnippet>354</a>/// ([`Solved::Rejected`]), and that error is the user's to fix; or the typer walked past
+<a href=#355 id=355 data-nosnippet>355</a>/// it: a construct the translation cannot represent
+<a href=#356 id=356 data-nosnippet>356</a>/// ([`Solved::Untranslatable`]), a name the typer's environment does not hold
+<a href=#357 id=357 data-nosnippet>357</a>/// ([`Solved::UnboundName`]), or a facade declaration with no signature to read. The
+<a href=#358 id=358 data-nosnippet>358</a>/// second kind is not a mistake in the user's source and not an error, but a gap in
+<a href=#359 id=359 data-nosnippet>359</a>/// today's typer — unless the declaration also holds a hole, whose error stands behind
+<a href=#360 id=360 data-nosnippet>360</a>/// it. [`reported`](Self::reported) is the one distinction carried this far,
+<a href=#361 id=361 data-nosnippet>361</a>/// so that `ERR-8`'s warning about a gap is not also given to a declaration the user has
+<a href=#362 id=362 data-nosnippet>362</a>/// already been shown an error for.
+<a href=#363 id=363 data-nosnippet>363</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#364 id=364 data-nosnippet>364</a></span><span class="kw">pub struct </span>Unchecked {
+<a href=#365 id=365 data-nosnippet>365</a>    <span class="kw">pub </span>name: Name,
+<a href=#366 id=366 data-nosnippet>366</a>    <span class="doccomment">/// Where the declaration was written.
+<a href=#367 id=367 data-nosnippet>367</a>    </span><span class="kw">pub </span>span: NodeSpan,
+<a href=#368 id=368 data-nosnippet>368</a>    <span class="doccomment">/// Whether an error stands behind this entry: `true` for a declaration
+<a href=#369 id=369 data-nosnippet>369</a>    /// canonicalization recorded as broken or inference rejected, and for one the typer
+<a href=#370 id=370 data-nosnippet>370</a>    /// walked past whose body holds a hole (a name that did not resolve, with its error
+<a href=#371 id=371 data-nosnippet>371</a>    /// reported or standing in the failure that made the scope incomplete); `false` for
+<a href=#372 id=372 data-nosnippet>372</a>    /// one the typer walked past with no hole in it.
+<a href=#373 id=373 data-nosnippet>373</a>    </span><span class="kw">pub </span>reported: bool,
+<a href=#374 id=374 data-nosnippet>374</a>}
+<a href=#375 id=375 data-nosnippet>375</a>
+<a href=#376 id=376 data-nosnippet>376</a><span class="comment">// ── Specialisation ────────────────────────────────────────────────────────────
+<a href=#377 id=377 data-nosnippet>377</a>
+<a href=#378 id=378 data-nosnippet>378</a></span><span class="doccomment">/// A constrained declaration, or a member of an instance with a context, at one assignment
+<a href=#379 id=379 data-nosnippet>379</a>/// of ground types to its constrained variables: an ordinary declaration of the module that
+<a href=#380 id=380 data-nosnippet>380</a>/// uses it.
+<a href=#381 id=381 data-nosnippet>381</a>///
+<a href=#382 id=382 data-nosnippet>382</a>/// [`specialise`] makes these. The body is a copy of the declaring module's code with the
+<a href=#383 id=383 data-nosnippet>383</a>/// assignment applied to every type in it, and with each reference that carried obligations
+<a href=#384 id=384 data-nosnippet>384</a>/// resolved at the types they are now at, so nothing in it asks which instance is meant and
+<a href=#385 id=385 data-nosnippet>385</a>/// nothing is passed at run time to say
+<a href=#386 id=386 data-nosnippet>386</a>/// ([`DEC-2` decision 7](../../docs/decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed)).
+<a href=#387 id=387 data-nosnippet>387</a>/// It is placed in the module that uses it and not in the module that declares the function,
+<a href=#388 id=388 data-nosnippet>388</a>/// because the instance a copy calls may be declared by a module that imports the
+<a href=#389 id=389 data-nosnippet>389</a>/// declaring one: emitted beside `min`, a copy that called the `compare` of an `App` that
+<a href=#390 id=390 data-nosnippet>390</a>/// imports `Basics` would make `Basics` import `App`.
+<a href=#391 id=391 data-nosnippet>391</a>///
+<a href=#392 id=392 data-nosnippet>392</a>/// Two uses at one key in one module are one specialisation, and two modules that use
+<a href=#393 id=393 data-nosnippet>393</a>/// one key each hold a copy. For a function that is code written twice and nothing a program
+<a href=#394 id=394 data-nosnippet>394</a>/// can observe. For a binding with no parameters it is one evaluation for each module that
+<a href=#395 id=395 data-nosnippet>395</a>/// uses it where [the chapter says
+<a href=#396 id=396 data-nosnippet>396</a>/// "once"](../../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once),
+<a href=#397 id=397 data-nosnippet>397</a>/// and a Zelkova value has no identity, so what differs is the work done and never an answer.
+<a href=#398 id=398 data-nosnippet>398</a></span><span class="attr">#[derive(Debug)]
+<a href=#399 id=399 data-nosnippet>399</a></span><span class="kw">pub struct </span>Specialisation {
+<a href=#400 id=400 data-nosnippet>400</a>    <span class="doccomment">/// What this is a copy of.
+<a href=#401 id=401 data-nosnippet>401</a>    </span><span class="kw">pub </span>of: Subject,
+<a href=#402 id=402 data-nosnippet>402</a>    <span class="doccomment">/// The ground type each constrained variable of the declaration is at, in the order
+<a href=#403 id=403 data-nosnippet>403</a>    /// the variables first occur in its [`context`](Declaration::context).
+<a href=#404 id=404 data-nosnippet>404</a>    ///
+<a href=#405 id=405 data-nosnippet>405</a>    /// Only the variables a constraint is on are in it: nothing a JavaScript module emits
+<a href=#406 id=406 data-nosnippet>406</a>    /// depends on any other, so a variable with no constraint needs no copy. A target whose
+<a href=#407 id=407 data-nosnippet>407</a>    /// code does depend on one reads its type off the nodes of
+<a href=#408 id=408 data-nosnippet>408</a>    /// [`declaration`](Self::declaration), where it is left a variable.
+<a href=#409 id=409 data-nosnippet>409</a>    </span><span class="kw">pub </span>key: Vec&lt;Type&gt;,
+<a href=#410 id=410 data-nosnippet>410</a>    <span class="doccomment">/// The copy: the declaring declaration's name and parameters, its type and every type in
+<a href=#411 id=411 data-nosnippet>411</a>    /// its body with the key applied, an empty [`context`](Declaration::context), and
+<a href=#412 id=412 data-nosnippet>412</a>    /// [`Declaration::arity`] and [`Declaration::span`] as it was written.
+<a href=#413 id=413 data-nosnippet>413</a>    </span><span class="kw">pub </span>declaration: Declaration,
+<a href=#414 id=414 data-nosnippet>414</a>}
+<a href=#415 id=415 data-nosnippet>415</a>
+<a href=#416 id=416 data-nosnippet>416</a><span class="doccomment">/// What a [`Specialisation`] is a copy of.
+<a href=#417 id=417 data-nosnippet>417</a></span><span class="attr">#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+<a href=#418 id=418 data-nosnippet>418</a></span><span class="kw">pub enum </span>Subject {
+<a href=#419 id=419 data-nosnippet>419</a>    <span class="doccomment">/// A declaration whose annotation has a constraint, named in full.
+<a href=#420 id=420 data-nosnippet>420</a>    </span>Declaration(QualName),
+<a href=#421 id=421 data-nosnippet>421</a>    <span class="doccomment">/// A member of an instance that has a context, which is itself a constrained function:
+<a href=#422 id=422 data-nosnippet>422</a>    /// what it asks of the head's variables is what the instance's context asks.
+<a href=#423 id=423 data-nosnippet>423</a>    ///
+<a href=#424 id=424 data-nosnippet>424</a>    /// An instance is identified by its class and the name at the front of its head
+<a href=#425 id=425 data-nosnippet>425</a>    /// ([`HeadName`]), so those and the member are the whole of the identity.
+<a href=#426 id=426 data-nosnippet>426</a>    </span>InstanceMember {
+<a href=#427 id=427 data-nosnippet>427</a>        class: QualName,
+<a href=#428 id=428 data-nosnippet>428</a>        head: HeadName,
+<a href=#429 id=429 data-nosnippet>429</a>        member: Name,
+<a href=#430 id=430 data-nosnippet>430</a>    },
+<a href=#431 id=431 data-nosnippet>431</a>}
+<a href=#432 id=432 data-nosnippet>432</a>
+<a href=#433 id=433 data-nosnippet>433</a><span class="doccomment">/// A member of an instance that has no context, which is an ordinary declaration of the
+<a href=#434 id=434 data-nosnippet>434</a>/// module that declares the instance, emitted once.
+<a href=#435 id=435 data-nosnippet>435</a>///
+<a href=#436 id=436 data-nosnippet>436</a>/// A use of a class member at a type that has such an instance is a direct reference to
+<a href=#437 id=437 data-nosnippet>437</a>/// this, and no other module needs a copy. The function's name is built from the three
+<a href=#438 id=438 data-nosnippet>438</a>/// things that identify it and from nothing a source file spells: `zelkova_js` writes
+<a href=#439 id=439 data-nosnippet>439</a>/// `$instance$…`.
+<a href=#440 id=440 data-nosnippet>440</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#441 id=441 data-nosnippet>441</a></span><span class="kw">pub struct </span>InstanceMember {
+<a href=#442 id=442 data-nosnippet>442</a>    <span class="doccomment">/// The module that declares the instance, which is where the function is.
+<a href=#443 id=443 data-nosnippet>443</a>    </span><span class="kw">pub </span>module: ModuleName,
+<a href=#444 id=444 data-nosnippet>444</a>    <span class="doccomment">/// The class, named by the package and module that declared it.
+<a href=#445 id=445 data-nosnippet>445</a>    </span><span class="kw">pub </span>class: QualName,
+<a href=#446 id=446 data-nosnippet>446</a>    <span class="doccomment">/// The name at the front of the instance's head.
+<a href=#447 id=447 data-nosnippet>447</a>    </span><span class="kw">pub </span>head: HeadName,
+<a href=#448 id=448 data-nosnippet>448</a>    <span class="doccomment">/// The member's own name.
+<a href=#449 id=449 data-nosnippet>449</a>    </span><span class="kw">pub </span>member: Name,
+<a href=#450 id=450 data-nosnippet>450</a>    <span class="doccomment">/// How many arguments a call has to supply to be a direct call: the number of
+<a href=#451 id=451 data-nosnippet>451</a>    /// parameters the instance's binding was written with, as [`Declaration::arity`] counts
+<a href=#452 id=452 data-nosnippet>452</a>    /// them.
+<a href=#453 id=453 data-nosnippet>453</a>    </span><span class="kw">pub </span>arity: usize,
+<a href=#454 id=454 data-nosnippet>454</a>}
+<a href=#455 id=455 data-nosnippet>455</a>
+<a href=#456 id=456 data-nosnippet>456</a><span class="comment">// ── Names ─────────────────────────────────────────────────────────────────────
+<a href=#457 id=457 data-nosnippet>457</a>
+<a href=#458 id=458 data-nosnippet>458</a></span><span class="doccomment">/// A reference to a name, and what kind of name it is.
+<a href=#459 id=459 data-nosnippet>459</a>///
+<a href=#460 id=460 data-nosnippet>460</a>/// The kind is the point. `canonical::ExpressionKind` distinguishes a local, a
+<a href=#461 id=461 data-nosnippet>461</a>/// top-level, an imported name and a constructor, and those are four different things to
+<a href=#462 id=462 data-nosnippet>462</a>/// emit — a parameter, a binding in this module's scope, a named import, an object with
+<a href=#463 id=463 data-nosnippet>463</a>/// a `$` field. The spelling left behind once they are flattened to a string is
+<a href=#464 id=464 data-nosnippet>464</a>/// qualified for some of them and not others, so the distinction cannot be recovered
+<a href=#465 id=465 data-nosnippet>465</a>/// afterwards.
+<a href=#466 id=466 data-nosnippet>466</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#467 id=467 data-nosnippet>467</a></span><span class="kw">pub struct </span>Reference {
+<a href=#468 id=468 data-nosnippet>468</a>    <span class="doccomment">/// The spelling inference looks the name up by.
+<a href=#469 id=469 data-nosnippet>469</a>    ///
+<a href=#470 id=470 data-nosnippet>470</a>    /// The typer's environment is a `HashMap&lt;String, Type&gt;` keyed bare for a local and,
+<a href=#471 id=471 data-nosnippet>471</a>    /// for everything else, by the declaration's package and qualified name —
+<a href=#472 id=472 data-nosnippet>472</a>    /// `test-project:Test.echo` — so this is that key and not a display name. A backend
+<a href=#473 id=473 data-nosnippet>473</a>    /// reads [`kind`](Self::kind), which says what the name *is*.
+<a href=#474 id=474 data-nosnippet>474</a>    </span><span class="kw">pub </span>name: String,
+<a href=#475 id=475 data-nosnippet>475</a>    <span class="kw">pub </span>kind: ReferenceKind,
+<a href=#476 id=476 data-nosnippet>476</a>}
+<a href=#477 id=477 data-nosnippet>477</a>
+<a href=#478 id=478 data-nosnippet>478</a><span class="kw">impl </span>Reference {
+<a href=#479 id=479 data-nosnippet>479</a>    <span class="doccomment">/// A reference to a name bound inside the declaration: a parameter, or a name a
+<a href=#480 id=480 data-nosnippet>480</a>    /// pattern introduced.
+<a href=#481 id=481 data-nosnippet>481</a>    </span><span class="kw">pub fn </span>local&lt;S: Into&lt;String&gt;&gt;(name: S) -&gt; Reference {
+<a href=#482 id=482 data-nosnippet>482</a>        Reference {
+<a href=#483 id=483 data-nosnippet>483</a>            name: name.into(),
+<a href=#484 id=484 data-nosnippet>484</a>            kind: ReferenceKind::Local,
+<a href=#485 id=485 data-nosnippet>485</a>        }
+<a href=#486 id=486 data-nosnippet>486</a>    }
+<a href=#487 id=487 data-nosnippet>487</a>}
+<a href=#488 id=488 data-nosnippet>488</a>
+<a href=#489 id=489 data-nosnippet>489</a><span class="doccomment">/// Which of the things a [`Reference`] names: a name bound in the declaration, a
+<a href=#490 id=490 data-nosnippet>490</a>/// declaration of this module, one of another, or a constructor — and, once [`specialise`]
+<a href=#491 id=491 data-nosnippet>491</a>/// has run, a specialisation or an instance's member, which are what a name that
+<a href=#492 id=492 data-nosnippet>492</a>/// asked for an instance becomes.
+<a href=#493 id=493 data-nosnippet>493</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#494 id=494 data-nosnippet>494</a></span><span class="kw">pub enum </span>ReferenceKind {
+<a href=#495 id=495 data-nosnippet>495</a>    <span class="doccomment">/// A parameter of the enclosing declaration, or a name one of its patterns bound.
+<a href=#496 id=496 data-nosnippet>496</a>    /// It is in scope for that declaration alone.
+<a href=#497 id=497 data-nosnippet>497</a>    </span>Local,
+<a href=#498 id=498 data-nosnippet>498</a>    <span class="doccomment">/// A declaration of the module being compiled, named in full.
+<a href=#499 id=499 data-nosnippet>499</a>    </span>TopLevel(QualName),
+<a href=#500 id=500 data-nosnippet>500</a>    <span class="doccomment">/// A declaration of another module, named in full: a named import of whatever that
+<a href=#501 id=501 data-nosnippet>501</a>    /// module emitted.
+<a href=#502 id=502 data-nosnippet>502</a>    ///
+<a href=#503 id=503 data-nosnippet>503</a>    /// The typer checks it against the type that module's interface declares. The
+<a href=#504 id=504 data-nosnippet>504</a>    /// [`PackageName`] is the package that declares the module, which is where the
+<a href=#505 id=505 data-nosnippet>505</a>    /// import is read from: a module's name says which file it is within its package,
+<a href=#506 id=506 data-nosnippet>506</a>    /// and the package says which package's directory holds that file.
+<a href=#507 id=507 data-nosnippet>507</a>    ///
+<a href=#508 id=508 data-nosnippet>508</a>    /// The `usize` is the declaration's arity, read from the same interface
+<a href=#509 id=509 data-nosnippet>509</a>    /// ([`Interface::arities`](crate::Interface::arities)): the count a call has
+<a href=#510 id=510 data-nosnippet>510</a>    /// to supply to be a direct call, exactly as [`Declaration::arity`] is for a
+<a href=#511 id=511 data-nosnippet>511</a>    /// [`TopLevel`](Self::TopLevel) name. A module exports each declaration as the
+<a href=#512 id=512 data-nosnippet>512</a>    /// plain n-ary function it emitted, so an importer needs the arity to call it.
+<a href=#513 id=513 data-nosnippet>513</a>    </span>Foreign(QualName, PackageName, usize),
+<a href=#514 id=514 data-nosnippet>514</a>    <span class="doccomment">/// A union constructor: it builds a tagged value rather than reading a binding.
+<a href=#515 id=515 data-nosnippet>515</a>    </span>Constructor(Constructor),
+<a href=#516 id=516 data-nosnippet>516</a>    <span class="doccomment">/// A [`Specialisation`] of this module: a place in [`Module::specialisations`]. What
+<a href=#517 id=517 data-nosnippet>517</a>    /// [`specialise`] makes of a reference to a constrained declaration, and of a class
+<a href=#518 id=518 data-nosnippet>518</a>    /// member whose instance has a context.
+<a href=#519 id=519 data-nosnippet>519</a>    </span>Specialised(usize),
+<a href=#520 id=520 data-nosnippet>520</a>    <span class="doccomment">/// A member of an instance that has no context ([`InstanceMember`]). What
+<a href=#521 id=521 data-nosnippet>521</a>    /// [`specialise`] makes of a class member used at a type that has one.
+<a href=#522 id=522 data-nosnippet>522</a>    ///
+<a href=#523 id=523 data-nosnippet>523</a>    /// Boxed: it names a class, a head and a module in full, and would make every other kind
+<a href=#524 id=524 data-nosnippet>524</a>    /// of reference as large.
+<a href=#525 id=525 data-nosnippet>525</a>    </span>InstanceMember(Box&lt;InstanceMember&gt;),
+<a href=#526 id=526 data-nosnippet>526</a>}
+<a href=#527 id=527 data-nosnippet>527</a>
+<a href=#528 id=528 data-nosnippet>528</a><span class="doccomment">/// A constructor, and its place in the declaration that declares it.
+<a href=#529 id=529 data-nosnippet>529</a>///
+<a href=#530 id=530 data-nosnippet>530</a>/// Both targets need all four: the name is the `$` field's value and the WIT case name,
+<a href=#531 id=531 data-nosnippet>531</a>/// the index is the case's position in the `variant`, the arity says how many arguments
+<a href=#532 id=532 data-nosnippet>532</a>/// a saturated application supplies, and the union is which declaration the case belongs
+<a href=#533 id=533 data-nosnippet>533</a>/// to.
+<a href=#534 id=534 data-nosnippet>534</a></span><span class="attr">#[derive(Debug, Clone, PartialEq, Eq)]
+<a href=#535 id=535 data-nosnippet>535</a></span><span class="kw">pub struct </span>Constructor {
+<a href=#536 id=536 data-nosnippet>536</a>    <span class="doccomment">/// The union this constructor builds, named by the package and module that
+<a href=#537 id=537 data-nosnippet>537</a>    /// declared it.
+<a href=#538 id=538 data-nosnippet>538</a>    </span><span class="kw">pub </span>union: QualName,
+<a href=#539 id=539 data-nosnippet>539</a>    <span class="doccomment">/// The constructor's own name, unqualified.
+<a href=#540 id=540 data-nosnippet>540</a>    </span><span class="kw">pub </span>name: Name,
+<a href=#541 id=541 data-nosnippet>541</a>    <span class="doccomment">/// Its position in that union's declaration, counted from zero.
+<a href=#542 id=542 data-nosnippet>542</a>    </span><span class="kw">pub </span>index: usize,
+<a href=#543 id=543 data-nosnippet>543</a>    <span class="doccomment">/// How many arguments it takes.
+<a href=#544 id=544 data-nosnippet>544</a>    </span><span class="kw">pub </span>arity: usize,
+<a href=#545 id=545 data-nosnippet>545</a>}
+<a href=#546 id=546 data-nosnippet>546</a>
+<a href=#547 id=547 data-nosnippet>547</a><span class="doccomment">/// Whether an application supplies every argument its callee takes.
+<a href=#548 id=548 data-nosnippet>548</a>///
+<a href=#549 id=549 data-nosnippet>549</a>/// A saturated application at a callee whose arity is known emits as a direct call;
+<a href=#550 id=550 data-nosnippet>550</a>/// everything else goes through the runtime's `$curry` helper ([`DEC-18` decision
+<a href=#551 id=551 data-nosnippet>551</a>/// 3](../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
+<a href=#552 id=552 data-nosnippet>552</a>/// An [`Apply`](TermKind::Apply) node supplies one argument, so this is a property of a
+<a href=#553 id=553 data-nosnippet>553</a>/// node within the application spine and not of the spine as a whole: `f a b` at a
+<a href=#554 id=554 data-nosnippet>554</a>/// two-parameter `f` is [`Partial`](Saturation::Partial) on the inner node and
+<a href=#555 id=555 data-nosnippet>555</a>/// [`Saturated`](Saturation::Saturated) on the outer one.
+<a href=#556 id=556 data-nosnippet>556</a></span><span class="attr">#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+<a href=#557 id=557 data-nosnippet>557</a></span><span class="kw">pub enum </span>Saturation {
+<a href=#558 id=558 data-nosnippet>558</a>    <span class="doccomment">/// This node supplies the last of the arguments the callee takes.
+<a href=#559 id=559 data-nosnippet>559</a>    </span>Saturated,
+<a href=#560 id=560 data-nosnippet>560</a>    <span class="doccomment">/// It does not — either because arguments are still missing, because the spine has
+<a href=#561 id=561 data-nosnippet>561</a>    /// already run past the callee's arity, or because the callee has no arity at all. A
+<a href=#562 id=562 data-nosnippet>562</a>    /// callee that is a parameter, or any other expression that is not a name, is a value
+<a href=#563 id=563 data-nosnippet>563</a>    /// rather than a declaration and has no arity.
+<a href=#564 id=564 data-nosnippet>564</a>    </span>Partial,
+<a href=#565 id=565 data-nosnippet>565</a>}
+<a href=#566 id=566 data-nosnippet>566</a>
+<a href=#567 id=567 data-nosnippet>567</a><span class="comment">// ── Terms ─────────────────────────────────────────────────────────────────────
+<a href=#568 id=568 data-nosnippet>568</a>
+<a href=#569 id=569 data-nosnippet>569</a></span><span class="doccomment">/// An untyped term, and where the expression it was translated from was written.
+<a href=#570 id=570 data-nosnippet>570</a>///
+<a href=#571 id=571 data-nosnippet>571</a>/// In zelkova that source is the canonical AST. The span is what every constraint
+<a href=#572 id=572 data-nosnippet>572</a>/// generated from this term inherits, and therefore what a type error draws its
+<a href=#573 id=573 data-nosnippet>573</a>/// caret under; [`NodeSpan::none`] — a term built by hand, in a test — costs nothing
+<a href=#574 id=574 data-nosnippet>574</a>/// but the caret.
+<a href=#575 id=575 data-nosnippet>575</a></span><span class="attr">#[derive(Debug, Clone)] </span><span class="comment">// TODO Remove clone when not needed anymore
+<a href=#576 id=576 data-nosnippet>576</a></span><span class="kw">pub struct </span>Term {
+<a href=#577 id=577 data-nosnippet>577</a>    <span class="kw">pub </span>span: NodeSpan,
+<a href=#578 id=578 data-nosnippet>578</a>    <span class="kw">pub </span>kind: TermKind,
+<a href=#579 id=579 data-nosnippet>579</a>}
+<a href=#580 id=580 data-nosnippet>580</a>
+<a href=#581 id=581 data-nosnippet>581</a><span class="kw">impl </span>Term {
+<a href=#582 id=582 data-nosnippet>582</a>    <span class="doccomment">/// A term with no position: hand-built, never translated from source.
+<a href=#583 id=583 data-nosnippet>583</a>    </span><span class="attr">#[cfg(test)]
+<a href=#584 id=584 data-nosnippet>584</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>bare(kind: TermKind) -&gt; Term {
+<a href=#585 id=585 data-nosnippet>585</a>        Term {
+<a href=#586 id=586 data-nosnippet>586</a>            span: NodeSpan::none(),
+<a href=#587 id=587 data-nosnippet>587</a>            kind,
+<a href=#588 id=588 data-nosnippet>588</a>        }
+<a href=#589 id=589 data-nosnippet>589</a>    }
+<a href=#590 id=590 data-nosnippet>590</a>}
+<a href=#591 id=591 data-nosnippet>591</a>
+<a href=#592 id=592 data-nosnippet>592</a><span class="attr">#[derive(Debug, Clone)] </span><span class="comment">// TODO Remove clone when not needed anymore
+<a href=#593 id=593 data-nosnippet>593</a></span><span class="kw">pub enum </span>TermKind {
+<a href=#594 id=594 data-nosnippet>594</a>    <span class="comment">// literals
+<a href=#595 id=595 data-nosnippet>595</a>    </span><span class="doccomment">/// An integer literal, at the width [`Int` *is*](../../docs/spec/evaluation-semantics.md#numbers)
+<a href=#596 id=596 data-nosnippet>596</a>    /// ([`DEC-16`](../../docs/decisions/dec-16.md)). Inference never reads the value
+<a href=#597 id=597 data-nosnippet>597</a>    /// — every integer literal is an `Int` whatever its value — but code generation does.
+<a href=#598 id=598 data-nosnippet>598</a>    </span>Int(i64),
+<a href=#599 id=599 data-nosnippet>599</a>    Char(char),
+<a href=#600 id=600 data-nosnippet>600</a>    <span class="doccomment">/// A string literal's value, its escape sequences already read.
+<a href=#601 id=601 data-nosnippet>601</a>    </span>String(String),
+<a href=#602 id=602 data-nosnippet>602</a>    Float(f64),
+<a href=#603 id=603 data-nosnippet>603</a>    Identifier(Reference), <span class="comment">// VAR
+<a href=#604 id=604 data-nosnippet>604</a>    </span>Fun {
+<a href=#605 id=605 data-nosnippet>605</a>        param: String,
+<a href=#606 id=606 data-nosnippet>606</a>        body: Box&lt;Term&gt;,
+<a href=#607 id=607 data-nosnippet>607</a>    },
+<a href=#608 id=608 data-nosnippet>608</a>    Apply {
+<a href=#609 id=609 data-nosnippet>609</a>        fun: Box&lt;Term&gt;,
+<a href=#610 id=610 data-nosnippet>610</a>        arg: Box&lt;Term&gt;,
+<a href=#611 id=611 data-nosnippet>611</a>        saturation: Saturation,
+<a href=#612 id=612 data-nosnippet>612</a>    },
+<a href=#613 id=613 data-nosnippet>613</a>    If {
+<a href=#614 id=614 data-nosnippet>614</a>        cond: Box&lt;Term&gt;,
+<a href=#615 id=615 data-nosnippet>615</a>        true_branch: Box&lt;Term&gt;,
+<a href=#616 id=616 data-nosnippet>616</a>        false_branch: Box&lt;Term&gt;,
+<a href=#617 id=617 data-nosnippet>617</a>    },
+<a href=#618 id=618 data-nosnippet>618</a>    Let {
+<a href=#619 id=619 data-nosnippet>619</a>        binding: String,
+<a href=#620 id=620 data-nosnippet>620</a>        value: Box&lt;Term&gt;,
+<a href=#621 id=621 data-nosnippet>621</a>        body: Box&lt;Term&gt;,
+<a href=#622 id=622 data-nosnippet>622</a>    },
+<a href=#623 id=623 data-nosnippet>623</a>    Tuple(Tuple&lt;Term&gt;),
+<a href=#624 id=624 data-nosnippet>624</a>    <span class="doccomment">/// The unit value, `()`.
+<a href=#625 id=625 data-nosnippet>625</a>    </span>Unit,
+<a href=#626 id=626 data-nosnippet>626</a>    Case {
+<a href=#627 id=627 data-nosnippet>627</a>        scrutinee: Box&lt;Term&gt;,
+<a href=#628 id=628 data-nosnippet>628</a>        branches: Vec&lt;(TermPattern, Box&lt;Term&gt;)&gt;,
+<a href=#629 id=629 data-nosnippet>629</a>        <span class="doccomment">/// What the source wrote that this match was built from.
+<a href=#630 id=630 data-nosnippet>630</a>        </span>form: CaseForm,
+<a href=#631 id=631 data-nosnippet>631</a>    },
+<a href=#632 id=632 data-nosnippet>632</a>    <span class="doccomment">/// A name that did not resolve, translated from `canonical::ExpressionKind::Hole`.
+<a href=#633 id=633 data-nosnippet>633</a>    /// Inference gives it a fresh type variable and constrains nothing by it, so its type
+<a href=#634 id=634 data-nosnippet>634</a>    /// is whatever the node around it requires ([`DEC-23` decision
+<a href=#635 id=635 data-nosnippet>635</a>    /// 6](../../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
+<a href=#636 id=636 data-nosnippet>636</a>    </span>Hole,
+<a href=#637 id=637 data-nosnippet>637</a>    <span class="doccomment">/// A [record](../../docs/spec/records.md#building-a-record), its fields in the order
+<a href=#638 id=638 data-nosnippet>638</a>    /// they were written. Only its type is a set of fields; the term keeps the order,
+<a href=#639 id=639 data-nosnippet>639</a>    /// since [fields are evaluated in it](../../docs/spec/evaluation-semantics.md#order-of-evaluation).
+<a href=#640 id=640 data-nosnippet>640</a>    </span>Record(Vec&lt;Field&lt;Term&gt;&gt;),
+<a href=#641 id=641 data-nosnippet>641</a>    <span class="doccomment">/// An [update](../../docs/spec/records.md#updating-a-record): the record updated, and
+<a href=#642 id=642 data-nosnippet>642</a>    /// the fields replaced in it in the order they were written.
+<a href=#643 id=643 data-nosnippet>643</a>    </span>Update {
+<a href=#644 id=644 data-nosnippet>644</a>        record: Box&lt;Term&gt;,
+<a href=#645 id=645 data-nosnippet>645</a>        fields: Vec&lt;Field&lt;Term&gt;&gt;,
+<a href=#646 id=646 data-nosnippet>646</a>    },
+<a href=#647 id=647 data-nosnippet>647</a>    <span class="doccomment">/// A [field access](../../docs/spec/records.md#reading-a-field), `record.label`.
+<a href=#648 id=648 data-nosnippet>648</a>    </span>Access {
+<a href=#649 id=649 data-nosnippet>649</a>        record: Box&lt;Term&gt;,
+<a href=#650 id=650 data-nosnippet>650</a>        label: Name,
+<a href=#651 id=651 data-nosnippet>651</a>        <span class="doccomment">/// Where the label alone was written.
+<a href=#652 id=652 data-nosnippet>652</a>        </span>label_span: NodeSpan,
+<a href=#653 id=653 data-nosnippet>653</a>    },
+<a href=#654 id=654 data-nosnippet>654</a>    <span class="doccomment">/// An [accessor](../../docs/spec/records.md#the-accessor), `.label`: the function
+<a href=#655 id=655 data-nosnippet>655</a>    /// reading that field of whichever record it is applied to.
+<a href=#656 id=656 data-nosnippet>656</a>    </span>Accessor {
+<a href=#657 id=657 data-nosnippet>657</a>        label: Name,
+<a href=#658 id=658 data-nosnippet>658</a>        <span class="doccomment">/// Where the label alone was written; the term's own span covers the `.` too.
+<a href=#659 id=659 data-nosnippet>659</a>        </span>label_span: NodeSpan,
+<a href=#660 id=660 data-nosnippet>660</a>    },
+<a href=#661 id=661 data-nosnippet>661</a>}
+<a href=#662 id=662 data-nosnippet>662</a>
+<a href=#663 id=663 data-nosnippet>663</a><span class="doccomment">/// One field of a record or an update — [`TermKind::Record`], [`TermKind::Update`] and
+<a href=#664 id=664 data-nosnippet>664</a>/// their [typed](TypedTermKind::Record) counterparts — over the term type `T` of the
+<a href=#665 id=665 data-nosnippet>665</a>/// tree it is in; and, as a `Field&lt;SubPattern&gt;`, one entry of a
+<a href=#666 id=666 data-nosnippet>666</a>/// [record pattern](TermPatternKind::Record).
+<a href=#667 id=667 data-nosnippet>667</a></span><span class="attr">#[derive(Debug, Clone)]
+<a href=#668 id=668 data-nosnippet>668</a></span><span class="kw">pub struct </span>Field&lt;T&gt; {
+<a href=#669 id=669 data-nosnippet>669</a>    <span class="kw">pub </span>label: Name,
+<a href=#670 id=670 data-nosnippet>670</a>    <span class="doccomment">/// Where the label alone was written; the value carries its own span. For a record
+<a href=#671 id=671 data-nosnippet>671</a>    /// pattern's `{ label }` shorthand the two are the same text.
+<a href=#672 id=672 data-nosnippet>672</a>    </span><span class="kw">pub </span>label_span: NodeSpan,
+<a href=#673 id=673 data-nosnippet>673</a>    <span class="kw">pub </span>value: T,
+<a href=#674 id=674 data-nosnippet>674</a>}
+<a href=#675 id=675 data-nosnippet>675</a>
+<a href=#676 id=676 data-nosnippet>676</a><span class="doccomment">/// What the source wrote that a `Case` term was built from.
+<a href=#677 id=677 data-nosnippet>677</a>///
+<a href=#678 id=678 data-nosnippet>678</a>/// A parameter written as a pattern — `first (x, _) = x` — is a match like any other,
+<a href=#679 id=679 data-nosnippet>679</a>/// and it is translated as one: the parameter becomes a plain one named by
+<a href=#680 id=680 data-nosnippet>680</a>/// `pattern_parameter`, and the declaration's body a single-branch `Case` on it. So a
+<a href=#681 id=681 data-nosnippet>681</a>/// backend lowers a pattern in either position the same way, and the term language keeps
+<a href=#682 id=682 data-nosnippet>682</a>/// one binding construct, [`TermKind::Fun`], that only ever binds a name.
+<a href=#683 id=683 data-nosnippet>683</a>///
+<a href=#684 id=684 data-nosnippet>684</a>/// This is what lets a diagnostic about the match speak about what the user wrote: a
+<a href=#685 id=685 data-nosnippet>685</a>/// type error in a parameter's pattern names the parameter and not a `case`, one in the
+<a href=#686 id=686 data-nosnippet>686</a>/// body under it names the declaration's body and not a `case` branch, and a
+<a href=#687 id=687 data-nosnippet>687</a>/// backend refusing the match can say which of the two it is refusing.
+<a href=#688 id=688 data-nosnippet>688</a></span><span class="attr">#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+<a href=#689 id=689 data-nosnippet>689</a></span><span class="kw">pub enum </span>CaseForm {
+<a href=#690 id=690 data-nosnippet>690</a>    <span class="doccomment">/// A `case … of` expression.
+<a href=#691 id=691 data-nosnippet>691</a>    </span>Expression,
+<a href=#692 id=692 data-nosnippet>692</a>    <span class="doccomment">/// A parameter the declaration wrote as a pattern. The `Case` has exactly one
+<a href=#693 id=693 data-nosnippet>693</a>    /// branch, and its scrutinee is the local reference `pattern_parameter` names.
+<a href=#694 id=694 data-nosnippet>694</a>    </span>Parameter,
+<a href=#695 id=695 data-nosnippet>695</a>}
+<a href=#696 id=696 data-nosnippet>696</a>
+<a href=#697 id=697 data-nosnippet>697</a><span class="doccomment">/// The name a parameter written as a pattern is bound under: `$` and the parameter's
+<a href=#698 id=698 data-nosnippet>698</a>/// position in the declaration, counted from zero — `$0`, `$1`, ….
+<a href=#699 id=699 data-nosnippet>699</a>///
+<a href=#700 id=700 data-nosnippet>700</a>/// It is the scrutinee of the [`CaseForm::Parameter`] match the parameter becomes, and
+<a href=#701 id=701 data-nosnippet>701</a>/// nothing else refers to it. It cannot meet a name the source wrote, because a Zelkova
+<a href=#702 id=702 data-nosnippet>702</a>/// identifier never contains a `$`, and it cannot meet another parameter's, because two
+<a href=#703 id=703 data-nosnippet>703</a>/// parameters of one declaration never share a position. A declaration's parameters are
+<a href=#704 id=704 data-nosnippet>704</a>/// the only names its body is in scope of besides the ones a pattern binds, which are
+<a href=#705 id=705 data-nosnippet>705</a>/// source names, so that is every name it could meet.
+<a href=#706 id=706 data-nosnippet>706</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>pattern_parameter(position: usize) -&gt; String {
+<a href=#707 id=707 data-nosnippet>707</a>    <span class="macro">format!</span>(<span class="string">"${}"</span>, position)
+<a href=#708 id=708 data-nosnippet>708</a>}
+<a href=#709 id=709 data-nosnippet>709</a>
+<a href=#710 id=710 data-nosnippet>710</a><span class="doccomment">/// Simplified pattern used inside a [`Term`], and where it was written.
+<a href=#711 id=711 data-nosnippet>711</a>///
+<a href=#712 id=712 data-nosnippet>712</a>/// Same shape as the parser and canonical ASTs — a span beside a kind — so a reader
+<a href=#713 id=713 data-nosnippet>713</a>/// matches on `&amp;p.kind`.
+<a href=#714 id=714 data-nosnippet>714</a></span><span class="attr">#[derive(Debug, Clone)]
+<a href=#715 id=715 data-nosnippet>715</a></span><span class="kw">pub struct </span>TermPattern {
+<a href=#716 id=716 data-nosnippet>716</a>    <span class="kw">pub </span>span: NodeSpan,
+<a href=#717 id=717 data-nosnippet>717</a>    <span class="kw">pub </span>kind: TermPatternKind,
+<a href=#718 id=718 data-nosnippet>718</a>}
+<a href=#719 id=719 data-nosnippet>719</a>
+<a href=#720 id=720 data-nosnippet>720</a><span class="attr">#[derive(Debug, Clone)]
+<a href=#721 id=721 data-nosnippet>721</a></span><span class="kw">pub enum </span>TermPatternKind {
+<a href=#722 id=722 data-nosnippet>722</a>    <span class="doccomment">/// Matches anything without binding.
+<a href=#723 id=723 data-nosnippet>723</a>    </span>Anything,
+<a href=#724 id=724 data-nosnippet>724</a>    <span class="doccomment">/// Binds the scrutinee type to this name.
+<a href=#725 id=725 data-nosnippet>725</a>    </span>Bind(String),
+<a href=#726 id=726 data-nosnippet>726</a>    <span class="doccomment">/// Matches one specific value; constrains the scrutinee to the type carried here
+<a href=#727 id=727 data-nosnippet>727</a>    /// and, unlike the type alone, says which value of it.
+<a href=#728 id=728 data-nosnippet>728</a>    ///
+<a href=#729 id=729 data-nosnippet>729</a>    /// `tpe` is a [`Type::Literal`] for an `Int`, `Float`, `Char` or `String` pattern, and the
+<a href=#730 id=730 data-nosnippet>730</a>    /// [`Type::Adt`] `typer::bool_type` builds for a `Basics.True`/`Basics.False` one —
+<a href=#731 id=731 data-nosnippet>731</a>    /// `Bool` is the union `Basics` declares, not a literal type. Two patterns of that
+<a href=#732 id=732 data-nosnippet>732</a>    /// same kind — two `Int`s, say — share that one type, so `value` is what tells `1`
+<a href=#733 id=733 data-nosnippet>733</a>    /// from `2`, or `True` from `False`; [`decision_tree`] reads it to build the [`Outcome`] a
+<a href=#734 id=734 data-nosnippet>734</a>    /// [`Decision::Test`] checks for.
+<a href=#735 id=735 data-nosnippet>735</a>    </span>Literal { tpe: Type, value: LiteralValue },
+<a href=#736 id=736 data-nosnippet>736</a>    <span class="doccomment">/// Matches an ADT constructor; carries the fresh ADT args and one sub-pattern per
+<a href=#737 id=737 data-nosnippet>737</a>    /// argument.
+<a href=#738 id=738 data-nosnippet>738</a>    </span>Constructor {
+<a href=#739 id=739 data-nosnippet>739</a>        <span class="doccomment">/// Which constructor, and where it sits in its declaration. `ctor.union` is the
+<a href=#740 id=740 data-nosnippet>740</a>        /// name the [`Type::Adt`] this pattern constrains the scrutinee to is built from.
+<a href=#741 id=741 data-nosnippet>741</a>        </span>ctor: Constructor,
+<a href=#742 id=742 data-nosnippet>742</a>        adt_args: Vec&lt;Type&gt;,
+<a href=#743 id=743 data-nosnippet>743</a>        <span class="doccomment">/// One per argument the pattern writes, in order, so an argument's place in
+<a href=#744 id=744 data-nosnippet>744</a>        /// this `Vec` is its position in the constructor.
+<a href=#745 id=745 data-nosnippet>745</a>        </span>args: Vec&lt;SubPattern&gt;,
+<a href=#746 id=746 data-nosnippet>746</a>    },
+<a href=#747 id=747 data-nosnippet>747</a>    <span class="doccomment">/// Matches a tuple of two or three elements; carries one sub-pattern per element.
+<a href=#748 id=748 data-nosnippet>748</a>    </span>Tuple {
+<a href=#749 id=749 data-nosnippet>749</a>        <span class="doccomment">/// One per element, in order. The matched value's tuple type is built from
+<a href=#750 id=750 data-nosnippet>750</a>        /// their types.
+<a href=#751 id=751 data-nosnippet>751</a>        </span>elements: Tuple&lt;SubPattern&gt;,
+<a href=#752 id=752 data-nosnippet>752</a>    },
+<a href=#753 id=753 data-nosnippet>753</a>    <span class="doccomment">/// Matches the one value of the unit type: constrains the matched value to
+<a href=#754 id=754 data-nosnippet>754</a>    /// [`Type::Unit`] and binds nothing. Since that
+<a href=#755 id=755 data-nosnippet>755</a>    /// type has a single value, [`decision_tree`] builds no test for it.
+<a href=#756 id=756 data-nosnippet>756</a>    </span>Unit,
+<a href=#757 id=757 data-nosnippet>757</a>    <span class="doccomment">/// A constructor pattern whose constructor did not resolve, translated from
+<a href=#758 id=758 data-nosnippet>758</a>    /// `canonical::PatternKind::Hole`; carries one sub-pattern per argument written after
+<a href=#759 id=759 data-nosnippet>759</a>    /// it, each at a fresh type.
+<a href=#760 id=760 data-nosnippet>760</a>    ///
+<a href=#761 id=761 data-nosnippet>761</a>    /// It places no constraint on the matched value, since nothing says what type the
+<a href=#762 id=762 data-nosnippet>762</a>    /// constructor would have built, and binds what its arguments bind, as a constructor's
+<a href=#763 id=763 data-nosnippet>763</a>    /// do. [`decision_tree`] tests nothing for it, as for
+<a href=#764 id=764 data-nosnippet>764</a>    /// [`Anything`](Self::Anything), and no backend emits a tree built from one.
+<a href=#765 id=765 data-nosnippet>765</a>    </span>Hole { args: Vec&lt;SubPattern&gt; },
+<a href=#766 id=766 data-nosnippet>766</a>    <span class="doccomment">/// A [record pattern](../../docs/spec/records.md#record-patterns): one entry per label
+<a href=#767 id=767 data-nosnippet>767</a>    /// it writes, in the order written, each the label, where the label alone was written,
+<a href=#768 id=768 data-nosnippet>768</a>    /// and the sub-pattern that field's value is matched against, at the field's type.
+<a href=#769 id=769 data-nosnippet>769</a>    /// The `{ label }` shorthand arrives here as `label = label`.
+<a href=#770 id=770 data-nosnippet>770</a>    ///
+<a href=#771 id=771 data-nosnippet>771</a>    /// It names a **subset** of the record's fields, so no record type is built from
+<a href=#772 id=772 data-nosnippet>772</a>    /// its entries: the type of the value it is matched against comes from elsewhere in
+<a href=#773 id=773 data-nosnippet>773</a>    /// the declaration, and each entry is read against it once it is known
+<a href=#774 id=774 data-nosnippet>774</a>    /// (`typer::FieldConstraint`). A record has one shape, so [`decision_tree`] tests
+<a href=#775 id=775 data-nosnippet>775</a>    /// nothing for the pattern itself and goes on to each entry by a
+<a href=#776 id=776 data-nosnippet>776</a>    /// [`Step::Field`]. It is refutable exactly when one of its entries is, and nothing
+<a href=#777 id=777 data-nosnippet>777</a>    /// reads it as irrefutable for being a record.
+<a href=#778 id=778 data-nosnippet>778</a>    </span>Record { fields: Vec&lt;Field&lt;SubPattern&gt;&gt; },
+<a href=#779 id=779 data-nosnippet>779</a>}
+<a href=#780 id=780 data-nosnippet>780</a>
+<a href=#781 id=781 data-nosnippet>781</a><span class="doccomment">/// A pattern written in a position inside another one — a constructor's argument, a
+<a href=#782 id=782 data-nosnippet>782</a>/// tuple's element or a record pattern's entry — and the type of the value found there.
+<a href=#783 id=783 data-nosnippet>783</a>///
+<a href=#784 id=784 data-nosnippet>784</a>/// The position's type travels with the pattern because a sub-pattern has no scrutinee
+<a href=#785 id=785 data-nosnippet>785</a>/// of its own to take one from: a variable written there binds a value of this type, and
+<a href=#786 id=786 data-nosnippet>786</a>/// any other pattern written there constrains this type the way a `case` branch's
+<a href=#787 id=787 data-nosnippet>787</a>/// pattern constrains the scrutinee's.
+<a href=#788 id=788 data-nosnippet>788</a>///
+<a href=#789 id=789 data-nosnippet>789</a>/// The pattern may be any [`TermPatternKind`], itself holding sub-patterns to any depth:
+<a href=#790 id=790 data-nosnippet>790</a>/// `typer::translate_pattern` translates one written here as it does one at the top.
+<a href=#791 id=791 data-nosnippet>791</a></span><span class="attr">#[derive(Debug, Clone)]
+<a href=#792 id=792 data-nosnippet>792</a></span><span class="kw">pub struct </span>SubPattern {
+<a href=#793 id=793 data-nosnippet>793</a>    <span class="kw">pub </span>tpe: Type,
+<a href=#794 id=794 data-nosnippet>794</a>    <span class="kw">pub </span>pattern: TermPattern,
+<a href=#795 id=795 data-nosnippet>795</a>}
+<a href=#796 id=796 data-nosnippet>796</a>
+<a href=#797 id=797 data-nosnippet>797</a><span class="kw">impl </span>TermPattern {
+<a href=#798 id=798 data-nosnippet>798</a>    <span class="doccomment">/// Every name this pattern binds, at any depth, in source order, with the type of
+<a href=#799 id=799 data-nosnippet>799</a>    /// the value it binds. A variable written at the top is bound at `scrutinee`, the
+<a href=#800 id=800 data-nosnippet>800</a>    /// type of the value the pattern is matched against.
+<a href=#801 id=801 data-nosnippet>801</a>    </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>bindings(<span class="kw-2">&amp;</span><span class="self">self</span>, scrutinee: <span class="kw-2">&amp;</span>Type) -&gt; Vec&lt;(String, Type)&gt; {
+<a href=#802 id=802 data-nosnippet>802</a>        <span class="kw">let </span><span class="kw-2">mut </span>bindings = Vec::new();
+<a href=#803 id=803 data-nosnippet>803</a>        <span class="self">self</span>.collect_bindings(scrutinee, <span class="kw-2">&amp;mut </span>bindings);
+<a href=#804 id=804 data-nosnippet>804</a>        bindings
+<a href=#805 id=805 data-nosnippet>805</a>    }
+<a href=#806 id=806 data-nosnippet>806</a>
+<a href=#807 id=807 data-nosnippet>807</a>    <span class="kw">fn </span>collect_bindings(<span class="kw-2">&amp;</span><span class="self">self</span>, tpe: <span class="kw-2">&amp;</span>Type, bindings: <span class="kw-2">&amp;mut </span>Vec&lt;(String, Type)&gt;) {
+<a href=#808 id=808 data-nosnippet>808</a>        <span class="kw">match </span><span class="kw-2">&amp;</span><span class="self">self</span>.kind {
+<a href=#809 id=809 data-nosnippet>809</a>            TermPatternKind::Anything | TermPatternKind::Literal { .. } | TermPatternKind::Unit =&gt; {
+<a href=#810 id=810 data-nosnippet>810</a>            }
+<a href=#811 id=811 data-nosnippet>811</a>            TermPatternKind::Bind(name) =&gt; bindings.push((name.clone(), tpe.clone())),
+<a href=#812 id=812 data-nosnippet>812</a>            TermPatternKind::Constructor { args, .. } | TermPatternKind::Hole { args } =&gt; {
+<a href=#813 id=813 data-nosnippet>813</a>                <span class="kw">for </span>arg <span class="kw">in </span>args {
+<a href=#814 id=814 data-nosnippet>814</a>                    arg.pattern.collect_bindings(<span class="kw-2">&amp;</span>arg.tpe, bindings);
+<a href=#815 id=815 data-nosnippet>815</a>                }
+<a href=#816 id=816 data-nosnippet>816</a>            }
+<a href=#817 id=817 data-nosnippet>817</a>            TermPatternKind::Tuple { elements } =&gt; {
+<a href=#818 id=818 data-nosnippet>818</a>                <span class="kw">for </span>element <span class="kw">in </span>elements.iter() {
+<a href=#819 id=819 data-nosnippet>819</a>                    element.pattern.collect_bindings(<span class="kw-2">&amp;</span>element.tpe, bindings);
+<a href=#820 id=820 data-nosnippet>820</a>                }
+<a href=#821 id=821 data-nosnippet>821</a>            }
+<a href=#822 id=822 data-nosnippet>822</a>            <span class="comment">// At the field's type, which is the entry's own: a name bound here is not
+<a href=#823 id=823 data-nosnippet>823</a>            // known to be of any type until the record type is, and is solved when the
+<a href=#824 id=824 data-nosnippet>824</a>            // entry is read against it.
+<a href=#825 id=825 data-nosnippet>825</a>            </span>TermPatternKind::Record { fields } =&gt; {
+<a href=#826 id=826 data-nosnippet>826</a>                <span class="kw">for </span>field <span class="kw">in </span>fields {
+<a href=#827 id=827 data-nosnippet>827</a>                    field
+<a href=#828 id=828 data-nosnippet>828</a>                        .value
+<a href=#829 id=829 data-nosnippet>829</a>                        .pattern
+<a href=#830 id=830 data-nosnippet>830</a>                        .collect_bindings(<span class="kw-2">&amp;</span>field.value.tpe, bindings);
+<a href=#831 id=831 data-nosnippet>831</a>                }
+<a href=#832 id=832 data-nosnippet>832</a>            }
+<a href=#833 id=833 data-nosnippet>833</a>        }
+<a href=#834 id=834 data-nosnippet>834</a>    }
+<a href=#835 id=835 data-nosnippet>835</a>}
+<a href=#836 id=836 data-nosnippet>836</a>
+<a href=#837 id=837 data-nosnippet>837</a><span class="doccomment">/// The concrete value a [`TermPatternKind::Literal`] pattern tests for.
+<a href=#838 id=838 data-nosnippet>838</a>///
+<a href=#839 id=839 data-nosnippet>839</a>/// The pattern's own `tpe` cannot tell `1` from `2`, or `'a'` from `'b'`: both share one
+<a href=#840 id=840 data-nosnippet>840</a>/// type, and only this says which value the scrutinee has to equal. A `Float` is equal
+<a href=#841 id=841 data-nosnippet>841</a>/// to a scrutinee as IEEE 754 compares them ([What structural equality
+<a href=#842 id=842 data-nosnippet>842</a>/// computes](../../../docs/spec/evaluation-semantics.md#what-structural-equality-computes)),
+<a href=#843 id=843 data-nosnippet>843</a>/// so `0.0` equals `-0.0`. The compiler accepts no negative pattern literal, so no
+<a href=#844 id=844 data-nosnippet>844</a>/// pattern holds `-0.0`; no literal is `nan`, so a `nan` scrutinee equals none. A `Bool` is tested
+<a href=#845 id=845 data-nosnippet>845</a>/// by its value too: `Basics`' own `True`/`False` constructors arrive here as a
+<a href=#846 id=846 data-nosnippet>846</a>/// `Bool(..)`, never as a [`TermPatternKind::Constructor`] (`typer::translate_pattern`
+<a href=#847 id=847 data-nosnippet>847</a>/// does the normalising).
+<a href=#848 id=848 data-nosnippet>848</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#849 id=849 data-nosnippet>849</a></span><span class="kw">pub enum </span>LiteralValue {
+<a href=#850 id=850 data-nosnippet>850</a>    Bool(bool),
+<a href=#851 id=851 data-nosnippet>851</a>    Int(i64),
+<a href=#852 id=852 data-nosnippet>852</a>    Float(f64),
+<a href=#853 id=853 data-nosnippet>853</a>    Char(char),
+<a href=#854 id=854 data-nosnippet>854</a>    String(String),
+<a href=#855 id=855 data-nosnippet>855</a>}
+<a href=#856 id=856 data-nosnippet>856</a>
+<a href=#857 id=857 data-nosnippet>857</a><span class="attr">#[derive(Debug, Clone)]
+<a href=#858 id=858 data-nosnippet>858</a></span><span class="doccomment">/// Bind a name and a type together.
+<a href=#859 id=859 data-nosnippet>859</a>/// Used in function and let expression
+<a href=#860 id=860 data-nosnippet>860</a></span><span class="kw">pub struct </span>TypeBinder {
+<a href=#861 id=861 data-nosnippet>861</a>    <span class="kw">pub </span>name: String,
+<a href=#862 id=862 data-nosnippet>862</a>    <span class="kw">pub </span>tpe: Type,
+<a href=#863 id=863 data-nosnippet>863</a>}
+<a href=#864 id=864 data-nosnippet>864</a>
+<a href=#865 id=865 data-nosnippet>865</a><span class="kw">impl </span>TypeBinder {
+<a href=#866 id=866 data-nosnippet>866</a>    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>new(name: String, tpe: Type) -&gt; TypeBinder {
+<a href=#867 id=867 data-nosnippet>867</a>        TypeBinder { name, tpe }
+<a href=#868 id=868 data-nosnippet>868</a>    }
+<a href=#869 id=869 data-nosnippet>869</a>}
+<a href=#870 id=870 data-nosnippet>870</a>
+<a href=#871 id=871 data-nosnippet>871</a><span class="doccomment">/// Like a [Term] but with an associated [Type], and still with its position.
+<a href=#872 id=872 data-nosnippet>872</a>/// Any term introducing a name will have a TypeBinder instead.
+<a href=#873 id=873 data-nosnippet>873</a>///
+<a href=#874 id=874 data-nosnippet>874</a>/// This is what [`typer::type_check`](crate::typer::type_check) hands back for
+<a href=#875 id=875 data-nosnippet>875</a>/// a declaration it typed, and the types on it are the *solved* ones: `infer_annotated`
+<a href=#876 id=876 data-nosnippet>876</a>/// applies `unify`'s final substitution to every node before returning. Between
+<a href=#877 id=877 data-nosnippet>877</a>/// `annotate` and that point they are inference variables and mean nothing on their own.
+<a href=#878 id=878 data-nosnippet>878</a></span><span class="attr">#[derive(Debug)]
+<a href=#879 id=879 data-nosnippet>879</a></span><span class="kw">pub struct </span>TypedTerm {
+<a href=#880 id=880 data-nosnippet>880</a>    <span class="kw">pub </span>span: NodeSpan,
+<a href=#881 id=881 data-nosnippet>881</a>    <span class="kw">pub </span>tpe: Type,
+<a href=#882 id=882 data-nosnippet>882</a>    <span class="kw">pub </span>kind: TypedTermKind,
+<a href=#883 id=883 data-nosnippet>883</a>}
+<a href=#884 id=884 data-nosnippet>884</a>
+<a href=#885 id=885 data-nosnippet>885</a><span class="attr">#[derive(Debug)]
+<a href=#886 id=886 data-nosnippet>886</a></span><span class="kw">pub enum </span>TypedTermKind {
+<a href=#887 id=887 data-nosnippet>887</a>    <span class="doccomment">/// See [`TermKind::Int`] for the width.
+<a href=#888 id=888 data-nosnippet>888</a>    </span>Int(i64),
+<a href=#889 id=889 data-nosnippet>889</a>    Char(char),
+<a href=#890 id=890 data-nosnippet>890</a>    <span class="doccomment">/// See [`TermKind::String`].
+<a href=#891 id=891 data-nosnippet>891</a>    </span>String(String),
+<a href=#892 id=892 data-nosnippet>892</a>    Float(f64),
+<a href=#893 id=893 data-nosnippet>893</a>    <span class="doccomment">/// A name, and — when its type has a context — what that context asks of the type
+<a href=#894 id=894 data-nosnippet>894</a>    /// this use gave it.
+<a href=#895 id=895 data-nosnippet>895</a>    </span>Identifier {
+<a href=#896 id=896 data-nosnippet>896</a>        reference: Reference,
+<a href=#897 id=897 data-nosnippet>897</a>        <span class="doccomment">/// One [`Predicate`] per constraint of the name's context, in the order its
+<a href=#898 id=898 data-nosnippet>898</a>        /// annotation wrote them, with the final substitution applied. A class member's
+<a href=#899 id=899 data-nosnippet>899</a>        /// context is its class: `eq` at `Int` carries `Eq Int`. Empty for a name whose
+<a href=#900 id=900 data-nosnippet>900</a>        /// type has none, which is every local, every constructor and every value
+<a href=#901 id=901 data-nosnippet>901</a>        /// declared without a constraint.
+<a href=#902 id=902 data-nosnippet>902</a>        </span>context: Vec&lt;Predicate&gt;,
+<a href=#903 id=903 data-nosnippet>903</a>    },
+<a href=#904 id=904 data-nosnippet>904</a>    Fun {
+<a href=#905 id=905 data-nosnippet>905</a>        param: TypeBinder,
+<a href=#906 id=906 data-nosnippet>906</a>        body: Box&lt;TypedTerm&gt;,
+<a href=#907 id=907 data-nosnippet>907</a>    },
+<a href=#908 id=908 data-nosnippet>908</a>    Apply {
+<a href=#909 id=909 data-nosnippet>909</a>        fun: Box&lt;TypedTerm&gt;,
+<a href=#910 id=910 data-nosnippet>910</a>        arg: Box&lt;TypedTerm&gt;,
+<a href=#911 id=911 data-nosnippet>911</a>        saturation: Saturation,
+<a href=#912 id=912 data-nosnippet>912</a>    },
+<a href=#913 id=913 data-nosnippet>913</a>    If {
+<a href=#914 id=914 data-nosnippet>914</a>        cond: Box&lt;TypedTerm&gt;,
+<a href=#915 id=915 data-nosnippet>915</a>        true_branch: Box&lt;TypedTerm&gt;,
+<a href=#916 id=916 data-nosnippet>916</a>        false_branch: Box&lt;TypedTerm&gt;,
+<a href=#917 id=917 data-nosnippet>917</a>    },
+<a href=#918 id=918 data-nosnippet>918</a>    Let {
+<a href=#919 id=919 data-nosnippet>919</a>        binding: TypeBinder,
+<a href=#920 id=920 data-nosnippet>920</a>        value: Box&lt;TypedTerm&gt;,
+<a href=#921 id=921 data-nosnippet>921</a>        body: Box&lt;TypedTerm&gt;,
+<a href=#922 id=922 data-nosnippet>922</a>    },
+<a href=#923 id=923 data-nosnippet>923</a>    Tuple(Tuple&lt;TypedTerm&gt;),
+<a href=#924 id=924 data-nosnippet>924</a>    <span class="doccomment">/// The unit value, `()`. Its type is always [`Type::Unit`].
+<a href=#925 id=925 data-nosnippet>925</a>    ///
+<a href=#926 id=926 data-nosnippet>926</a>    /// `zelkova_js::emit` emits it as `undefined`
+<a href=#927 id=927 data-nosnippet>927</a>    /// ([The unit value crosses as
+<a href=#928 id=928 data-nosnippet>928</a>    /// `undefined`](../../docs/spec/interop.md#the-unit-value-crosses-as-undefined)).
+<a href=#929 id=929 data-nosnippet>929</a>    </span>Unit,
+<a href=#930 id=930 data-nosnippet>930</a>    Case {
+<a href=#931 id=931 data-nosnippet>931</a>        scrutinee: Box&lt;TypedTerm&gt;,
+<a href=#932 id=932 data-nosnippet>932</a>        branches: Vec&lt;(TermPattern, Box&lt;TypedTerm&gt;)&gt;,
+<a href=#933 id=933 data-nosnippet>933</a>        <span class="doccomment">/// See [`TermKind::Case`].
+<a href=#934 id=934 data-nosnippet>934</a>        </span>form: CaseForm,
+<a href=#935 id=935 data-nosnippet>935</a>    },
+<a href=#936 id=936 data-nosnippet>936</a>    <span class="doccomment">/// A name that did not resolve ([`TermKind::Hole`]). Its type is the one inference
+<a href=#937 id=937 data-nosnippet>937</a>    /// solved for its position, and is an unsolved variable when nothing around it
+<a href=#938 id=938 data-nosnippet>938</a>    /// constrains it.
+<a href=#939 id=939 data-nosnippet>939</a>    ///
+<a href=#940 id=940 data-nosnippet>940</a>    /// An error stands behind every hole, so a declaration holding one is never emitted:
+<a href=#941 id=941 data-nosnippet>941</a>    /// `zelkova_js::emit` refuses it by name.
+<a href=#942 id=942 data-nosnippet>942</a>    </span>Hole,
+<a href=#943 id=943 data-nosnippet>943</a>    <span class="doccomment">/// A record ([`TermKind::Record`]), its fields in the order they were written. Its
+<a href=#944 id=944 data-nosnippet>944</a>    /// type is the [`Type::Record`] of its fields' types, which has no order.
+<a href=#945 id=945 data-nosnippet>945</a>    </span>Record(Vec&lt;Field&lt;TypedTerm&gt;&gt;),
+<a href=#946 id=946 data-nosnippet>946</a>    <span class="doccomment">/// An update ([`TermKind::Update`]). Its type is the type of `record`.
+<a href=#947 id=947 data-nosnippet>947</a>    </span>Update {
+<a href=#948 id=948 data-nosnippet>948</a>        record: Box&lt;TypedTerm&gt;,
+<a href=#949 id=949 data-nosnippet>949</a>        fields: Vec&lt;Field&lt;TypedTerm&gt;&gt;,
+<a href=#950 id=950 data-nosnippet>950</a>    },
+<a href=#951 id=951 data-nosnippet>951</a>    <span class="doccomment">/// A field access ([`TermKind::Access`]). Its type is the field's; the record's
+<a href=#952 id=952 data-nosnippet>952</a>    /// type, a [`Type::Record`] holding `label`, is on `record`.
+<a href=#953 id=953 data-nosnippet>953</a>    </span>Access {
+<a href=#954 id=954 data-nosnippet>954</a>        record: Box&lt;TypedTerm&gt;,
+<a href=#955 id=955 data-nosnippet>955</a>        label: Name,
+<a href=#956 id=956 data-nosnippet>956</a>        label_span: NodeSpan,
+<a href=#957 id=957 data-nosnippet>957</a>    },
+<a href=#958 id=958 data-nosnippet>958</a>    <span class="doccomment">/// An accessor ([`TermKind::Accessor`]). Its type is a function from the record
+<a href=#959 id=959 data-nosnippet>959</a>    /// type it reads to the field's type.
+<a href=#960 id=960 data-nosnippet>960</a>    </span>Accessor {
+<a href=#961 id=961 data-nosnippet>961</a>        label: Name,
+<a href=#962 id=962 data-nosnippet>962</a>        label_span: NodeSpan,
+<a href=#963 id=963 data-nosnippet>963</a>    },
+<a href=#964 id=964 data-nosnippet>964</a>}
+<a href=#965 id=965 data-nosnippet>965</a>
+<a href=#966 id=966 data-nosnippet>966</a><span class="comment">// ── What the typer answers with ───────────────────────────────────────────────
+<a href=#967 id=967 data-nosnippet>967</a>
+<a href=#968 id=968 data-nosnippet>968</a></span><span class="doccomment">/// What the typer has to say about one declaration.
+<a href=#969 id=969 data-nosnippet>969</a>///
+<a href=#970 id=970 data-nosnippet>970</a>/// A phase that answers with types has to answer for *every* declaration it was given,
+<a href=#971 id=971 data-nosnippet>971</a>/// including the ones it could not type: a caller handed only the ones that worked
+<a href=#972 id=972 data-nosnippet>972</a>/// cannot tell a declaration the typer verified from one it walked past, and emitting
+<a href=#973 id=973 data-nosnippet>973</a>/// code for the second is a miscompile. So each way a declaration goes untyped gets a
+<a href=#974 id=974 data-nosnippet>974</a>/// variant, and [`typer::type_check_recovering`](crate::typer::type_check_recovering)
+<a href=#975 id=975 data-nosnippet>975</a>/// returns one entry per declaration either way.
+<a href=#976 id=976 data-nosnippet>976</a></span><span class="attr">#[derive(Debug)]
+<a href=#977 id=977 data-nosnippet>977</a></span><span class="kw">pub enum </span>Solved {
+<a href=#978 id=978 data-nosnippet>978</a>    <span class="doccomment">/// The declaration's typed term, with the final substitution applied to every node
+<a href=#979 id=979 data-nosnippet>979</a>    /// — the *zonk*. Its own `tpe` is the declaration's type; each node below it
+<a href=#980 id=980 data-nosnippet>980</a>    /// carries the type inference solved for that sub-expression.
+<a href=#981 id=981 data-nosnippet>981</a>    ///
+<a href=#982 id=982 data-nosnippet>982</a>    /// Boxed because a term carries a whole [`QualName`] — package included — for every
+<a href=#983 id=983 data-nosnippet>983</a>    /// union and constructor it names, and every other variant would otherwise pay for
+<a href=#984 id=984 data-nosnippet>984</a>    /// its size.
+<a href=#985 id=985 data-nosnippet>985</a>    ///
+<a href=#986 id=986 data-nosnippet>986</a>    /// The term may hold a [hole](TypedTermKind::Hole), with an error standing behind it,
+<a href=#987 id=987 data-nosnippet>987</a>    /// and a backend refuses it.
+<a href=#988 id=988 data-nosnippet>988</a>    </span>Typed {
+<a href=#989 id=989 data-nosnippet>989</a>        term: Box&lt;TypedTerm&gt;,
+<a href=#990 id=990 data-nosnippet>990</a>        <span class="doccomment">/// What the declaration's annotation required of its type variables, with the
+<a href=#991 id=991 data-nosnippet>991</a>        /// final substitution applied: [`Declaration::context`].
+<a href=#992 id=992 data-nosnippet>992</a>        </span>context: Vec&lt;Predicate&gt;,
+<a href=#993 id=993 data-nosnippet>993</a>    },
+<a href=#994 id=994 data-nosnippet>994</a>    <span class="doccomment">/// A declaration of a `module foreign` facade, whose body is a synthetic
+<a href=#995 id=995 data-nosnippet>995</a>    /// placeholder rather than anything the user wrote. Nothing about it is inferred.
+<a href=#996 id=996 data-nosnippet>996</a>    ///
+<a href=#997 id=997 data-nosnippet>997</a>    /// This variant carries nothing, so [`Solved::typed`] answers `None` for it: the
+<a href=#998 id=998 data-nosnippet>998</a>    /// declaration's type is the signature the facade declares, and it stays where
+<a href=#999 id=999 data-nosnippet>999</a>    /// canonicalization put it, on `canonical::Value::TypedValue`'s `tpe`. A consumer
+<a href=#1000 id=1000 data-nosnippet>1000</a>    /// reading these entries is walking the same `canonical::Module` the map was
+<a href=#1001 id=1001 data-nosnippet>1001</a>    /// solved from — `type_check` takes one and keys the map the way its `values`
+<a href=#1002 id=1002 data-nosnippet>1002</a>    /// is keyed — so the signature is one lookup away, and repeating it here would be
+<a href=#1003 id=1003 data-nosnippet>1003</a>    /// a second copy of it rather than something inference established. [`build`] is
+<a href=#1004 id=1004 data-nosnippet>1004</a>    /// what reads it back out.
+<a href=#1005 id=1005 data-nosnippet>1005</a>    </span>NoBody,
+<a href=#1006 id=1006 data-nosnippet>1006</a>    <span class="doccomment">/// `value_to_term_and_annotation` could not translate the declaration into the
+<a href=#1007 id=1007 data-nosnippet>1007</a>    /// typer's term language: a `VarKernel` reference, or a constructor naming a union
+<a href=#1008 id=1008 data-nosnippet>1008</a>    /// the typer was given no declaration of.
+<a href=#1009 id=1009 data-nosnippet>1009</a>    /// Nothing about the declaration was checked.
+<a href=#1010 id=1010 data-nosnippet>1010</a>    ///
+<a href=#1011 id=1011 data-nosnippet>1011</a>    /// Not an [`Error`](crate::typer::Error): it is a gap in the typer rather
+<a href=#1012 id=1012 data-nosnippet>1012</a>    /// than a mistake in the source. What it wants is a warning, which the compiler does not have yet (`ERR-8`, see
+<a href=#1013 id=1013 data-nosnippet>1013</a>    /// `docs/tickets/README.md`) — hence the span, so that the warning has a caret the
+<a href=#1014 id=1014 data-nosnippet>1014</a>    /// day it exists. *Which* of the constructs tripped it is not carried:
+<a href=#1015 id=1015 data-nosnippet>1015</a>    /// `value_to_term_and_annotation` answers `Option`, so the reason does not survive
+<a href=#1016 id=1016 data-nosnippet>1016</a>    /// the return.
+<a href=#1017 id=1017 data-nosnippet>1017</a>    </span>Untranslatable {
+<a href=#1018 id=1018 data-nosnippet>1018</a>        <span class="doccomment">/// Where the declaration was written, annotation and body together — the only
+<a href=#1019 id=1019 data-nosnippet>1019</a>        /// position available, since the construct that stopped the translation is not
+<a href=#1020 id=1020 data-nosnippet>1020</a>        /// reported back.
+<a href=#1021 id=1021 data-nosnippet>1021</a>        </span>span: NodeSpan,
+<a href=#1022 id=1022 data-nosnippet>1022</a>    },
+<a href=#1023 id=1023 data-nosnippet>1023</a>    <span class="doccomment">/// Inference reached a name the typer's environment does not hold, and nothing
+<a href=#1024 id=1024 data-nosnippet>1024</a>    /// about the declaration was checked.
+<a href=#1025 id=1025 data-nosnippet>1025</a>    ///
+<a href=#1026 id=1026 data-nosnippet>1026</a>    /// That environment holds a declared type for every value in reach that has one: the
+<a href=#1027 id=1027 data-nosnippet>1027</a>    /// values and constructors every imported interface exposes, and this module's own
+<a href=#1028 id=1028 data-nosnippet>1028</a>    /// constructors and annotated declarations. A declaration of this module
+<a href=#1029 id=1029 data-nosnippet>1029</a>    /// written without an annotation has no declared type, and a name reaching one
+<a href=#1030 id=1030 data-nosnippet>1030</a>    /// lands here. That is not a mistake in the source, which is why this is not an
+<a href=#1031 id=1031 data-nosnippet>1031</a>    /// [`Error`](crate::typer::Error) either. A name that genuinely does not
+<a href=#1032 id=1032 data-nosnippet>1032</a>    /// exist is caught earlier, by canonicalization, as
+<a href=#1033 id=1033 data-nosnippet>1033</a>    /// `canonical::Error::VariableNotFound`, with a caret under the name.
+<a href=#1034 id=1034 data-nosnippet>1034</a>    </span>UnboundName {
+<a href=#1035 id=1035 data-nosnippet>1035</a>        <span class="doccomment">/// The name as inference looked it up.
+<a href=#1036 id=1036 data-nosnippet>1036</a>        </span>name: String,
+<a href=#1037 id=1037 data-nosnippet>1037</a>        <span class="doccomment">/// Where it was written.
+<a href=#1038 id=1038 data-nosnippet>1038</a>        </span>span: NodeSpan,
+<a href=#1039 id=1039 data-nosnippet>1039</a>    },
+<a href=#1040 id=1040 data-nosnippet>1040</a>    <span class="doccomment">/// Inference reported an error for this declaration.
+<a href=#1041 id=1041 data-nosnippet>1041</a>    ///
+<a href=#1042 id=1042 data-nosnippet>1042</a>    /// The error itself is in [`TypeCheck::errors`](crate::typer::TypeCheck::errors),
+<a href=#1043 id=1043 data-nosnippet>1043</a>    /// beside the map this entry is in. The entry is what keeps the declaration from
+<a href=#1044 id=1044 data-nosnippet>1044</a>    /// being merely absent, so a module with a type error still answers for every
+<a href=#1045 id=1045 data-nosnippet>1045</a>    /// declaration it holds.
+<a href=#1046 id=1046 data-nosnippet>1046</a>    </span>Rejected,
+<a href=#1047 id=1047 data-nosnippet>1047</a>}
+<a href=#1048 id=1048 data-nosnippet>1048</a>
+<a href=#1049 id=1049 data-nosnippet>1049</a><span class="kw">impl </span>Solved {
+<a href=#1050 id=1050 data-nosnippet>1050</a>    <span class="doccomment">/// The typed term, for a declaration that has one.
+<a href=#1051 id=1051 data-nosnippet>1051</a>    </span><span class="kw">pub fn </span>typed(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>TypedTerm&gt; {
+<a href=#1052 id=1052 data-nosnippet>1052</a>        <span class="kw">match </span><span class="self">self </span>{
+<a href=#1053 id=1053 data-nosnippet>1053</a>            Solved::Typed { term, .. } =&gt; <span class="prelude-val">Some</span>(term.as_ref()),
+<a href=#1054 id=1054 data-nosnippet>1054</a>            <span class="kw">_ </span>=&gt; <span class="prelude-val">None</span>,
+<a href=#1055 id=1055 data-nosnippet>1055</a>        }
+<a href=#1056 id=1056 data-nosnippet>1056</a>    }
+<a href=#1057 id=1057 data-nosnippet>1057</a>}
+<a href=#1058 id=1058 data-nosnippet>1058</a>
+<a href=#1059 id=1059 data-nosnippet>1059</a><span class="doccomment">/// What the typer has to say about one `instance` declaration: the type it is for, what
+<a href=#1060 id=1060 data-nosnippet>1060</a>/// it needs, and an answer for each binding of its body.
+<a href=#1061 id=1061 data-nosnippet>1061</a></span><span class="attr">#[derive(Debug)]
+<a href=#1062 id=1062 data-nosnippet>1062</a></span><span class="kw">pub struct </span>SolvedInstance {
+<a href=#1063 id=1063 data-nosnippet>1063</a>    <span class="doccomment">/// The type the instance is for, over variables of its own: [`Instance::head`].
+<a href=#1064 id=1064 data-nosnippet>1064</a>    </span><span class="kw">pub </span>head: Type,
+<a href=#1065 id=1065 data-nosnippet>1065</a>    <span class="doccomment">/// What the instance needs of the head's variables: [`Instance::context`].
+<a href=#1066 id=1066 data-nosnippet>1066</a>    </span><span class="kw">pub </span>context: Vec&lt;Predicate&gt;,
+<a href=#1067 id=1067 data-nosnippet>1067</a>    <span class="doccomment">/// An answer for every binding of the instance, by the member it defines, in the
+<a href=#1068 id=1068 data-nosnippet>1068</a>    /// order the instance holds them.
+<a href=#1069 id=1069 data-nosnippet>1069</a>    </span><span class="kw">pub </span>bindings: Vec&lt;(Name, Solved)&gt;,
+<a href=#1070 id=1070 data-nosnippet>1070</a>    <span class="doccomment">/// Whether the instance's own check failed: [`Instance::rejected`].
+<a href=#1071 id=1071 data-nosnippet>1071</a>    </span><span class="kw">pub </span>rejected: bool,
+<a href=#1072 id=1072 data-nosnippet>1072</a>}
+<a href=#1073 id=1073 data-nosnippet>1073</a>
+<a href=#1074 id=1074 data-nosnippet>1074</a><span class="comment">// ── Building a module ─────────────────────────────────────────────────────────
+<a href=#1075 id=1075 data-nosnippet>1075</a>
+<a href=#1076 id=1076 data-nosnippet>1076</a></span><span class="doccomment">/// Turn a checked module and what the typer solved for it into the IR a backend reads.
+<a href=#1077 id=1077 data-nosnippet>1077</a>///
+<a href=#1078 id=1078 data-nosnippet>1078</a>/// `solved` and `instances` are consumed rather than borrowed: a [`Declaration`] owns its
+<a href=#1079 id=1079 data-nosnippet>1079</a>/// body, and the only other holder of these terms is the caller that just received them.
+<a href=#1080 id=1080 data-nosnippet>1080</a>///
+<a href=#1081 id=1081 data-nosnippet>1081</a>/// Every value of `module`, in [`values`](canonical::Module::values) or in
+<a href=#1082 id=1082 data-nosnippet>1082</a>/// [`broken`](canonical::Module::broken), ends up in exactly one of
+<a href=#1083 id=1083 data-nosnippet>1083</a>/// [`Module::declarations`] and [`Module::unchecked`] — see the second field for why
+<a href=#1084 id=1084 data-nosnippet>1084</a>/// nothing may merely go missing. A broken one is always unchecked, with an error
+<a href=#1085 id=1085 data-nosnippet>1085</a>/// reported behind it: canonicalization's, or the syntax error of a declaration chunk
+<a href=#1086 id=1086 data-nosnippet>1086</a>/// that did not parse.
+<a href=#1087 id=1087 data-nosnippet>1087</a>///
+<a href=#1088 id=1088 data-nosnippet>1088</a>/// `instances` is one [`SolvedInstance`] for each of the module's
+<a href=#1089 id=1089 data-nosnippet>1089</a>/// [`instances`](canonical::Module::instances), in the same order. Every binding of an
+<a href=#1090 id=1090 data-nosnippet>1090</a>/// instance is accounted for the way a value is: in the instance's
+<a href=#1091 id=1091 data-nosnippet>1091</a>/// [`members`](Instance::members) or in its [`unchecked`](Instance::unchecked).
+<a href=#1092 id=1092 data-nosnippet>1092</a></span><span class="kw">pub fn </span>build(
+<a href=#1093 id=1093 data-nosnippet>1093</a>    module: <span class="kw-2">&amp;</span>canonical::Module,
+<a href=#1094 id=1094 data-nosnippet>1094</a>    solved: HashMap&lt;Name, Solved&gt;,
+<a href=#1095 id=1095 data-nosnippet>1095</a>    instances: Vec&lt;SolvedInstance&gt;,
+<a href=#1096 id=1096 data-nosnippet>1096</a>) -&gt; Module {
+<a href=#1097 id=1097 data-nosnippet>1097</a>    <span class="kw">let </span><span class="kw-2">mut </span>unions: Vec&lt;Union&gt; = module
+<a href=#1098 id=1098 data-nosnippet>1098</a>        .types
+<a href=#1099 id=1099 data-nosnippet>1099</a>        .iter()
+<a href=#1100 id=1100 data-nosnippet>1100</a>        .map(|(name, union)| Union {
+<a href=#1101 id=1101 data-nosnippet>1101</a>            name: module.name.qualify_name(name),
+<a href=#1102 id=1102 data-nosnippet>1102</a>            variables: union.variables.clone(),
+<a href=#1103 id=1103 data-nosnippet>1103</a>            variants: variants_of(union),
+<a href=#1104 id=1104 data-nosnippet>1104</a>        })
+<a href=#1105 id=1105 data-nosnippet>1105</a>        .collect();
+<a href=#1106 id=1106 data-nosnippet>1106</a>    unions.sort_by(|left, right| {
+<a href=#1107 id=1107 data-nosnippet>1107</a>        left.name
+<a href=#1108 id=1108 data-nosnippet>1108</a>            .to_name()
+<a href=#1109 id=1109 data-nosnippet>1109</a>            .as_str()
+<a href=#1110 id=1110 data-nosnippet>1110</a>            .cmp(right.name.to_name().as_str())
+<a href=#1111 id=1111 data-nosnippet>1111</a>    });
+<a href=#1112 id=1112 data-nosnippet>1112</a>
+<a href=#1113 id=1113 data-nosnippet>1113</a>    <span class="comment">// Type variables in a facade signature are numbered from here. Each signature is
+<a href=#1114 id=1114 data-nosnippet>1114</a>    // translated on its own and is never unified with anything, so the numbering only
+<a href=#1115 id=1115 data-nosnippet>1115</a>    // has to be consistent within one declaration.
+<a href=#1116 id=1116 data-nosnippet>1116</a>    </span><span class="kw">let </span><span class="kw-2">mut </span>counter = <span class="number">0u32</span>;
+<a href=#1117 id=1117 data-nosnippet>1117</a>
+<a href=#1118 id=1118 data-nosnippet>1118</a>    <span class="kw">let </span><span class="kw-2">mut </span>solved = solved;
+<a href=#1119 id=1119 data-nosnippet>1119</a>    <span class="kw">let </span><span class="kw-2">mut </span>names: Vec&lt;<span class="kw-2">&amp;</span>Name&gt; = module.values.keys().collect();
+<a href=#1120 id=1120 data-nosnippet>1120</a>    names.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+<a href=#1121 id=1121 data-nosnippet>1121</a>
+<a href=#1122 id=1122 data-nosnippet>1122</a>    <span class="kw">let </span><span class="kw-2">mut </span>declarations = Vec::new();
+<a href=#1123 id=1123 data-nosnippet>1123</a>    <span class="kw">let </span><span class="kw-2">mut </span>unchecked = Vec::new();
+<a href=#1124 id=1124 data-nosnippet>1124</a>
+<a href=#1125 id=1125 data-nosnippet>1125</a>    <span class="kw">for </span>name <span class="kw">in </span>names {
+<a href=#1126 id=1126 data-nosnippet>1126</a>        <span class="kw">let </span>value = <span class="kw-2">&amp;</span>module.values[name];
+<a href=#1127 id=1127 data-nosnippet>1127</a>
+<a href=#1128 id=1128 data-nosnippet>1128</a>        <span class="kw">match </span>declare(module, name, value, solved.remove(name), <span class="kw-2">&amp;mut </span>counter) {
+<a href=#1129 id=1129 data-nosnippet>1129</a>            <span class="prelude-val">Ok</span>(declaration) =&gt; declarations.push(declaration),
+<a href=#1130 id=1130 data-nosnippet>1130</a>            <span class="prelude-val">Err</span>(entry) =&gt; unchecked.push(entry),
+<a href=#1131 id=1131 data-nosnippet>1131</a>        }
+<a href=#1132 id=1132 data-nosnippet>1132</a>    }
+<a href=#1133 id=1133 data-nosnippet>1133</a>
+<a href=#1134 id=1134 data-nosnippet>1134</a>    <span class="comment">// A broken declaration has no canonical form for the typer to have read, and the
+<a href=#1135 id=1135 data-nosnippet>1135</a>    // error behind it — canonicalization's, or a syntax error — is the caller's to report.
+<a href=#1136 id=1136 data-nosnippet>1136</a>    </span>unchecked.extend(module.broken.iter().map(|broken| Unchecked {
+<a href=#1137 id=1137 data-nosnippet>1137</a>        name: broken.name.clone(),
+<a href=#1138 id=1138 data-nosnippet>1138</a>        span: broken.span,
+<a href=#1139 id=1139 data-nosnippet>1139</a>        reported: <span class="bool-val">true</span>,
+<a href=#1140 id=1140 data-nosnippet>1140</a>    }));
+<a href=#1141 id=1141 data-nosnippet>1141</a>    unchecked.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
+<a href=#1142 id=1142 data-nosnippet>1142</a>
+<a href=#1143 id=1143 data-nosnippet>1143</a>    <span class="kw">let </span><span class="kw-2">mut </span>solved_instances = instances.into_iter();
+<a href=#1144 id=1144 data-nosnippet>1144</a>    <span class="kw">let </span>instances = module
+<a href=#1145 id=1145 data-nosnippet>1145</a>        .instances
+<a href=#1146 id=1146 data-nosnippet>1146</a>        .iter()
+<a href=#1147 id=1147 data-nosnippet>1147</a>        .map(|instance| build_instance(module, instance, solved_instances.next(), <span class="kw-2">&amp;mut </span>counter))
+<a href=#1148 id=1148 data-nosnippet>1148</a>        .collect();
+<a href=#1149 id=1149 data-nosnippet>1149</a>
+<a href=#1150 id=1150 data-nosnippet>1150</a>    <span class="kw">let </span>initialisation_order = canonical::initialisation_order(module);
+<a href=#1151 id=1151 data-nosnippet>1151</a>
+<a href=#1152 id=1152 data-nosnippet>1152</a>    Module {
+<a href=#1153 id=1153 data-nosnippet>1153</a>        name: module.name.clone(),
+<a href=#1154 id=1154 data-nosnippet>1154</a>        foreign: module.binding_foreign,
+<a href=#1155 id=1155 data-nosnippet>1155</a>        unions,
+<a href=#1156 id=1156 data-nosnippet>1156</a>        declarations,
+<a href=#1157 id=1157 data-nosnippet>1157</a>        unchecked,
+<a href=#1158 id=1158 data-nosnippet>1158</a>        instances,
+<a href=#1159 id=1159 data-nosnippet>1159</a>        initialisation_order,
+<a href=#1160 id=1160 data-nosnippet>1160</a>        specialisations: Vec::new(),
+<a href=#1161 id=1161 data-nosnippet>1161</a>    }
+<a href=#1162 id=1162 data-nosnippet>1162</a>}
+<a href=#1163 id=1163 data-nosnippet>1163</a>
+<a href=#1164 id=1164 data-nosnippet>1164</a><span class="doccomment">/// One value of `module`, as the declaration a backend emits or the entry saying why it
+<a href=#1165 id=1165 data-nosnippet>1165</a>/// has none. `entry` is what the typer answered for it.
+<a href=#1166 id=1166 data-nosnippet>1166</a></span><span class="kw">fn </span>declare(
+<a href=#1167 id=1167 data-nosnippet>1167</a>    module: <span class="kw-2">&amp;</span>canonical::Module,
+<a href=#1168 id=1168 data-nosnippet>1168</a>    name: <span class="kw-2">&amp;</span>Name,
+<a href=#1169 id=1169 data-nosnippet>1169</a>    value: <span class="kw-2">&amp;</span>canonical::Value,
+<a href=#1170 id=1170 data-nosnippet>1170</a>    entry: <span class="prelude-ty">Option</span>&lt;Solved&gt;,
+<a href=#1171 id=1171 data-nosnippet>1171</a>    counter: <span class="kw-2">&amp;mut </span>u32,
+<a href=#1172 id=1172 data-nosnippet>1172</a>) -&gt; <span class="prelude-ty">Result</span>&lt;Declaration, Unchecked&gt; {
+<a href=#1173 id=1173 data-nosnippet>1173</a>    <span class="kw">let </span>span = value.span();
+<a href=#1174 id=1174 data-nosnippet>1174</a>    <span class="kw">let </span>unchecked = |reported| Unchecked {
+<a href=#1175 id=1175 data-nosnippet>1175</a>        name: name.clone(),
+<a href=#1176 id=1176 data-nosnippet>1176</a>        span,
+<a href=#1177 id=1177 data-nosnippet>1177</a>        reported,
+<a href=#1178 id=1178 data-nosnippet>1178</a>    };
+<a href=#1179 id=1179 data-nosnippet>1179</a>
+<a href=#1180 id=1180 data-nosnippet>1180</a>    <span class="kw">match </span>entry {
+<a href=#1181 id=1181 data-nosnippet>1181</a>        <span class="prelude-val">Some</span>(Solved::Typed { term, context }) =&gt; {
+<a href=#1182 id=1182 data-nosnippet>1182</a>            <span class="kw">let </span>tpe = term.tpe.clone();
+<a href=#1183 id=1183 data-nosnippet>1183</a>            <span class="kw">let </span>(parameters, expression) = peel(<span class="kw-2">*</span>term, value.arity());
+<a href=#1184 id=1184 data-nosnippet>1184</a>
+<a href=#1185 id=1185 data-nosnippet>1185</a>            <span class="prelude-val">Ok</span>(Declaration {
+<a href=#1186 id=1186 data-nosnippet>1186</a>                name: name.clone(),
+<a href=#1187 id=1187 data-nosnippet>1187</a>                arity: parameters.len(),
+<a href=#1188 id=1188 data-nosnippet>1188</a>                tpe,
+<a href=#1189 id=1189 data-nosnippet>1189</a>                context,
+<a href=#1190 id=1190 data-nosnippet>1190</a>                body: <span class="prelude-val">Some</span>(Body {
+<a href=#1191 id=1191 data-nosnippet>1191</a>                    parameters,
+<a href=#1192 id=1192 data-nosnippet>1192</a>                    expression,
+<a href=#1193 id=1193 data-nosnippet>1193</a>                }),
+<a href=#1194 id=1194 data-nosnippet>1194</a>                span,
+<a href=#1195 id=1195 data-nosnippet>1195</a>            })
+<a href=#1196 id=1196 data-nosnippet>1196</a>        }
+<a href=#1197 id=1197 data-nosnippet>1197</a>        <span class="comment">// A facade signature: the type is the one canonicalization recorded, and the
+<a href=#1198 id=1198 data-nosnippet>1198</a>        // arity is what the companion's parameter list has to be. A facade's signature
+<a href=#1199 id=1199 data-nosnippet>1199</a>        // carries no constraint ([`canonical::Error::FacadeConstrained`]), so there is
+<a href=#1200 id=1200 data-nosnippet>1200</a>        // no context.
+<a href=#1201 id=1201 data-nosnippet>1201</a>        </span><span class="prelude-val">Some</span>(Solved::NoBody) =&gt; <span class="kw">match </span>facade_signature(value, counter) {
+<a href=#1202 id=1202 data-nosnippet>1202</a>            <span class="prelude-val">Some</span>(tpe) =&gt; <span class="prelude-val">Ok</span>(Declaration {
+<a href=#1203 id=1203 data-nosnippet>1203</a>                name: name.clone(),
+<a href=#1204 id=1204 data-nosnippet>1204</a>                arity: module.emitted_arity(value),
+<a href=#1205 id=1205 data-nosnippet>1205</a>                tpe,
+<a href=#1206 id=1206 data-nosnippet>1206</a>                context: Vec::new(),
+<a href=#1207 id=1207 data-nosnippet>1207</a>                body: <span class="prelude-val">None</span>,
+<a href=#1208 id=1208 data-nosnippet>1208</a>                span,
+<a href=#1209 id=1209 data-nosnippet>1209</a>            }),
+<a href=#1210 id=1210 data-nosnippet>1210</a>            <span class="prelude-val">None </span>=&gt; <span class="prelude-val">Err</span>(unchecked(<span class="bool-val">false</span>)),
+<a href=#1211 id=1211 data-nosnippet>1211</a>        },
+<a href=#1212 id=1212 data-nosnippet>1212</a>        <span class="comment">// The error inference reported for it is the caller's to report.
+<a href=#1213 id=1213 data-nosnippet>1213</a>        </span><span class="prelude-val">Some</span>(Solved::Rejected) =&gt; <span class="prelude-val">Err</span>(unchecked(<span class="bool-val">true</span>)),
+<a href=#1214 id=1214 data-nosnippet>1214</a>        <span class="comment">// The typer walked past it. A name that did not resolve is a hole in the body,
+<a href=#1215 id=1215 data-nosnippet>1215</a>        // and its error stands behind the declaration whatever else kept the typer from
+<a href=#1216 id=1216 data-nosnippet>1216</a>        // typing it, so the entry is `reported` all the same
+<a href=#1217 id=1217 data-nosnippet>1217</a>        // ([`DEC-23` decision 5](../../../docs/decisions/dec-23.md)).
+<a href=#1218 id=1218 data-nosnippet>1218</a>        </span><span class="prelude-val">Some</span>(Solved::Untranslatable { .. }) | <span class="prelude-val">Some</span>(Solved::UnboundName { .. }) =&gt; {
+<a href=#1219 id=1219 data-nosnippet>1219</a>            <span class="prelude-val">Err</span>(unchecked(value.holds_hole()))
+<a href=#1220 id=1220 data-nosnippet>1220</a>        }
+<a href=#1221 id=1221 data-nosnippet>1221</a>        <span class="comment">// Impossible today, since the typer answers for every value it was given.
+<a href=#1222 id=1222 data-nosnippet>1222</a>        </span><span class="prelude-val">None </span>=&gt; <span class="prelude-val">Err</span>(unchecked(<span class="bool-val">false</span>)),
+<a href=#1223 id=1223 data-nosnippet>1223</a>    }
+<a href=#1224 id=1224 data-nosnippet>1224</a>}
+<a href=#1225 id=1225 data-nosnippet>1225</a>
+<a href=#1226 id=1226 data-nosnippet>1226</a><span class="doccomment">/// One instance of `module`, with the answer the typer gave for each of its bindings.
+<a href=#1227 id=1227 data-nosnippet>1227</a>///
+<a href=#1228 id=1228 data-nosnippet>1228</a>/// `solved` is `None` only for a caller that did not run the typer over the module, and
+<a href=#1229 id=1229 data-nosnippet>1229</a>/// then every binding is unchecked and the instance's head is read off its declaration.
+<a href=#1230 id=1230 data-nosnippet>1230</a></span><span class="kw">fn </span>build_instance(
+<a href=#1231 id=1231 data-nosnippet>1231</a>    module: <span class="kw-2">&amp;</span>canonical::Module,
+<a href=#1232 id=1232 data-nosnippet>1232</a>    instance: <span class="kw-2">&amp;</span>canonical::Instance,
+<a href=#1233 id=1233 data-nosnippet>1233</a>    solved: <span class="prelude-ty">Option</span>&lt;SolvedInstance&gt;,
+<a href=#1234 id=1234 data-nosnippet>1234</a>    counter: <span class="kw-2">&amp;mut </span>u32,
+<a href=#1235 id=1235 data-nosnippet>1235</a>) -&gt; Instance {
+<a href=#1236 id=1236 data-nosnippet>1236</a>    <span class="kw">let </span>signature = <span class="kw-2">&amp;</span>instance.signature;
+<a href=#1237 id=1237 data-nosnippet>1237</a>
+<a href=#1238 id=1238 data-nosnippet>1238</a>    <span class="kw">let </span>(head, context, bindings, rejected) = <span class="kw">match </span>solved {
+<a href=#1239 id=1239 data-nosnippet>1239</a>        <span class="prelude-val">Some</span>(solved) =&gt; (
+<a href=#1240 id=1240 data-nosnippet>1240</a>            solved.head,
+<a href=#1241 id=1241 data-nosnippet>1241</a>            solved.context,
+<a href=#1242 id=1242 data-nosnippet>1242</a>            solved.bindings,
+<a href=#1243 id=1243 data-nosnippet>1243</a>            solved.rejected,
+<a href=#1244 id=1244 data-nosnippet>1244</a>        ),
+<a href=#1245 id=1245 data-nosnippet>1245</a>        <span class="prelude-val">None </span>=&gt; (
+<a href=#1246 id=1246 data-nosnippet>1246</a>            <span class="kw">crate</span>::typer::instance_head_type(<span class="kw-2">&amp;</span>signature.head, <span class="kw-2">&amp;mut </span>HashMap::new(), counter),
+<a href=#1247 id=1247 data-nosnippet>1247</a>            Vec::new(),
+<a href=#1248 id=1248 data-nosnippet>1248</a>            Vec::new(),
+<a href=#1249 id=1249 data-nosnippet>1249</a>            <span class="bool-val">false</span>,
+<a href=#1250 id=1250 data-nosnippet>1250</a>        ),
+<a href=#1251 id=1251 data-nosnippet>1251</a>    };
+<a href=#1252 id=1252 data-nosnippet>1252</a>
+<a href=#1253 id=1253 data-nosnippet>1253</a>    <span class="kw">let </span><span class="kw-2">mut </span>answers: HashMap&lt;Name, Solved&gt; = bindings.into_iter().collect();
+<a href=#1254 id=1254 data-nosnippet>1254</a>    <span class="kw">let </span><span class="kw-2">mut </span>members = Vec::new();
+<a href=#1255 id=1255 data-nosnippet>1255</a>    <span class="kw">let </span><span class="kw-2">mut </span>unchecked = Vec::new();
+<a href=#1256 id=1256 data-nosnippet>1256</a>
+<a href=#1257 id=1257 data-nosnippet>1257</a>    <span class="kw">for </span>value <span class="kw">in </span><span class="kw-2">&amp;</span>instance.bindings {
+<a href=#1258 id=1258 data-nosnippet>1258</a>        <span class="kw">let </span>name = value_name(value);
+<a href=#1259 id=1259 data-nosnippet>1259</a>
+<a href=#1260 id=1260 data-nosnippet>1260</a>        <span class="kw">match </span>declare(module, name, value, answers.remove(name), counter) {
+<a href=#1261 id=1261 data-nosnippet>1261</a>            <span class="prelude-val">Ok</span>(declaration) =&gt; members.push(declaration),
+<a href=#1262 id=1262 data-nosnippet>1262</a>            <span class="prelude-val">Err</span>(entry) =&gt; unchecked.push(entry),
+<a href=#1263 id=1263 data-nosnippet>1263</a>        }
+<a href=#1264 id=1264 data-nosnippet>1264</a>    }
+<a href=#1265 id=1265 data-nosnippet>1265</a>
+<a href=#1266 id=1266 data-nosnippet>1266</a>    members.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
+<a href=#1267 id=1267 data-nosnippet>1267</a>    unchecked.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
+<a href=#1268 id=1268 data-nosnippet>1268</a>
+<a href=#1269 id=1269 data-nosnippet>1269</a>    Instance {
+<a href=#1270 id=1270 data-nosnippet>1270</a>        class: signature.class.clone(),
+<a href=#1271 id=1271 data-nosnippet>1271</a>        head,
+<a href=#1272 id=1272 data-nosnippet>1272</a>        head_name: signature.head.name(),
+<a href=#1273 id=1273 data-nosnippet>1273</a>        context,
+<a href=#1274 id=1274 data-nosnippet>1274</a>        members,
+<a href=#1275 id=1275 data-nosnippet>1275</a>        unchecked,
+<a href=#1276 id=1276 data-nosnippet>1276</a>        rejected,
+<a href=#1277 id=1277 data-nosnippet>1277</a>        span: signature.span,
+<a href=#1278 id=1278 data-nosnippet>1278</a>    }
+<a href=#1279 id=1279 data-nosnippet>1279</a>}
+<a href=#1280 id=1280 data-nosnippet>1280</a>
+<a href=#1281 id=1281 data-nosnippet>1281</a><span class="doccomment">/// The name a value declares.
+<a href=#1282 id=1282 data-nosnippet>1282</a></span><span class="kw">fn </span>value_name(value: <span class="kw-2">&amp;</span>canonical::Value) -&gt; <span class="kw-2">&amp;</span>Name {
+<a href=#1283 id=1283 data-nosnippet>1283</a>    <span class="kw">match </span>value {
+<a href=#1284 id=1284 data-nosnippet>1284</a>        canonical::Value::Value { name, .. } | canonical::Value::TypedValue { name, .. } =&gt; name,
+<a href=#1285 id=1285 data-nosnippet>1285</a>    }
+<a href=#1286 id=1286 data-nosnippet>1286</a>}
+<a href=#1287 id=1287 data-nosnippet>1287</a>
+<a href=#1288 id=1288 data-nosnippet>1288</a><span class="doccomment">/// A union's constructors, each with the position and the argument count both targets
+<a href=#1289 id=1289 data-nosnippet>1289</a>/// need.
+<a href=#1290 id=1290 data-nosnippet>1290</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>variants_of(union: <span class="kw-2">&amp;</span>canonical::UnionType) -&gt; Vec&lt;Variant&gt; {
+<a href=#1291 id=1291 data-nosnippet>1291</a>    union
+<a href=#1292 id=1292 data-nosnippet>1292</a>        .variants
+<a href=#1293 id=1293 data-nosnippet>1293</a>        .iter()
+<a href=#1294 id=1294 data-nosnippet>1294</a>        .enumerate()
+<a href=#1295 id=1295 data-nosnippet>1295</a>        .map(|(index, ctor)| Variant {
+<a href=#1296 id=1296 data-nosnippet>1296</a>            name: ctor.name.clone(),
+<a href=#1297 id=1297 data-nosnippet>1297</a>            index,
+<a href=#1298 id=1298 data-nosnippet>1298</a>            arity: ctor.type_parameters.len(),
+<a href=#1299 id=1299 data-nosnippet>1299</a>        })
+<a href=#1300 id=1300 data-nosnippet>1300</a>        .collect()
+<a href=#1301 id=1301 data-nosnippet>1301</a>}
+<a href=#1302 id=1302 data-nosnippet>1302</a>
+<a href=#1303 id=1303 data-nosnippet>1303</a><span class="doccomment">/// Split `arity` parameters off the front of a typed term.
+<a href=#1304 id=1304 data-nosnippet>1304</a>///
+<a href=#1305 id=1305 data-nosnippet>1305</a>/// `value_to_term_and_annotation` wraps a declaration's body in one `Fun` per parameter,
+<a href=#1306 id=1306 data-nosnippet>1306</a>/// so the first `arity` nodes of the spine are exactly those parameters and nothing else
+<a href=#1307 id=1307 data-nosnippet>1307</a>/// builds a `Fun` — the language has no lambda. Stopping early on anything that is not a
+<a href=#1308 id=1308 data-nosnippet>1308</a>/// `Fun` keeps a term that somehow disagreed with its declaration from being read past
+<a href=#1309 id=1309 data-nosnippet>1309</a>/// its end; the parameters handed back are the ones that were really there, which is why
+<a href=#1310 id=1310 data-nosnippet>1310</a>/// [`Declaration::arity`] is their count.
+<a href=#1311 id=1311 data-nosnippet>1311</a></span><span class="kw">fn </span>peel(term: TypedTerm, arity: usize) -&gt; (Vec&lt;TypeBinder&gt;, TypedTerm) {
+<a href=#1312 id=1312 data-nosnippet>1312</a>    <span class="kw">let </span><span class="kw-2">mut </span>parameters = Vec::with_capacity(arity);
+<a href=#1313 id=1313 data-nosnippet>1313</a>    <span class="kw">let </span><span class="kw-2">mut </span>term = term;
+<a href=#1314 id=1314 data-nosnippet>1314</a>
+<a href=#1315 id=1315 data-nosnippet>1315</a>    <span class="kw">while </span>parameters.len() &lt; arity {
+<a href=#1316 id=1316 data-nosnippet>1316</a>        <span class="kw">let </span>TypedTerm { span, tpe, kind } = term;
+<a href=#1317 id=1317 data-nosnippet>1317</a>
+<a href=#1318 id=1318 data-nosnippet>1318</a>        <span class="kw">match </span>kind {
+<a href=#1319 id=1319 data-nosnippet>1319</a>            TypedTermKind::Fun { param, body } =&gt; {
+<a href=#1320 id=1320 data-nosnippet>1320</a>                parameters.push(param);
+<a href=#1321 id=1321 data-nosnippet>1321</a>                term = <span class="kw-2">*</span>body;
+<a href=#1322 id=1322 data-nosnippet>1322</a>            }
+<a href=#1323 id=1323 data-nosnippet>1323</a>            kind =&gt; {
+<a href=#1324 id=1324 data-nosnippet>1324</a>                term = TypedTerm { span, tpe, kind };
+<a href=#1325 id=1325 data-nosnippet>1325</a>                <span class="kw">break</span>;
+<a href=#1326 id=1326 data-nosnippet>1326</a>            }
+<a href=#1327 id=1327 data-nosnippet>1327</a>        }
+<a href=#1328 id=1328 data-nosnippet>1328</a>    }
+<a href=#1329 id=1329 data-nosnippet>1329</a>
+<a href=#1330 id=1330 data-nosnippet>1330</a>    (parameters, term)
+<a href=#1331 id=1331 data-nosnippet>1331</a>}
+<a href=#1332 id=1332 data-nosnippet>1332</a>
+<a href=#1333 id=1333 data-nosnippet>1333</a><span class="doccomment">/// The type of a facade's signature, when it has one to read.
+<a href=#1334 id=1334 data-nosnippet>1334</a>///
+<a href=#1335 id=1335 data-nosnippet>1335</a>/// Its arity is not read here: a facade declaration has no parameters to count — it is a
+<a href=#1336 id=1336 data-nosnippet>1336</a>/// signature and a synthetic body — and [`canonical::Module::emitted_arity`] counts the
+<a href=#1337 id=1337 data-nosnippet>1337</a>/// arrows of the type it declares instead, since the companion's export takes a parameter
+<a href=#1338 id=1338 data-nosnippet>1338</a>/// list of that length and no arrow at all is [a facade
+<a href=#1339 id=1339 data-nosnippet>1339</a>/// constant](../../docs/spec/interop.md#facade-constants). That is the count a module
+<a href=#1340 id=1340 data-nosnippet>1340</a>/// importing the facade reads from its interface too.
+<a href=#1341 id=1341 data-nosnippet>1341</a>///
+<a href=#1342 id=1342 data-nosnippet>1342</a>/// `None` is a signature whose type the typer cannot read, which none is today:
+<a href=#1343 id=1343 data-nosnippet>1343</a>/// `typer::canonical_type_to_typer_type` reads every canonical type, a record type
+<a href=#1344 id=1344 data-nosnippet>1344</a>/// included. A declaration carrying no annotation also answers `None`, which nothing
+<a href=#1345 id=1345 data-nosnippet>1345</a>/// produces today — a facade's declarations are signatures. `build` records either as an
+<a href=#1346 id=1346 data-nosnippet>1346</a>/// [`Unchecked`] with `reported: false`, since no error stands behind it.
+<a href=#1347 id=1347 data-nosnippet>1347</a></span><span class="kw">fn </span>facade_signature(value: <span class="kw-2">&amp;</span>canonical::Value, counter: <span class="kw-2">&amp;mut </span>u32) -&gt; <span class="prelude-ty">Option</span>&lt;Type&gt; {
+<a href=#1348 id=1348 data-nosnippet>1348</a>    <span class="kw">match </span>value {
+<a href=#1349 id=1349 data-nosnippet>1349</a>        canonical::Value::Value { .. } =&gt; <span class="prelude-val">None</span>,
+<a href=#1350 id=1350 data-nosnippet>1350</a>        canonical::Value::TypedValue { tpe, .. } =&gt; {
+<a href=#1351 id=1351 data-nosnippet>1351</a>            <span class="kw">let </span><span class="kw-2">mut </span>variables = HashMap::new();
+<a href=#1352 id=1352 data-nosnippet>1352</a>            <span class="kw">crate</span>::typer::canonical_type_to_typer_type(tpe, <span class="kw-2">&amp;mut </span>variables, counter)
+<a href=#1353 id=1353 data-nosnippet>1353</a>        }
+<a href=#1354 id=1354 data-nosnippet>1354</a>    }
+<a href=#1355 id=1355 data-nosnippet>1355</a>}
+</code></pre></div></section></main></body></html>

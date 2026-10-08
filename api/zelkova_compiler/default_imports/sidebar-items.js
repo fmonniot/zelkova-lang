@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DEFAULT_IMPORTS"],"enum":["Unqualified"],"fn":["implicit_imports","is_default"],"struct":["DefaultImport"]};

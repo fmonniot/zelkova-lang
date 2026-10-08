@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MANIFEST_FILE_NAME"],"enum":["GitPin","ManifestError","Source"],"fn":["load"],"struct":["Dependency","Manifest","Version"]};
