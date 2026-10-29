@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Specification — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-index" class="sidebar-toggle-input">
+<label for="sidebar-toggle-index" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html" class="current">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#every-example-is-checked">Every example is checked</a></li>
+<li><a href="#reading-a-chapter">Reading a chapter</a></li>
+<li><a href="#chapters">Chapters</a></li>
+<li><a href="#appendices">Appendices</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="zelkova--language-specification">Zelkova — Language specification</h1>
+<p>This is the specification of Zelkova the language, as distinct from
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/decisions/README.md"><code>docs/decisions/</code></a> (why a rule is what it is), <code>docs/tickets/</code>
+(the compiler's own work log) and <code>cargo doc</code> (the compiler's Rust API). One markdown
+file per chapter, sibling files in this directory, plus the non-normative
+<a href="#appendices">appendix</a> at the foot of this index. A third sibling,
+<a href="conventions.html">Conventions</a>, is about this document rather than about Zelkova: the rules a
+chapter is written against, and the reasons they are what they are.</p>
+<p><strong>The spec is normative.</strong> It describes Zelkova as designed, including constructs the
+compiler does not implement yet — it is not a description of today's binary. Where a
+chapter documents something unimplemented, it says so and marks its prose accordingly
+(see the lead-ins below). <code>CLAUDE.md</code>'s <em>Language notes</em> section has the
+compiler's current implemented/not-implemented split; this directory is where that
+split gets explained rather than just listed.</p>
+<p><strong>The spec is self-contained.</strong> Zelkova began as a fork of Elm's surface syntax and owes
+it most of its good ideas, but Elm is an <em>inspiration</em>, not a reference: no chapter here
+may resolve a question by pointing at Elm's documentation. Where a rule is inherited it
+is written out in full; where the two languages differ, this directory is the answer.</p>
+<p>That rule is not fastidiousness. Deferring works only for as long as the two languages
+agree, so it fails precisely when a divergence is wanted — at which point the spec has to
+answer a question in vocabulary that lives in someone else's document, describing someone
+else's language, and changing without notice. It also frames every deliberate divergence
+as a defect. Writing the rules down here is what makes "we do this differently, and here
+is why" a sentence this directory can hold (<code>SPEC-2</code>).</p>
+<h2 id="every-example-is-checked">Every example is checked</h2>
+<p>Every fenced <code>```zel</code> block in a chapter carries an <code>expect=</code> tag in its info
+string, and <code>cargo test --test spec</code> runs every one of them through the compiler. A
+chapter claim the compiler disagrees with is a red test, not a stale sentence nobody
+notices — which is the failure mode this directory exists to prevent: documentation
+nothing checks drifts from the code it describes, silently and indefinitely.</p>
+<p>A tag says what the compiler is expected to do with the block: compile it, reject it in the
+parser, reject it in canonicalization, reject it in the type checker, or fail because the
+construct does not exist yet. An untagged block is a hard test failure rather than a silent
+skip.
+<a href="conventions.html#the-expect-vocabulary">Conventions</a> has the full vocabulary, along with the
+<code>package=</code> label that lets one chapter compile two modules together.</p>
+<h2 id="reading-a-chapter">Reading a chapter</h2>
+<p>Three bolded lead-ins appear in chapter and appendix prose. Each marks a sentence that is
+about the <em>compiler</em> rather than about the language, which is the one kind of "not yet" the
+spec admits:</p>
+<table><thead><tr><th>Lead-in</th><th>Marks</th></tr></thead><tbody>
+<tr><td><strong>Known gap:</strong></td><td>Behaviour the compiler has today and the language says it should not. The rule around it is Zelkova; the example beside it is the binary.</td></tr>
+<tr><td><strong>Not implemented:</strong></td><td>A rule of the language the compiler does not have yet. Its examples are tagged <code>expect=unimplemented</code> and fail on purpose.</td></tr>
+<tr><td><strong>Provisional:</strong></td><td>A mechanism nothing has built and nothing has settled — to argue with rather than to build against.</td></tr>
+</tbody></table>
+<p>The spellings are fixed so that each is greppable: <code>grep -r "Known gap:" docs/spec/</code> finds
+every one.</p>
+<p>A question the language has not answered is an <strong>Open question</strong> at the foot of the chapter
+that would own the answer. It is a gap in the language rather than in the writing, and it
+stays where the rules around it are.</p>
+<h2 id="chapters">Chapters</h2>
+<p>The chapters are the language, in reading order. Each one states its rules in full rather
+than deferring them, so together they are meant to be the whole of Zelkova and not a set of
+footnotes to somebody else's manual — that is what <em>the spec is self-contained</em> costs, and it
+is the point.</p>
+<table><thead><tr><th>Chapter</th><th>Covers</th></tr></thead><tbody>
+<tr><td><a href="lexical-structure.html">Lexical structure</a></td><td>What the characters of a file mean before any structure is imposed on them: source text, comments, identifiers, reserved words, literals, operators and punctuation.</td></tr>
+<tr><td><a href="layout.html">Layout (the offside rule)</a></td><td>How a line's leading whitespace and starting column decide which construct it belongs to — for the file, a <code>case … of</code>, and a <code>let … in</code>.</td></tr>
+<tr><td><a href="modules.html">Modules, exposing and imports</a></td><td>The module header, the four forms an <code>exposing</code> entry can take, <code>import … as … exposing</code>, the default imports, and how a module name maps to a file path.</td></tr>
+<tr><td><a href="declarations.html">Declarations</a></td><td>The five declaration forms, and in full the two made of neither a type nor a module name: bindings, including multi-clause functions, and <code>infix</code>.</td></tr>
+<tr><td><a href="types.html">Types and type annotations</a></td><td>Type expressions in full — application, the function arrow, variables, tuples, the unit type — plus the two declarations made of them, <code>name : Type</code> and <code>type</code>.</td></tr>
+<tr><td><a href="expressions.html">Expressions</a></td><td>Every expression form: literals, names, application, grouping, <code>if … then … else</code>, <code>case … of</code>, <code>let … in</code>, lambdas, and the operator table.</td></tr>
+<tr><td><a href="patterns.html">Patterns</a></td><td>Every pattern form, where each may appear, how they nest, and which of them can fail.</td></tr>
+<tr><td><a href="lists.html">Lists</a></td><td>The <code>List</code> type, the bracket literal, the cons operator and the two pattern forms, and what a backend may and may not choose about a list's representation.</td></tr>
+<tr><td><a href="records.html">Records</a></td><td>The record type, building one, reading and updating a field, the accessor, record patterns, and why a record type names every field it has.</td></tr>
+<tr><td><a href="name-resolution.html">Name resolution and scoping</a></td><td>The six namespaces, the scopes a name is looked up in, what shadows what, and what makes a reference ambiguous rather than merely unresolved.</td></tr>
+<tr><td><a href="evaluation-semantics.html">Evaluation semantics</a></td><td>Strictness, purity, order of evaluation, which forms evaluate their subexpressions conditionally, what <code>==</code> means structurally, what a function value is, and what a <code>Task</code> is — the value that describes an effect.</td></tr>
+<tr><td><a href="interop.html">Foreign interoperability</a></td><td>The <code>module foreign</code> facade: what such a signature may say, what its companion exports on each target, the effectful form of it, and why it is the only way out of Zelkova.</td></tr>
+<tr><td><a href="packages.html">Packages and source layout</a></td><td>The package directory, the <code>zelkova.toml</code> manifest, the two source roots, dependencies, what a package boundary means for visibility and for a module's name, the type <code>main</code> must have, and what makes a declaration a test.</td></tr>
+<tr><td><a href="type-classes.html">Type classes</a></td><td>The <code>class</code> and <code>instance</code> declarations, how a constraint is written in an annotation, superclasses, where an instance may be declared, how a class says it can be derived and what a derived instance then computes, and the words this reserves.</td></tr>
+</tbody></table>
+<h2 id="appendices">Appendices</h2>
+<p>An appendix is a sibling file in this directory that is deliberately <strong>not</strong> part of the
+language. It describes what surrounds Zelkova rather than what Zelkova is, and nothing in
+one is normative or checked. There is one:</p>
+<table><thead><tr><th>Appendix</th><th>Covers</th></tr></thead><tbody>
+<tr><td><a href="toolchain.html">The toolchain</a></td><td>Fetching a dependency, resolution and <code>zelkova.lock</code>, the cache, vendoring and offline builds, publishing, running a package's tests, and the compiler's interface.</td></tr>
+</tbody></table>
+<p>It exists because a language decision leaves a toolchain question with one sensible answer,
+and leaving it unwritten means every reader invents that answer privately and slightly
+differently: <code>docs/spec/packages.md</code> settles what a dependency entry <em>means</em>; something still
+has to say what happens when one is fetched, and that is not a sentence about the language.</p>
+<p><a href="conventions.html#chapter-or-appendix">Conventions</a> has the test for which of the two a rule
+belongs to, and for the third thing neither of them is: <em>why</em> a rule is what it is, which
+lives in <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/decisions/README.md"><code>docs/decisions/</code></a>.</p>
+
+</main>
+</div>
+</body>
+</html>

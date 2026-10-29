@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BOOL","CHAR","FLOAT","INT","OPAQUE_SCALARS","POSITION","SCALARS","STRING"],"fn":["opaque_scalar_of","scalar_of"],"struct":["Scalar"]};
