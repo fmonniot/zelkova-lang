@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["SourceFileErrorType","SourceRoot"],"struct":["SourceFile","SourceFileError","SourceFileId","SourceFiles"]};
