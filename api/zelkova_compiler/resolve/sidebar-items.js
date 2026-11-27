@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CORE_PACKAGE"],"enum":["Error","OriginKind"],"fn":["resolve","test_only_packages","visible_modules"],"struct":["DependencyModules","LocalModule","ModuleOrigin","ResolvedPackage"]};

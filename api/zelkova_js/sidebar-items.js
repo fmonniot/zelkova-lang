@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["RUNTIME","RUNTIME_FILE"],"enum":["Construct","Error","Unpredicated"],"fn":["companion_file","emit","module_file","rewrite_imports","test_companion_import"],"mod":["output"],"struct":["Unions"]};
